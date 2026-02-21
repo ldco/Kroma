@@ -241,6 +241,17 @@ pub struct ProviderAccountSummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct StyleGuideSummary {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub instructions: String,
+    pub notes: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -343,6 +354,26 @@ pub struct UpdateProviderAccountInput {
     pub enabled: Option<bool>,
     #[serde(default)]
     pub config_json: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CreateStyleGuideInput {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub instructions: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpdateStyleGuideInput {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -1608,6 +1639,176 @@ impl ProjectsStore {
             }
         })
     }
+
+    pub fn list_style_guides(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<StyleGuideSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let mut stmt = conn.prepare(
+                "
+                SELECT id, project_id, name, instructions, notes, created_at, updated_at
+                FROM style_guides
+                WHERE project_id = ?1
+                ORDER BY COALESCE(updated_at, '') DESC, id DESC
+            ",
+            )?;
+            let rows = stmt.query_map(params![project.id], row_to_style_guide_summary)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn create_style_guide(
+        &self,
+        slug: &str,
+        input: CreateStyleGuideInput,
+    ) -> Result<StyleGuideSummary, ProjectsRepoError> {
+        let name = normalize_required_text(input.name.as_str(), "name")?;
+        let instructions = normalize_required_text(input.instructions.as_str(), "instructions")?;
+        let notes = input
+            .notes
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let id = Uuid::new_v4().to_string();
+            let now = now_iso();
+            let insert = conn.execute(
+                "
+                INSERT INTO style_guides
+                  (id, project_id, name, instructions, notes, created_at, updated_at)
+                VALUES
+                  (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+            ",
+                params![id, project.id, name, instructions, notes, now],
+            );
+            if let Err(source) = insert {
+                if is_unique_constraint_error(&source) {
+                    return Err(ProjectsRepoError::Validation(String::from(
+                        "Style guide name already exists",
+                    )));
+                }
+                return Err(ProjectsRepoError::Sqlite(source));
+            }
+
+            fetch_style_guide_by_id(conn, project.id.as_str(), id.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn get_style_guide_detail(
+        &self,
+        slug: &str,
+        style_guide_id: &str,
+    ) -> Result<StyleGuideSummary, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            fetch_style_guide_by_id(conn, project.id.as_str(), style_guide_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn update_style_guide(
+        &self,
+        slug: &str,
+        style_guide_id: &str,
+        input: UpdateStyleGuideInput,
+    ) -> Result<StyleGuideSummary, ProjectsRepoError> {
+        if input.name.is_none() && input.instructions.is_none() && input.notes.is_none() {
+            return Err(ProjectsRepoError::Validation(String::from(
+                "Provide at least one of: name, instructions, notes",
+            )));
+        }
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let existing = fetch_style_guide_by_id(conn, project.id.as_str(), style_guide_id)?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let name = if let Some(raw) = input.name.as_deref() {
+                normalize_required_text(raw, "name")?
+            } else {
+                existing.name
+            };
+            let instructions = if let Some(raw) = input.instructions.as_deref() {
+                normalize_required_text(raw, "instructions")?
+            } else {
+                existing.instructions
+            };
+            let notes = if let Some(raw) = input.notes.as_deref() {
+                normalize_optional_storage_field(raw)
+            } else if existing.notes.trim().is_empty() {
+                None
+            } else {
+                Some(existing.notes)
+            };
+
+            let update = conn.execute(
+                "
+                UPDATE style_guides
+                SET name = ?1, instructions = ?2, notes = ?3, updated_at = ?4
+                WHERE id = ?5 AND project_id = ?6
+            ",
+                params![
+                    name,
+                    instructions,
+                    notes,
+                    now_iso(),
+                    style_guide_id,
+                    project.id
+                ],
+            );
+            if let Err(source) = update {
+                if is_unique_constraint_error(&source) {
+                    return Err(ProjectsRepoError::Validation(String::from(
+                        "Style guide name already exists",
+                    )));
+                }
+                return Err(ProjectsRepoError::Sqlite(source));
+            }
+
+            fetch_style_guide_by_id(conn, project.id.as_str(), style_guide_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn delete_style_guide(
+        &self,
+        slug: &str,
+        style_guide_id: &str,
+    ) -> Result<(), ProjectsRepoError> {
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let affected = conn.execute(
+                "DELETE FROM style_guides WHERE id = ?1 AND project_id = ?2",
+                params![style_guide_id, project.id],
+            )?;
+            if affected == 0 {
+                Err(ProjectsRepoError::NotFound)
+            } else {
+                Ok(())
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1800,6 +2001,17 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           PRIMARY KEY(project_id, provider_code)
+        );
+
+        CREATE TABLE IF NOT EXISTS style_guides (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          instructions TEXT NOT NULL,
+          notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(project_id, name)
         );
 
         CREATE TABLE IF NOT EXISTS project_storage (
@@ -2020,6 +2232,28 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     ensure_column(
         conn,
         "provider_accounts",
+        "updated_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+
+    ensure_column(conn, "style_guides", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "style_guides", "name", "TEXT NOT NULL")?;
+    ensure_column(
+        conn,
+        "style_guides",
+        "instructions",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(conn, "style_guides", "notes", "TEXT")?;
+    ensure_column(
+        conn,
+        "style_guides",
+        "created_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "style_guides",
         "updated_at",
         "TEXT NOT NULL DEFAULT ''",
     )?;
@@ -2418,6 +2652,37 @@ fn fetch_provider_account_by_code(
     ",
         params![project_id, provider_code],
         row_to_provider_account_summary,
+    )
+    .optional()
+    .map_err(ProjectsRepoError::from)
+}
+
+fn row_to_style_guide_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<StyleGuideSummary> {
+    Ok(StyleGuideSummary {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        name: row.get("name")?,
+        instructions: row.get("instructions")?,
+        notes: row.get::<_, Option<String>>("notes")?.unwrap_or_default(),
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn fetch_style_guide_by_id(
+    conn: &Connection,
+    project_id: &str,
+    style_guide_id: &str,
+) -> Result<Option<StyleGuideSummary>, ProjectsRepoError> {
+    conn.query_row(
+        "
+        SELECT id, project_id, name, instructions, notes, created_at, updated_at
+        FROM style_guides
+        WHERE id = ?1 AND project_id = ?2
+        LIMIT 1
+    ",
+        params![style_guide_id, project_id],
+        row_to_style_guide_summary,
     )
     .optional()
     .map_err(ProjectsRepoError::from)

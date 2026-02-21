@@ -9,3 +9,4 @@ pub mod response;
 pub mod routes;
 pub mod runs_assets;
 pub mod server;
+pub mod style_guides;

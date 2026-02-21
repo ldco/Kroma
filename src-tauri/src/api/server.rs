@@ -166,6 +166,21 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Delete, "/api/projects/{slug}/provider-accounts/{providerCode}") => {
             delete(crate::api::provider_accounts::delete_provider_account_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/style-guides") => {
+            get(crate::api::style_guides::list_style_guides_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/style-guides") => {
+            post(crate::api::style_guides::create_style_guide_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/style-guides/{styleGuideId}") => {
+            get(crate::api::style_guides::get_style_guide_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/style-guides/{styleGuideId}") => {
+            put(crate::api::style_guides::update_style_guide_handler)
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/style-guides/{styleGuideId}") => {
+            delete(crate::api::style_guides::delete_style_guide_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

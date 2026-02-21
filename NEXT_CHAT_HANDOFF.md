@@ -2,62 +2,62 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `3fbaead`
+Last commit before this handoff update: `10dd6ff`
 
 ## Current Architecture Decisions
 
-1. Rust backend (`src-tauri`) is the active system of record.
-2. Contract-first routing remains enforced with parity and mount tests.
-3. Implemented API is segmented by domain modules:
-- `api/projects.rs`
-- `api/runs_assets.rs`
-- `api/asset_links.rs`
-- `api/analytics.rs`
-- `api/exports.rs`
-- `api/prompt_templates.rs`
-- `api/provider_accounts.rs`
-4. Repository-level validation remains the single authority for payload correctness and domain invariants.
-5. All implemented domains include dedicated integration tests and are wired into HTTP contract-surface expectations.
+1. Rust backend (`src-tauri`) remains the active architecture path.
+2. OpenAPI parity + contract mount guarantees stay enforced through tests.
+3. Implemented API domains now include:
+- projects/storage
+- runs/assets
+- asset-links
+- analytics
+- exports
+- prompt templates
+- provider accounts
+- style guides
+4. Domain handlers stay thin; validation and normalization remain repository responsibilities.
+5. Every implemented domain has integration tests and explicit contract-surface status expectations.
 
 ## Completed Work In This Pass
 
-1. Implemented provider-account CRUD endpoints end-to-end:
-- `GET /api/projects/{slug}/provider-accounts`
-- `POST /api/projects/{slug}/provider-accounts`
-- `GET /api/projects/{slug}/provider-accounts/{providerCode}`
-- `PUT /api/projects/{slug}/provider-accounts/{providerCode}`
-- `DELETE /api/projects/{slug}/provider-accounts/{providerCode}`
-2. Added typed provider-account repository model and inputs:
-- `ProviderAccountSummary`
-- `UpsertProviderAccountInput`
-- `UpdateProviderAccountInput`
-3. Added schema support:
-- `provider_accounts` table
-4. Added API module and route wiring:
-- `src-tauri/src/api/provider_accounts.rs`
-- routing in `src-tauri/src/api/server.rs`
-5. Added integration tests:
-- `src-tauri/tests/provider_accounts_endpoints.rs`
-6. Updated HTTP contract-surface expected statuses for provider-account routes.
+1. Implemented style-guide CRUD endpoints end-to-end:
+- `GET /api/projects/{slug}/style-guides`
+- `POST /api/projects/{slug}/style-guides`
+- `GET /api/projects/{slug}/style-guides/{styleGuideId}`
+- `PUT /api/projects/{slug}/style-guides/{styleGuideId}`
+- `DELETE /api/projects/{slug}/style-guides/{styleGuideId}`
+2. Added typed style-guide repository model + inputs:
+- `StyleGuideSummary`
+- `CreateStyleGuideInput`
+- `UpdateStyleGuideInput`
+3. Added persistence schema:
+- `style_guides` table
+4. Added API module + routing:
+- `src-tauri/src/api/style_guides.rs`
+- route wiring in `src-tauri/src/api/server.rs`
+5. Added integration coverage:
+- `src-tauri/tests/style_guides_endpoints.rs`
+6. Updated contract-surface expectations for style-guide routes.
 
 ## Major Refactors / Rewrites
 
-1. Continued domain isolation at API boundaries rather than extending existing handlers.
-2. Added provider-account fetch/row-mapper helpers to keep SQL mapping consistent.
-3. Reused strict CRUD validation pattern (required create fields, at-least-one update field, path-based not-found semantics).
+1. Continued strict per-domain module boundaries.
+2. Reused shared CRUD validation pattern for deterministic behavior.
+3. Kept schema and row mappers explicit for clear API contracts.
 
 ## Key Issues Found
 
-1. Provider-account routes were mounted but still `501` stubs.
-2. No provider-account schema or typed persistence path existed.
-3. POST contract lacked explicit request schema in OpenAPI; repository now enforces `provider_code` as required.
+1. Style-guide routes were mounted but unimplemented (`501`).
+2. No style-guide schema existed.
+3. Contract lacked requestBody details; create/update validation now explicitly enforced by repository.
 
 ## Remaining Technical Debt
 
-1. `db/projects.rs` is still too large and should be split by domain.
-2. Candidate schema overlap remains (`run_job_candidates` and `run_candidates`).
-3. Unimplemented contract domains now include:
-- style guides
+1. `db/projects.rs` is still large and should be split into domain modules.
+2. Candidate overlap (`run_job_candidates` + `run_candidates`) remains.
+3. Remaining unimplemented domains:
 - characters
 - reference sets
 - chat
@@ -67,9 +67,9 @@ Last commit before this handoff update: `3fbaead`
 
 ## Next Phase Goals (Immediate)
 
-1. Implement style-guide CRUD domain.
-2. Add style-guide integration tests with validation and lifecycle coverage.
-3. Start extracting domain-specific repository modules from `db/projects.rs`.
+1. Implement character CRUD domain.
+2. Add character integration tests (validation + lifecycle).
+3. Start first physical split of `db/projects.rs` into submodules.
 
 ## Validation Snapshot
 
@@ -86,3 +86,4 @@ Last commit before this handoff update: `3fbaead`
 - exports
 - prompt templates
 - provider accounts
+- style guides
