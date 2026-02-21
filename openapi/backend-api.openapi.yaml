@@ -1,0 +1,280 @@
+openapi: 3.1.0
+info:
+  title: IAT Backend API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:8787
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /api/projects:
+    get:
+      summary: List projects
+      responses:
+        "200":
+          description: Project list
+    post:
+      summary: Create or upsert project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+      responses:
+        "200":
+          description: Project created
+  /api/projects/{slug}:
+    get:
+      summary: Get project summary
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/storage:
+    get:
+      summary: Get project storage config
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/chat/sessions:
+    get:
+      summary: List chat sessions
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create chat session
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                username: { type: string }
+                context_json: { type: object }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/chat/sessions/{sessionId}/messages:
+    get:
+      summary: List messages in chat session
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create chat message
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, content_text]
+              properties:
+                role:
+                  type: string
+                  enum: [user, assistant, system, tool]
+                content_text: { type: string }
+                content_json: { type: object }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/agent/instructions:
+    get:
+      summary: List project instructions
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create instruction
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instruction_type, payload_json]
+              properties:
+                instruction_type: { type: string }
+                payload_json: { type: object }
+                requires_confirmation: { type: boolean }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/agent/instructions/{instructionId}:
+    get:
+      summary: Get instruction
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: instructionId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/agent/instructions/{instructionId}/events:
+    get:
+      summary: Get instruction events
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: instructionId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/agent/instructions/{instructionId}/confirm:
+    post:
+      summary: Confirm instruction
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: instructionId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/agent/instructions/{instructionId}/cancel:
+    post:
+      summary: Cancel instruction
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: instructionId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/voice/stt:
+    post:
+      summary: Submit STT request
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/voice/tts:
+    post:
+      summary: Submit TTS request
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/voice/requests/{requestId}:
+    get:
+      summary: Get voice request status
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: requestId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/secrets:
+    get:
+      summary: List project secrets (masked)
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Set project secret
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/secrets/{providerCode}/{secretName}:
+    delete:
+      summary: Delete project secret
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: providerCode
+          required: true
+          schema: { type: string }
+        - in: path
+          name: secretName
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }

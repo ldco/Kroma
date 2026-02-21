@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "time": "day",
+    "weather": "clear"
+  },
+  "profiles": {
+    "style_lock": {
+      "include_time": false,
+      "include_weather": false
+    },
+    "day_clear": {
+      "time": "day",
+      "weather": "clear"
+    },
+    "night_rain": {
+      "time": "night",
+      "weather": "rain"
+    }
+  }
+}

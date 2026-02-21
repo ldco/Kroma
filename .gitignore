@@ -1,0 +1,17 @@
+.env
+scripts/__pycache__/
+generated/**
+tools/realesrgan-python/**
+tools/rembg/**
+!generated/outputs/
+!generated/runs/
+!generated/upscaled/
+!generated/color_corrected/
+!generated/background_removed/
+!generated/projects/
+!generated/outputs/.gitkeep
+!generated/runs/.gitkeep
+!generated/upscaled/.gitkeep
+!generated/color_corrected/.gitkeep
+!generated/background_removed/.gitkeep
+!generated/projects/.gitkeep

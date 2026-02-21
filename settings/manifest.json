@@ -1,0 +1,27 @@
+{
+  "style_refs": [],
+  "scene_refs": [],
+  "safe_batch_limit": 20,
+  "generation": {
+    "candidates": 1,
+    "max_candidates": 6
+  },
+  "output_guard": {
+    "enforce_grayscale": false,
+    "max_chroma_delta": 2,
+    "fail_on_chroma_exceed": false
+  },
+  "policy": {
+    "allowed_style_roots": [
+      "references/"
+    ],
+    "default_no_invention": true
+  },
+  "prompts": {
+    "style_base": "Preserve geometry and perspective. Apply one coherent noir drawing hand. No text, no logos, no watermark.",
+    "time_day": "Daylight scene with clear readability and stable contrast family.",
+    "time_night": "Night scene with controlled deep shadows, no topology changes.",
+    "weather_clear": "Dry clear atmosphere. No rain streaks, no snow particles, no diagonal sky hatching.",
+    "weather_rain": "Visible wet surfaces, puddles, and reflection cues; no style drift."
+  }
+}
