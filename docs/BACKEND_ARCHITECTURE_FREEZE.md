@@ -78,3 +78,15 @@ Frontend can begin only when:
 - export path -> `project_exports.export_asset_id`
 3. Derived `asset_links` backfill is now seeded from existing run candidate/job graph.
 4. Repository docs are normalized under `docs/`; project/user runtime knowledge is DB-owned.
+
+## Verification Snapshot (2026-02-21, post-freeze audit)
+
+1. Regression validation rerun completed:
+- Python compile checks for backend/API/worker/tooling scripts
+- `node --check` for `scripts/image-lab.mjs`
+- OpenAPI YAML parse check
+- end-to-end contract smoke against live backend API
+2. Backfill regression case verified:
+- legacy rows with empty-string `run_jobs.final_output` now correctly backfill to canonical `final_asset_id` and `final_output` path.
+3. Current status:
+- no newly discovered blocking backend/API defects in this audit pass.

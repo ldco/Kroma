@@ -585,6 +585,8 @@ Implemented in `scripts/backend_api.py` and `openapi/backend-api.openapi.yaml`:
   - `run_jobs.final_output` -> `run_jobs.final_asset_id`
   - `project_exports.export_path` -> `project_exports.export_asset_id`
   - derived `asset_links` seeded from candidate/job asset graph
+- Backfill bugfix regression validated:
+  - empty-string legacy `run_jobs.final_output` now correctly updates to canonical path during phase3 backfill
 - Audit events observed for key mutation flows.
 
 ### 7.4 Remaining Work (Current)
