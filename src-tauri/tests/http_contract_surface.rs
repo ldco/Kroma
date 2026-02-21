@@ -180,6 +180,20 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Post, "/api/projects/{slug}/chat/sessions/{sessionId}/messages") => {
             StatusCode::BAD_REQUEST
         }
+        (HttpMethod::Get, "/api/projects/{slug}/agent/instructions") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/agent/instructions") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Get, "/api/projects/{slug}/agent/instructions/{instructionId}") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/agent/instructions/{instructionId}/events") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/confirm") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/cancel") => {
+            StatusCode::NOT_FOUND
+        }
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }

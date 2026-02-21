@@ -244,6 +244,24 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Post, "/api/projects/{slug}/chat/sessions/{sessionId}/messages") => {
             post(crate::api::chat::create_chat_message_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/agent/instructions") => {
+            get(crate::api::agent_instructions::list_agent_instructions_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/agent/instructions") => {
+            post(crate::api::agent_instructions::create_agent_instruction_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/agent/instructions/{instructionId}") => {
+            get(crate::api::agent_instructions::get_agent_instruction_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/agent/instructions/{instructionId}/events") => {
+            get(crate::api::agent_instructions::list_agent_instruction_events_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/confirm") => {
+            post(crate::api::agent_instructions::confirm_agent_instruction_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/cancel") => {
+            post(crate::api::agent_instructions::cancel_agent_instruction_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

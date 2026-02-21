@@ -1,3 +1,4 @@
+pub mod agent_instructions;
 pub mod analytics;
 pub mod asset_links;
 pub mod characters;
