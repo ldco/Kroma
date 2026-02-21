@@ -3,6 +3,7 @@ pub mod asset_links;
 pub mod error;
 pub mod exports;
 pub mod projects;
+pub mod prompt_templates;
 pub mod response;
 pub mod routes;
 pub mod runs_assets;

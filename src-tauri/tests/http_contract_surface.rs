@@ -98,6 +98,17 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Get, "/api/projects/{slug}/cost-events") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/exports") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/exports/{exportId}") => StatusCode::NOT_FOUND,
+        (HttpMethod::Get, "/api/projects/{slug}/prompt-templates") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/prompt-templates") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Get, "/api/projects/{slug}/prompt-templates/{templateId}") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/prompt-templates/{templateId}") => {
+            StatusCode::BAD_REQUEST
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/prompt-templates/{templateId}") => {
+            StatusCode::NOT_FOUND
+        }
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }

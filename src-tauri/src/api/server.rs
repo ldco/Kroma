@@ -136,6 +136,21 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Get, "/api/projects/{slug}/exports/{exportId}") => {
             get(crate::api::exports::get_export_detail_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/prompt-templates") => {
+            get(crate::api::prompt_templates::list_prompt_templates_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/prompt-templates") => {
+            post(crate::api::prompt_templates::create_prompt_template_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/prompt-templates/{templateId}") => {
+            get(crate::api::prompt_templates::get_prompt_template_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/prompt-templates/{templateId}") => {
+            put(crate::api::prompt_templates::update_prompt_template_handler)
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/prompt-templates/{templateId}") => {
+            delete(crate::api::prompt_templates::delete_prompt_template_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {
