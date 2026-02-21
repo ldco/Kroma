@@ -18,10 +18,11 @@
     "backend:api": "python3 scripts/backend_api.py --host 127.0.0.1 --port 8787 --with-default-user",
     "backend:worker": "python3 scripts/agent_worker.py",
     "backend:worker:once": "python3 scripts/agent_worker.py --once",
-    "backend:contract:smoke": "bash scripts/contract-smoke.sh",
-    "realesrgan:setup": "bash scripts/setup-realesrgan.sh",
-    "realesrgan:python:setup": "bash scripts/setup-realesrgan-python.sh",
-    "rembg:setup": "bash scripts/setup-rembg.sh"
+    "backend:contract:smoke": "python3 scripts/contract_smoke.py",
+    "realesrgan:setup": "python3 scripts/setup_tools.py realesrgan-ncnn",
+    "realesrgan:python:setup": "python3 scripts/setup_tools.py realesrgan-python",
+    "rembg:setup": "python3 scripts/setup_tools.py rembg",
+    "tools:setup": "python3 scripts/setup_tools.py all"
   },
   "engines": {
     "node": ">=20"

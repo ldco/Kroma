@@ -6,6 +6,26 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const args = process.argv.slice(2);
 const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"]);
+const DEFAULT_MANIFEST = {
+  style_refs: [],
+  scene_refs: [],
+  safe_batch_limit: 20,
+  generation: { candidates: 1, max_candidates: 6 },
+  output_guard: {
+    enforce_grayscale: false,
+    max_chroma_delta: 2,
+    fail_on_chroma_exceed: false
+  },
+  policy: { default_no_invention: true },
+  prompts: {
+    style_base:
+      "Preserve geometry and perspective. Apply one coherent noir drawing hand. No text, no logos, no watermark.",
+    time_day: "Daylight scene with clear readability and stable contrast family.",
+    time_night: "Night scene with controlled deep shadows, no topology changes.",
+    weather_clear: "Dry clear atmosphere. No rain streaks, no snow particles, no diagonal sky hatching.",
+    weather_rain: "Visible wet surfaces, puddles, and reflection cues; no style drift."
+  }
+};
 
 function readArg(name, fallback = "") {
   const idx = args.indexOf(name);
@@ -58,6 +78,15 @@ function parseCsvArg(name, fallbackList) {
     .filter(Boolean);
 }
 
+function parsePathCsvArg(name, fallbackList) {
+  const raw = readArg(name, "");
+  if (!raw) return fallbackList;
+  return raw
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 function resolvePath(inputPath) {
   if (!inputPath) return "";
   return path.isAbsolute(inputPath) ? inputPath : path.resolve(root, inputPath);
@@ -106,8 +135,12 @@ function loadJson(filePath) {
 }
 
 function loadManifestIfExists() {
-  const manifestPath = path.join(root, "settings/manifest.json");
-  if (!fs.existsSync(manifestPath)) return {};
+  const manifestArg = readArg("--manifest", "");
+  if (!manifestArg) return {};
+  const manifestPath = resolvePath(manifestArg);
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Manifest file not found: ${manifestArg}`);
+  }
   return loadJson(manifestPath);
 }
 
@@ -131,6 +164,80 @@ function ensureUnderAllowedRoots(relPath, allowedRoots) {
   if (!ok) {
     throw new Error(`Style anchor not allowed by policy: ${relPath}`);
   }
+}
+
+function resolveGenerationConfig() {
+  const manifestOverride = loadManifestIfExists();
+  const merged = {
+    ...DEFAULT_MANIFEST,
+    ...manifestOverride,
+    generation: {
+      ...DEFAULT_MANIFEST.generation,
+      ...(manifestOverride?.generation || {})
+    },
+    output_guard: {
+      ...DEFAULT_MANIFEST.output_guard,
+      ...(manifestOverride?.output_guard || {})
+    },
+    policy: {
+      ...DEFAULT_MANIFEST.policy,
+      ...(manifestOverride?.policy || {})
+    },
+    prompts: {
+      ...DEFAULT_MANIFEST.prompts,
+      ...(manifestOverride?.prompts || {})
+    }
+  };
+
+  const inputArg = readArg("--input", "").trim();
+  const sceneRefsArg = parsePathCsvArg("--scene-refs", []);
+  if (inputArg && sceneRefsArg.length) {
+    throw new Error("Use either --input or --scene-refs, not both.");
+  }
+
+  let sceneRefs = [];
+  if (inputArg) {
+    const inputAbs = resolvePath(inputArg);
+    if (!fs.existsSync(inputAbs)) {
+      throw new Error(`Input not found: ${inputArg}`);
+    }
+    sceneRefs = listImageFiles(inputAbs);
+  } else if (sceneRefsArg.length) {
+    sceneRefs = sceneRefsArg;
+  } else {
+    sceneRefs = Array.isArray(merged.scene_refs) ? merged.scene_refs : [];
+  }
+
+  if (!sceneRefs.length) {
+    throw new Error("No scenes provided. Use --input <file|dir> or --scene-refs <a,b,c>.");
+  }
+  for (const rel of sceneRefs) {
+    mustExist(rel, "scene reference");
+  }
+
+  const styleRefsDefault = Array.isArray(merged.style_refs) ? merged.style_refs : [];
+  const styleRefs = parsePathCsvArg("--style-refs", styleRefsDefault);
+  for (const rel of styleRefs) {
+    mustExist(rel, "style reference");
+  }
+
+  merged.scene_refs = sceneRefs;
+  merged.style_refs = styleRefs;
+  merged.safe_batch_limit = Number(readArg("--safe-batch-limit", String(merged.safe_batch_limit || 20)));
+  if (!Number.isFinite(merged.safe_batch_limit) || merged.safe_batch_limit <= 0) {
+    throw new Error(`Invalid --safe-batch-limit '${merged.safe_batch_limit}'. Expected a positive number.`);
+  }
+  merged.policy.default_no_invention = parseBoolArg(
+    "--default-no-invention",
+    Boolean(merged?.policy?.default_no_invention)
+  );
+
+  merged.prompts.style_base = readArg("--style-base-prompt", merged.prompts.style_base);
+  merged.prompts.time_day = readArg("--time-day-prompt", merged.prompts.time_day);
+  merged.prompts.time_night = readArg("--time-night-prompt", merged.prompts.time_night);
+  merged.prompts.weather_clear = readArg("--weather-clear-prompt", merged.prompts.weather_clear);
+  merged.prompts.weather_rain = readArg("--weather-rain-prompt", merged.prompts.weather_rain);
+  return merged;
 }
 
 function mimeFor(filePath) {
@@ -160,7 +267,7 @@ function resolveBackendCommonConfig() {
   const pythonArg = readArg("--backend-python-bin", "python3");
   const pythonBin = pythonArg.includes("/") || pythonArg.startsWith(".") ? resolvePath(pythonArg) : pythonArg;
   const scriptPath = path.join(root, "scripts/backend.py");
-  const dbPath = resolvePath(readArg("--backend-db", "generated/backend/app.db"));
+  const dbPath = resolvePath(readArg("--backend-db", "var/backend/app.db"));
   return {
     pythonBin,
     scriptPath,
@@ -209,15 +316,23 @@ function resolveProjectStorageFromBackend(projectId) {
 }
 
 function getProjectContext() {
-  const raw = readArg("--project", process.env.IMAGE_LAB_PROJECT || "default");
-  const project = sanitizeId(raw) || "default";
+  const raw = String(readArg("--project", process.env.IMAGE_LAB_PROJECT || "") || "").trim();
+  if (!raw) {
+    throw new Error("Missing --project. Explicit project id is required.");
+  }
+  const project = sanitizeId(raw);
+  if (!project) {
+    throw new Error("Invalid --project. Use letters, numbers, dash or underscore.");
+  }
   const projectRootArg = readArg("--project-root", "").trim();
   const backendStorage = resolveProjectStorageFromBackend(project);
-  const projectRoot = projectRootArg
-    ? resolvePath(projectRootArg)
-    : backendStorage.resolved
-      ? backendStorage.localRoot
-      : path.join(root, "generated", "projects", project);
+  if (!projectRootArg && !backendStorage.resolved) {
+    throw new Error(
+      "Project root is not configured. Set --project-root or configure backend storage: " +
+        "python3 scripts/backend.py set-project-storage-local --project-slug <project> --project-root <path>"
+    );
+  }
+  const projectRoot = projectRootArg ? resolvePath(projectRootArg) : backendStorage.localRoot;
   const dirs = {
     root: projectRoot,
     outputs: path.join(projectRoot, "outputs"),
@@ -251,7 +366,7 @@ function composePrompt({ prompts, stage, time, weather, noInvention }) {
   const chunks = [];
 
   if (!prompts.style_base) {
-    throw new Error("Missing prompts.style_base in settings/manifest.json");
+    throw new Error("Missing style_base prompt.");
   }
   chunks.push(prompts.style_base);
 
@@ -287,9 +402,7 @@ function buildJobs({ manifest, stage, time, weather }) {
   const sceneRefs = Array.isArray(manifest.scene_refs) ? manifest.scene_refs : [];
   const styleRefs = Array.isArray(manifest.style_refs) ? manifest.style_refs : [];
 
-  if (!sceneRefs.length) {
-    throw new Error("No scene_refs configured in settings/manifest.json");
-  }
+  if (!sceneRefs.length) throw new Error("No scene references configured.");
 
   return sceneRefs.map((scene, i) => {
     const idSuffix = sanitizeId(path.basename(scene)) || String(i + 1);
@@ -314,7 +427,7 @@ function loadPostprocessConfig() {
       scale: 2,
       tile: 0,
       format: "png",
-      output_dir: "generated/upscaled",
+      output_dir: "upscaled",
       python: {
         python_bin: "tools/realesrgan-python/.venv/bin/python",
         model_name: "RealESRGAN_x4plus",
@@ -326,12 +439,12 @@ function loadPostprocessConfig() {
       }
     },
     color: {
-      settings_file: "settings/color-correction.json",
+      settings_file: "",
       default_profile: "neutral",
-      output_dir: "generated/color_corrected"
+      output_dir: "color_corrected"
     },
     bg_remove: {
-      output_dir: "generated/background_removed",
+      output_dir: "background_removed",
       backends: ["rembg"],
       format: "png",
       size: "auto",
@@ -363,8 +476,12 @@ function loadPostprocessConfig() {
     }
   };
 
-  const configPath = path.join(root, "settings/postprocess.json");
-  if (!fs.existsSync(configPath)) return fallback;
+  const configPathArg = readArg("--postprocess-config", "").trim();
+  if (!configPathArg) return fallback;
+  const configPath = resolvePath(configPathArg);
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Postprocess config not found: ${configPathArg}`);
+  }
 
   const cfg = loadJson(configPath);
   return {
@@ -585,12 +702,13 @@ function runColorPass({ inputPath, outputPath, postCfg, profile, projectCtx }) {
 
   const pythonBin = readArg("--python-bin", "python3");
   const scriptPath = path.join(root, "scripts/apply-color-correction.py");
-  const settingsPath = resolvePath(readArg("--color-settings", postCfg.color.settings_file));
+  const settingsRaw = readArg("--color-settings", postCfg.color.settings_file || "").trim();
+  const settingsPath = settingsRaw ? resolvePath(settingsRaw) : "";
 
   if (!fs.existsSync(scriptPath)) {
     throw new Error(`Missing script: ${toRel(scriptPath)}`);
   }
-  if (!fs.existsSync(settingsPath)) {
+  if (settingsPath && !fs.existsSync(settingsPath)) {
     throw new Error(`Missing color settings file: ${toRel(settingsPath)}`);
   }
 
@@ -603,24 +721,17 @@ function runColorPass({ inputPath, outputPath, postCfg, profile, projectCtx }) {
   }
 
   const chosenProfile = profile || readArg("--profile", postCfg.color.default_profile || "neutral");
-  const cmdArgs = [
-    scriptPath,
-    "--settings",
-    settingsPath,
-    "--profile",
-    chosenProfile,
-    "--input",
-    inputAbs,
-    "--output",
-    outputAbs
-  ];
+  const cmdArgs = [scriptPath, "--profile", chosenProfile, "--input", inputAbs, "--output", outputAbs];
+  if (settingsPath) {
+    cmdArgs.push("--settings", settingsPath);
+  }
 
   runCommand(pythonBin, cmdArgs, "Color correction");
   return {
     input: toRel(inputAbs),
     output: toRel(outputAbs),
     profile: chosenProfile,
-    settings: toRel(settingsPath)
+    settings: settingsPath ? toRel(settingsPath) : "builtin"
   };
 }
 
@@ -1159,8 +1270,8 @@ function maybeSyncProjectS3({ backendCfg, projectCtx, syncCfg }) {
 function usage() {
   return [
     "Usage:",
-    "  npm run lab -- dry [--project NAME] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N]",
-    "  npm run lab -- run --project NAME --confirm-spend [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N] [--project-root PATH] [--post-upscale] [--upscale-backend ncnn|python] [--post-color] [--post-color-profile PROFILE] [--post-bg-remove]",
+    "  npm run lab -- dry --project NAME [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N]",
+    "  npm run lab -- run --project NAME --confirm-spend [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N] [--post-upscale] [--upscale-backend ncnn|python] [--post-color] [--post-color-profile PROFILE] [--post-bg-remove]",
     "  npm run lab -- upscale [--project NAME] [--input PATH] [--output PATH] [--upscale-backend ncnn|python] [--upscale-scale 2|3|4]",
     "  npm run lab -- color [--project NAME] [--input PATH] [--output PATH] [--profile PROFILE] [--color-settings FILE]",
     "  npm run lab -- bgremove [--project NAME] [--input PATH] [--output PATH] [--bg-remove-backends rembg,photoroom,removebg] [--bg-refine-openai true|false]",
@@ -1169,11 +1280,13 @@ function usage() {
     "",
     "Defaults:",
     "  mode: dry",
-    "  project: default",
+    "  project: required (no implicit default)",
     "  stage: style",
     "  time: day",
     "  weather: clear",
     "  candidates: 1",
+    "  project_root: required via --project-root or backend project storage",
+    "  scenes: required via --input or --scene-refs",
     "  output guard: enabled",
     "  backend run ingest: enabled",
     "  s3 sync after run: disabled",
@@ -1213,23 +1326,7 @@ async function runGenerationMode(mode) {
   const confirmSpend = hasFlag("--confirm-spend");
   const dry = mode === "dry";
 
-  mustExist("settings/manifest.json", "manifest");
-  const manifest = loadJson(path.join(root, "settings/manifest.json"));
-
-  const allowedStyleRoots = Array.isArray(manifest?.policy?.allowed_style_roots)
-    ? manifest.policy.allowed_style_roots
-    : ["references/"];
-
-  const styleRefs = Array.isArray(manifest.style_refs) ? manifest.style_refs : [];
-  for (const rel of styleRefs) {
-    ensureUnderAllowedRoots(rel, allowedStyleRoots);
-    mustExist(rel, "style reference");
-  }
-
-  const sceneRefs = Array.isArray(manifest.scene_refs) ? manifest.scene_refs : [];
-  for (const rel of sceneRefs) {
-    mustExist(rel, "scene reference");
-  }
+  const manifest = resolveGenerationConfig();
 
   const jobs = buildJobs({ manifest, stage, time, weather });
   const safeBatchLimit = Number(manifest.safe_batch_limit || 20);

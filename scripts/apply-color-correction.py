@@ -5,6 +5,44 @@ from pathlib import Path
 from PIL import Image, ImageEnhance, ImageOps
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+DEFAULT_COLOR_SETTINGS = {
+    "default_profile": "neutral",
+    "profiles": {
+        "neutral": {
+            "brightness": 1.0,
+            "contrast": 1.02,
+            "saturation": 1.0,
+            "sharpness": 1.0,
+            "gamma": 1.0,
+            "autocontrast_cutoff": 0,
+            "red_multiplier": 1.0,
+            "green_multiplier": 1.0,
+            "blue_multiplier": 1.0,
+        },
+        "cinematic_warm": {
+            "brightness": 0.98,
+            "contrast": 1.12,
+            "saturation": 1.08,
+            "sharpness": 1.04,
+            "gamma": 1.03,
+            "autocontrast_cutoff": 0,
+            "red_multiplier": 1.04,
+            "green_multiplier": 1.0,
+            "blue_multiplier": 0.96,
+        },
+        "cold_rain": {
+            "brightness": 0.97,
+            "contrast": 1.1,
+            "saturation": 0.95,
+            "sharpness": 1.03,
+            "gamma": 1.01,
+            "autocontrast_cutoff": 0,
+            "red_multiplier": 0.97,
+            "green_multiplier": 1.0,
+            "blue_multiplier": 1.05,
+        },
+    },
+}
 
 
 def clamp_byte(value: float) -> int:
@@ -78,28 +116,32 @@ def resolve_output_path(src: Path, input_root: Path, output_path: Path, input_is
 
 def main():
     parser = argparse.ArgumentParser(description="Batch color correction from JSON profile.")
-    parser.add_argument("--settings", required=True, help="Path to settings/color-correction.json")
+    parser.add_argument("--settings", required=False, default="", help="Optional path to color settings JSON")
     parser.add_argument("--profile", required=True, help="Profile name in settings file")
     parser.add_argument("--input", required=True, help="Input image file or directory")
     parser.add_argument("--output", required=True, help="Output image file or directory")
     args = parser.parse_args()
 
-    settings_path = Path(args.settings).resolve()
+    settings_raw = str(args.settings or "").strip()
+    settings_path = Path(settings_raw).resolve() if settings_raw else None
     input_path = Path(args.input).resolve()
     output_path = Path(args.output).resolve()
 
-    if not settings_path.exists():
-        raise SystemExit(f"Settings file not found: {settings_path}")
+    settings_source = "builtin"
+    settings = DEFAULT_COLOR_SETTINGS
+    if settings_path:
+        if not settings_path.exists():
+            raise SystemExit(f"Settings file not found: {settings_path}")
+        with settings_path.open("r", encoding="utf-8") as fh:
+            settings = json.load(fh)
+        settings_source = str(settings_path)
     if not input_path.exists():
         raise SystemExit(f"Input not found: {input_path}")
-
-    with settings_path.open("r", encoding="utf-8") as fh:
-        settings = json.load(fh)
 
     profiles = settings.get("profiles", {})
     profile = profiles.get(args.profile)
     if profile is None:
-        raise SystemExit(f"Profile '{args.profile}' not found in {settings_path}")
+        raise SystemExit(f"Profile '{args.profile}' not found in {settings_source}")
 
     images = list_images(input_path)
     if not images:
@@ -115,7 +157,7 @@ def main():
             corrected.save(dst)
         processed += 1
 
-    print(f"Processed {processed} image(s) with profile '{args.profile}'")
+    print(f"Processed {processed} image(s) with profile '{args.profile}' (settings={settings_source})")
 
 
 if __name__ == "__main__":

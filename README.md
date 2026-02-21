@@ -21,38 +21,56 @@ npm run rembg:setup
 npm run realesrgan:python:setup
 # optional ncnn fallback
 npm run realesrgan:setup
+# one-shot setup
+npm run tools:setup
 ```
 
-Then add your own source files and update `settings/manifest.json`:
+Setup assets under `tools/` are local runtime artifacts and are intentionally not versioned in git.
+Setup commands are Python-based (no Bash dependency for tool bootstrap).
 
-- `scene_refs` for input scenes
-- `style_refs` for style anchors
+## Documentation
+
+Repository-level documentation is in `docs/`:
+
+- `docs/TECH_SPEC.md`
+- `docs/WORKFLOW.md`
+- `docs/BACKEND_ARCHITECTURE_FREEZE.md`
+- `docs/DB_Schema_Audit_—_Current_vs_Target.md`
+
+Then provide input scenes/styles explicitly per run:
+
+- `--input <file_or_dir>` or `--scene-refs a,b,c`
+- optional style anchors with `--style-refs x,y,z`
+- optional manifest override with `--manifest <file.json>`
 
 ## Project Isolation
 
 All outputs are now project-scoped:
 
-- `generated/projects/<project>/outputs/`
-- `generated/projects/<project>/upscaled/`
-- `generated/projects/<project>/color_corrected/`
-- `generated/projects/<project>/background_removed/`
-- `generated/projects/<project>/runs/`
-- `generated/projects/<project>/archive/bad/`
-- `generated/projects/<project>/archive/replaced/`
+- `<project_root>/outputs/`
+- `<project_root>/upscaled/`
+- `<project_root>/color_corrected/`
+- `<project_root>/background_removed/`
+- `<project_root>/runs/`
+- `<project_root>/archive/bad/`
+- `<project_root>/archive/replaced/`
 
-Use `--project <name>` on every command. Default is `default`.
+`<project_root>` must come from `--project-root` or the project storage config in DB (`set-project-storage-local`).
+If neither is set, `lab` commands fail fast.
+
+Use `--project <name>` on every command (required, no implicit default project).
 
 ## Commands
 
 ```bash
 # dry run
-npm run lab -- dry --project demo
+npm run lab -- dry --project demo --project-root /data/iat/demo --input /data/iat/demo/scenes
 
 # paid generation
-npm run lab -- run --project demo --confirm-spend
+npm run lab -- run --project demo --project-root /data/iat/demo --input /data/iat/demo/scenes --confirm-spend
 
 # paid generation with 4 candidates per scene and auto-pick best
-npm run lab -- run --project demo --confirm-spend --candidates 4
+npm run lab -- run --project demo --project-root /data/iat/demo --input /data/iat/demo/scenes --confirm-spend --candidates 4
 
 # run with explicit local directory for this project
 npm run lab -- run --project demo --project-root /data/iat/demo --confirm-spend
@@ -61,16 +79,16 @@ npm run lab -- run --project demo --project-root /data/iat/demo --confirm-spend
 npm run lab -- run --project demo --confirm-spend --post-bg-remove --post-upscale --upscale-backend python --post-color --post-color-profile cinematic_warm
 
 # only upscale
-npm run upscale -- --project demo --input generated/projects/demo/outputs --output generated/projects/demo/upscaled --upscale-backend python --upscale-scale 2
+npm run upscale -- --project demo --input /data/iat/demo/outputs --output /data/iat/demo/upscaled --upscale-backend python --upscale-scale 2
 
 # only bg-remove (production chain: rembg -> OpenAI refine)
-npm run bgremove -- --project demo --input generated/projects/demo/outputs --output generated/projects/demo/background_removed --bg-remove-backends rembg --bg-refine-openai true
+npm run bgremove -- --project demo --input /data/iat/demo/outputs --output /data/iat/demo/background_removed --bg-remove-backends rembg --bg-refine-openai true
 
 # quality audit only (no generation)
-npm run qa -- --project demo --input generated/projects/demo/background_removed
+npm run qa -- --project demo --input /data/iat/demo/background_removed
 
 # archive rejected files manually
-npm run archivebad -- --project demo --input generated/projects/demo/background_removed
+npm run archivebad -- --project demo --input /data/iat/demo/background_removed
 ```
 
 ## Backend Data Layer
@@ -79,7 +97,7 @@ SQLite backend is managed by `scripts/backend.py` (future multi-user ready; curr
 
 Default DB path:
 
-- `generated/backend/app.db`
+- `var/backend/app.db`
 
 Main entities:
 
@@ -115,7 +133,7 @@ python3 scripts/backend.py create-project --name "eugenia_prod" --slug eugenia_p
 npm run backend:project:list
 
 # export only one project (DB subset + files)
-python3 scripts/backend.py export-project --project-slug eugenia_prod --output generated/exports/eugenia_prod.tar.gz
+python3 scripts/backend.py export-project --project-slug eugenia_prod --output var/exports/eugenia_prod.tar.gz
 
 # set local storage root for one project
 python3 scripts/backend.py set-project-storage-local --project-slug eugenia_prod --project-root /data/iat/eugenia_prod
@@ -220,6 +238,8 @@ Contract smoke test:
 
 ```bash
 npm run backend:contract:smoke
+# optional flags:
+# python3 scripts/contract_smoke.py --base-url http://127.0.0.1:8787 --project-slug contract_demo
 ```
 
 Example requests:
@@ -248,7 +268,7 @@ curl -s -X POST http://127.0.0.1:8787/api/projects/eugenia_prod/agent/instructio
 
 When a target output file already exists, the old file is auto-moved to:
 
-- `generated/projects/<project>/archive/replaced/`
+- `<project_root>/archive/replaced/`
 
 Disable this behavior with `--no-archive-replaced`.
 
@@ -277,16 +297,16 @@ Optional external fallbacks are still available via `--bg-remove-backends rembg,
 
 ## Output Quality Guard
 
-`run` mode now checks final outputs with `scripts/output-guard.py` using `settings/manifest.json`:
+`run` mode checks final outputs with `scripts/output-guard.py`:
 
-- `output_guard.enforce_grayscale`
-- `output_guard.max_chroma_delta`
-- `output_guard.fail_on_chroma_exceed`
+- `--enforce-grayscale`
+- `--max-chroma-delta`
+- `--fail-on-chroma-exceed`
 
 Behavior:
 
 - if hard-fail rules are triggered, job status becomes `failed_output_guard`;
-- failed output is auto-moved to `generated/projects/<project>/archive/bad/`;
+- failed output is auto-moved to `<project_root>/archive/bad/`;
 - run exits with non-zero status after writing run log.
 
 CLI overrides:
@@ -302,7 +322,7 @@ CLI overrides:
 For each generation job you can request multiple candidates:
 
 - `--candidates <N>` (default `1`)
-- hard limit via `settings/manifest.json -> generation.max_candidates` (default `6`)
+- hard limit via `--max-candidates` (default `6`)
 - override limit with `--allow-many-candidates` (run mode)
 
 Selection logic:

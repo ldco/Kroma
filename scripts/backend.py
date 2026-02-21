@@ -18,8 +18,11 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 
-DEFAULT_DB = "generated/backend/app.db"
-DEFAULT_MASTER_KEY_FILE = "generated/backend/master.key"
+RUNTIME_BASE_DIR = "var"
+DEFAULT_DB = f"{RUNTIME_BASE_DIR}/backend/app.db"
+DEFAULT_MASTER_KEY_FILE = f"{RUNTIME_BASE_DIR}/backend/master.key"
+DEFAULT_PROJECTS_BASE_DIR = f"{RUNTIME_BASE_DIR}/projects"
+DEFAULT_EXPORTS_BASE_DIR = f"{RUNTIME_BASE_DIR}/exports"
 DEFAULT_SECRET_SERVICE = "iat-toolkit"
 DEFAULT_SECRET_ACCOUNT = "backend-master-key"
 
@@ -196,7 +199,7 @@ def row_has_key(row: sqlite3.Row | None, key: str) -> bool:
 def _settings_storage_defaults(project_slug: str) -> dict:
     return {
         "local": {
-            "base_dir": "generated/projects",
+            "base_dir": DEFAULT_PROJECTS_BASE_DIR,
             "project_root": "",
         },
         "s3": {
@@ -216,7 +219,9 @@ def _settings_to_storage_columns(settings: dict, project_slug: str) -> dict:
     local = resolved.get("local", {})
     s3 = resolved.get("s3", {})
     return {
-        "local_base_dir": str(local.get("base_dir") or "generated/projects").strip() or "generated/projects",
+        "local_base_dir": (
+            str(local.get("base_dir") or DEFAULT_PROJECTS_BASE_DIR).strip() or DEFAULT_PROJECTS_BASE_DIR
+        ),
         "local_project_root": str(local.get("project_root") or "").strip() or None,
         "s3_enabled": 1 if bool(s3.get("enabled")) else 0,
         "s3_bucket": str(s3.get("bucket") or "").strip() or None,
@@ -233,7 +238,9 @@ def _storage_columns_to_settings(storage_row, project_slug: str) -> dict:
         return base
     local = base["local"]
     s3 = base["s3"]
-    local["base_dir"] = str(storage_row["local_base_dir"] or "generated/projects").strip() or "generated/projects"
+    local["base_dir"] = (
+        str(storage_row["local_base_dir"] or DEFAULT_PROJECTS_BASE_DIR).strip() or DEFAULT_PROJECTS_BASE_DIR
+    )
     local["project_root"] = str(storage_row["local_project_root"] or "").strip()
     s3["enabled"] = bool(int(storage_row["s3_enabled"] or 0))
     s3["bucket"] = str(storage_row["s3_bucket"] or "").strip()
@@ -484,20 +491,143 @@ def _find_asset_id_by_uri(conn: sqlite3.Connection, project_id: str, storage_uri
     return row["id"] if row else None
 
 
+def _ensure_asset_id_for_uri(
+    conn: sqlite3.Connection,
+    project_id: str,
+    storage_uri: str | None,
+    asset_kind: str,
+    run_id: str | None = None,
+    job_id: str | None = None,
+    candidate_id: str | None = None,
+):
+    clean_uri = normalize_rel_path(storage_uri or "")
+    if not clean_uri:
+        return None
+    existing = conn.execute(
+        """
+        SELECT id
+        FROM assets
+        WHERE project_id = ? AND (storage_uri = ? OR rel_path = ?)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (project_id, clean_uri, clean_uri),
+    ).fetchone()
+    if existing:
+        meta = to_json({"source": "phase3_backfill"})
+        conn.execute(
+            """
+            UPDATE assets
+            SET run_id = COALESCE(run_id, ?),
+                job_id = COALESCE(job_id, ?),
+                candidate_id = COALESCE(candidate_id, ?),
+                kind = COALESCE(NULLIF(kind, ''), ?),
+                asset_kind = COALESCE(NULLIF(asset_kind, ''), ?),
+                storage_uri = COALESCE(NULLIF(storage_uri, ''), ?),
+                rel_path = COALESCE(NULLIF(rel_path, ''), ?),
+                metadata_json = CASE WHEN metadata_json IS NULL OR metadata_json = '' THEN ? ELSE metadata_json END,
+                meta_json = CASE WHEN meta_json IS NULL OR meta_json = '' THEN ? ELSE meta_json END
+            WHERE id = ?
+            """,
+            (
+                run_id,
+                job_id,
+                candidate_id,
+                asset_kind,
+                asset_kind,
+                clean_uri,
+                clean_uri,
+                meta,
+                meta,
+                existing["id"],
+            ),
+        )
+        return existing["id"]
+
+    ts = now_iso()
+    meta = to_json({"source": "phase3_backfill"})
+    asset_id = uid()
+    conn.execute(
+        """
+        INSERT INTO assets
+          (id, project_id, run_id, job_id, candidate_id, asset_kind, kind, rel_path, storage_uri,
+           sha256, meta_json, metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        """,
+        (
+            asset_id,
+            project_id,
+            run_id,
+            job_id,
+            candidate_id,
+            asset_kind,
+            asset_kind,
+            clean_uri,
+            clean_uri,
+            meta,
+            meta,
+            ts,
+        ),
+    )
+    return asset_id
+
+
+def _upsert_asset_link(
+    conn: sqlite3.Connection,
+    project_id: str,
+    parent_asset_id: str | None,
+    child_asset_id: str | None,
+    link_type: str = "derived_from",
+):
+    if not parent_asset_id or not child_asset_id or parent_asset_id == child_asset_id:
+        return
+    safe_type = str(link_type or "derived_from").strip().lower() or "derived_from"
+    if safe_type not in {"derived_from", "variant_of", "mask_for", "reference_of"}:
+        safe_type = "derived_from"
+    conn.execute(
+        """
+        INSERT INTO asset_links
+          (id, project_id, parent_asset_id, child_asset_id, link_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(parent_asset_id, child_asset_id, link_type) DO NOTHING
+        """,
+        (uid(), project_id, parent_asset_id, child_asset_id, safe_type, now_iso()),
+    )
+
+
 def _sync_run_candidates(conn: sqlite3.Connection):
     if not table_exists(conn, "run_candidates") or not table_exists(conn, "run_job_candidates"):
         return
     rows = conn.execute(
         """
-        SELECT c.*, r.project_id
+        SELECT c.*, j.run_id, r.project_id
         FROM run_job_candidates c
         JOIN run_jobs j ON j.id = c.job_id
         JOIN runs r ON r.id = j.run_id
         """
     ).fetchall()
     for r in rows:
-        output_asset_id = _find_asset_id_by_uri(conn, r["project_id"], r["output_path"])
-        final_asset_id = _find_asset_id_by_uri(conn, r["project_id"], r["final_output_path"])
+        output_asset_id = _ensure_asset_id_for_uri(
+            conn,
+            r["project_id"],
+            r["output_path"],
+            "candidate_output",
+            run_id=r["run_id"],
+            job_id=r["job_id"],
+            candidate_id=r["id"],
+        )
+        final_asset_id = _ensure_asset_id_for_uri(
+            conn,
+            r["project_id"],
+            r["final_output_path"],
+            "candidate_final_output",
+            run_id=r["run_id"],
+            job_id=r["job_id"],
+            candidate_id=r["id"],
+        )
+        if not final_asset_id and r["final_output_path"] and r["final_output_path"] == r["output_path"]:
+            final_asset_id = output_asset_id
+        _upsert_asset_link(conn, r["project_id"], output_asset_id, final_asset_id, "derived_from")
         conn.execute(
             """
             INSERT INTO run_candidates
@@ -529,6 +659,154 @@ def _sync_run_candidates(conn: sqlite3.Connection):
                 r["created_at"],
             ),
         )
+
+
+def _sync_run_job_final_assets(conn: sqlite3.Connection):
+    if not table_exists(conn, "run_jobs") or not table_exists(conn, "run_candidates"):
+        return
+    rows = conn.execute(
+        """
+        SELECT j.id,
+               j.run_id,
+               j.selected_candidate_index,
+               j.final_output,
+               j.final_asset_id,
+               r.project_id
+        FROM run_jobs j
+        JOIN runs r ON r.id = j.run_id
+        """
+    ).fetchall()
+    for row in rows:
+        job_id = row["id"]
+        project_id = row["project_id"]
+        run_id = row["run_id"]
+        selected_idx = row["selected_candidate_index"]
+        final_output = normalize_rel_path(str(row["final_output"] or ""))
+        final_asset_id = row["final_asset_id"]
+
+        candidate_parent_asset_id = None
+        if selected_idx is not None:
+            selected = conn.execute(
+                """
+                SELECT output_asset_id, final_asset_id
+                FROM run_candidates
+                WHERE job_id = ? AND candidate_index = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (job_id, selected_idx),
+            ).fetchone()
+            if selected:
+                candidate_parent_asset_id = selected["final_asset_id"] or selected["output_asset_id"]
+                if not final_asset_id:
+                    final_asset_id = candidate_parent_asset_id
+
+        if not final_asset_id and final_output:
+            final_asset_id = _ensure_asset_id_for_uri(
+                conn,
+                project_id,
+                final_output,
+                "job_final_output",
+                run_id=run_id,
+                job_id=job_id,
+            )
+
+        if final_asset_id and not final_output:
+            asset = conn.execute(
+                """
+                SELECT COALESCE(storage_uri, rel_path) AS uri
+                FROM assets
+                WHERE id = ?
+                """,
+                (final_asset_id,),
+            ).fetchone()
+            if asset:
+                final_output = normalize_rel_path(str(asset["uri"] or ""))
+
+        if final_asset_id or final_output:
+            conn.execute(
+                """
+                UPDATE run_jobs
+                SET final_asset_id = COALESCE(?, final_asset_id),
+                    final_output = COALESCE(NULLIF(final_output, ''), ?)
+                WHERE id = ?
+                """,
+                (final_asset_id, final_output or None, job_id),
+            )
+        _upsert_asset_link(conn, project_id, candidate_parent_asset_id, final_asset_id, "derived_from")
+
+
+def _sync_project_export_asset_fk(conn: sqlite3.Connection):
+    if not table_exists(conn, "project_exports"):
+        return
+    rows = conn.execute(
+        """
+        SELECT id, project_id, export_path, export_asset_id
+        FROM project_exports
+        """
+    ).fetchall()
+    for row in rows:
+        export_asset_id = row["export_asset_id"]
+        export_path = normalize_rel_path(str(row["export_path"] or ""))
+        if not export_asset_id and export_path:
+            export_asset_id = _ensure_asset_id_for_uri(
+                conn,
+                row["project_id"],
+                export_path,
+                "export",
+            )
+            conn.execute(
+                """
+                UPDATE project_exports
+                SET export_asset_id = ?
+                WHERE id = ?
+                """,
+                (export_asset_id, row["id"]),
+            )
+
+
+def _seed_asset_links_from_run_graph(conn: sqlite3.Connection):
+    if not table_exists(conn, "run_candidates") or not table_exists(conn, "run_jobs"):
+        return
+    candidate_links = conn.execute(
+        """
+        SELECT rc.output_asset_id, rc.final_asset_id, r.project_id
+        FROM run_candidates rc
+        JOIN run_jobs j ON j.id = rc.job_id
+        JOIN runs r ON r.id = j.run_id
+        WHERE rc.output_asset_id IS NOT NULL
+          AND rc.final_asset_id IS NOT NULL
+          AND rc.output_asset_id != rc.final_asset_id
+        """
+    ).fetchall()
+    for row in candidate_links:
+        _upsert_asset_link(conn, row["project_id"], row["output_asset_id"], row["final_asset_id"], "derived_from")
+
+    job_rows = conn.execute(
+        """
+        SELECT j.id, j.final_asset_id, j.selected_candidate_index, r.project_id
+        FROM run_jobs j
+        JOIN runs r ON r.id = j.run_id
+        WHERE j.final_asset_id IS NOT NULL
+        """
+    ).fetchall()
+    for row in job_rows:
+        if row["selected_candidate_index"] is None:
+            continue
+        selected = conn.execute(
+            """
+            SELECT output_asset_id, final_asset_id
+            FROM run_candidates
+            WHERE job_id = ? AND candidate_index = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (row["id"], row["selected_candidate_index"]),
+        ).fetchone()
+        if not selected:
+            continue
+        parent_asset_id = selected["final_asset_id"] or selected["output_asset_id"]
+        _upsert_asset_link(conn, row["project_id"], parent_asset_id, row["final_asset_id"], "derived_from")
 
 
 def _sync_project_storage_from_projects(conn: sqlite3.Connection):
@@ -724,6 +1002,13 @@ def _seed_quality_reports_from_candidates(conn: sqlite3.Connection):
 def _apply_phase2_backfills(conn: sqlite3.Connection):
     _sync_phase2_columns(conn)
     _seed_quality_reports_from_candidates(conn)
+
+
+def _apply_phase3_backfills(conn: sqlite3.Connection):
+    _sync_run_candidates(conn)
+    _sync_run_job_final_assets(conn)
+    _sync_project_export_asset_fk(conn)
+    _seed_asset_links_from_run_graph(conn)
 
 
 def insert_quality_report(
@@ -1369,7 +1654,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "project_exports", "export_asset_id", "TEXT")
     ensure_column(conn, "project_exports", "sha256", "TEXT")
     ensure_column(conn, "project_api_secrets", "kms_key_ref", "TEXT")
-    ensure_column(conn, "project_storage", "local_base_dir", "TEXT NOT NULL DEFAULT 'generated/projects'")
+    ensure_column(
+        conn,
+        "project_storage",
+        "local_base_dir",
+        f"TEXT NOT NULL DEFAULT '{DEFAULT_PROJECTS_BASE_DIR}'",
+    )
     ensure_column(conn, "project_storage", "local_project_root", "TEXT")
     ensure_column(conn, "project_storage", "s3_enabled", "INTEGER NOT NULL DEFAULT 0")
     ensure_column(conn, "project_storage", "s3_bucket", "TEXT")
@@ -1424,6 +1714,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
     _apply_phase1_backfills(conn)
     _apply_phase2_backfills(conn)
+    _apply_phase3_backfills(conn)
 
     record_migration(conn, "20260220_0001_base_schema", "base schema + chat + storage + exports")
     record_migration(conn, "20260220_0002_instruction_queue", "instruction retries/locks columns")
@@ -1446,6 +1737,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     record_migration(conn, "20260221_0021_phase2_backfill", "backfill canonical event columns from legacy fields")
     record_migration(conn, "20260221_0022_creative_schema_columns", "canonical creative columns for style_guides/characters/reference_sets/items")
     record_migration(conn, "20260221_0023_provider_account_columns", "provider_accounts: is_enabled + config_json canonical columns")
+    record_migration(conn, "20260221_0024_phase3_asset_fk_backfill", "backfill asset FKs + derived asset_links for legacy rows")
     conn.commit()
 
 
@@ -1560,7 +1852,7 @@ def resolve_storage_settings(settings: dict, project_slug: str) -> dict:
 
     return {
         "local": {
-            "base_dir": str(local.get("base_dir", "generated/projects")).strip(),
+            "base_dir": str(local.get("base_dir", DEFAULT_PROJECTS_BASE_DIR)).strip(),
             "project_root": str(local.get("project_root", "")).strip(),
         },
         "s3": {
@@ -1582,7 +1874,7 @@ def resolve_project_local_root(repo_root: Path, project_slug: str, storage_setti
         p = Path(project_root_cfg)
         return p if p.is_absolute() else (repo_root / p).resolve()
 
-    base_dir = str(local.get("base_dir", "generated/projects")).strip() or "generated/projects"
+    base_dir = str(local.get("base_dir", DEFAULT_PROJECTS_BASE_DIR)).strip() or DEFAULT_PROJECTS_BASE_DIR
     base_path = Path(base_dir)
     base_abs = base_path if base_path.is_absolute() else (repo_root / base_path).resolve()
     return (base_abs / project_slug).resolve()
@@ -2809,7 +3101,7 @@ def cmd_export_project(args):
         output_path = (repo_root / args.output).resolve()
     else:
         stamp = now_iso().replace(":", "-")
-        output_path = (repo_root / "generated" / "exports" / f"{project['slug']}_{stamp}.tar.gz").resolve()
+        output_path = (repo_root / DEFAULT_EXPORTS_BASE_DIR / f"{project['slug']}_{stamp}.tar.gz").resolve()
 
     result = export_project_package(conn, db_path, repo_root, project, source_files_root, output_path, args.include_files)
     print(to_json({"ok": True, "project_slug": project["slug"], **result}))
@@ -2878,7 +3170,7 @@ def build_parser():
         "--include-files",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Include generated/projects/<slug> files into export package",
+        help="Include local project files into export package",
     )
     p_export.set_defaults(func=cmd_export_project)
 
@@ -2888,7 +3180,11 @@ def build_parser():
 
     p_set_local = sub.add_parser("set-project-storage-local", help="Configure local storage for a project")
     add_project_ref(p_set_local)
-    p_set_local.add_argument("--base-dir", default="", help="Base dir for all projects, e.g. generated/projects")
+    p_set_local.add_argument(
+        "--base-dir",
+        default="",
+        help=f"Base dir for all projects, e.g. {DEFAULT_PROJECTS_BASE_DIR}",
+    )
     p_set_local.add_argument(
         "--project-root",
         default="",

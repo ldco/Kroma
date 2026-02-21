@@ -145,6 +145,100 @@ paths:
       responses:
         "200": { description: OK }
         "404": { description: Asset not found }
+  /api/projects/{slug}/asset-links:
+    get:
+      summary: List asset links for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: query
+          name: asset_id
+          required: false
+          schema: { type: string }
+        - in: query
+          name: link_type
+          required: false
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create asset link
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [parent_asset_id, child_asset_id]
+              properties:
+                parent_asset_id: { type: string }
+                child_asset_id: { type: string }
+                link_type: { type: string, enum: [derived_from, variant_of, mask_for, reference_of] }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+        "404": { description: Project not found }
+  /api/projects/{slug}/asset-links/{linkId}:
+    get:
+      summary: Get asset link detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: linkId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Asset link not found }
+    put:
+      summary: Update asset link
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: linkId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parent_asset_id: { type: string }
+                child_asset_id: { type: string }
+                link_type: { type: string, enum: [derived_from, variant_of, mask_for, reference_of] }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+        "404": { description: Asset link not found }
+    delete:
+      summary: Delete asset link
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: linkId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Asset link not found }
   /api/projects/{slug}/quality-reports:
     get:
       summary: List quality reports for a project
@@ -173,6 +267,118 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
       responses:
         "200": { description: OK }
+  /api/projects/{slug}/exports:
+    get:
+      summary: List project exports
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/exports/{exportId}:
+    get:
+      summary: Get project export detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: exportId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Project export not found }
+  /api/projects/{slug}/prompt-templates:
+    get:
+      summary: List prompt templates for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create prompt template
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, template_text]
+              properties:
+                name: { type: string }
+                template_text: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+  /api/projects/{slug}/prompt-templates/{templateId}:
+    get:
+      summary: Get prompt template detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: templateId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Prompt template not found }
+    put:
+      summary: Update prompt template
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: templateId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                template_text: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+        "404": { description: Prompt template not found }
+    delete:
+      summary: Delete prompt template
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: templateId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Prompt template not found }
   /api/projects/{slug}/provider-accounts:
     get:
       summary: List provider accounts for a project

@@ -286,6 +286,43 @@ class Handler(BaseHTTPRequestHandler):
             "created_at": row["created_at"],
         }
 
+    def _coalesce_prompt_template(self, row):
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "name": row["name"],
+            "template_text": row["template_text"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _coalesce_asset_link(self, row):
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "parent_asset_id": row["parent_asset_id"],
+            "child_asset_id": row["child_asset_id"],
+            "link_type": row["link_type"],
+            "created_at": row["created_at"],
+        }
+
+    def _coalesce_project_export(self, row):
+        sha256 = row["sha256"] if "sha256" in row.keys() else None
+        legacy_sha256 = row["export_sha256"] if "export_sha256" in row.keys() else None
+        export_storage_uri = row["asset_storage_uri"] if "asset_storage_uri" in row.keys() else None
+        if not export_storage_uri and "asset_rel_path" in row.keys():
+            export_storage_uri = row["asset_rel_path"]
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "export_asset_id": row["export_asset_id"] if "export_asset_id" in row.keys() else None,
+            "format": row["format"] if ("format" in row.keys() and row["format"]) else "tar.gz",
+            "sha256": sha256 or legacy_sha256,
+            "export_path": row["export_path"] if "export_path" in row.keys() else export_storage_uri,
+            "export_storage_uri": export_storage_uri or row["export_path"],
+            "created_at": row["created_at"],
+        }
+
     def _coalesce_provider_account(self, row):
         api_key_value = row["api_key"] if "api_key" in row.keys() else None
         return {
@@ -707,6 +744,56 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "asset-links":
+            project_slug = parts[2]
+            filter_asset_id = (query.get("asset_id", [""])[0] or "").strip()
+            filter_link_type = (query.get("link_type", [""])[0] or "").strip().lower()
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                sql = """
+                    SELECT *
+                    FROM asset_links
+                    WHERE project_id = ?
+                """
+                params = [project["id"]]
+                if filter_asset_id:
+                    sql += " AND (parent_asset_id = ? OR child_asset_id = ?)"
+                    params.extend([filter_asset_id, filter_asset_id])
+                if filter_link_type:
+                    sql += " AND link_type = ?"
+                    params.append(filter_link_type)
+                sql += " ORDER BY created_at DESC"
+                rows = conn.execute(sql, tuple(params)).fetchall()
+                items = [self._coalesce_asset_link(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "asset_links": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "asset-links":
+            project_slug = parts[2]
+            link_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM asset_links
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (link_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Asset link not found")
+                return self._json({"ok": True, "asset_link": self._coalesce_asset_link(row)})
+            finally:
+                conn.close()
+
         if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "quality-reports":
             project_slug = parts[2]
             conn = self._db()
@@ -789,6 +876,61 @@ class Handler(BaseHTTPRequestHandler):
                     for r in rows
                 ]
                 return self._json({"ok": True, "count": len(events), "cost_events": events})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "exports":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                try:
+                    limit = int((query.get("limit", ["500"])[0] or "500").strip())
+                except Exception:
+                    limit = 500
+                limit = max(1, min(limit, 2000))
+                rows = conn.execute(
+                    """
+                    SELECT pe.*,
+                           a.storage_uri AS asset_storage_uri,
+                           a.rel_path AS asset_rel_path
+                    FROM project_exports pe
+                    LEFT JOIN assets a ON a.id = pe.export_asset_id
+                    WHERE pe.project_id = ?
+                    ORDER BY pe.created_at DESC
+                    LIMIT ?
+                    """,
+                    (project["id"], limit),
+                ).fetchall()
+                items = [self._coalesce_project_export(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "project_exports": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "exports":
+            project_slug = parts[2]
+            export_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT pe.*,
+                           a.storage_uri AS asset_storage_uri,
+                           a.rel_path AS asset_rel_path
+                    FROM project_exports pe
+                    LEFT JOIN assets a ON a.id = pe.export_asset_id
+                    WHERE pe.id = ? AND pe.project_id = ?
+                    """,
+                    (export_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Project export not found")
+                return self._json({"ok": True, "project_export": self._coalesce_project_export(row)})
             finally:
                 conn.close()
 
@@ -1027,6 +1169,49 @@ class Handler(BaseHTTPRequestHandler):
                 if not row:
                     return self._error(HTTPStatus.NOT_FOUND, "Reference item not found")
                 return self._json({"ok": True, "reference_item": self._coalesce_reference_item(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "prompt-templates":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM prompt_templates
+                    WHERE project_id = ?
+                    ORDER BY updated_at DESC, created_at DESC
+                    """,
+                    (project["id"],),
+                ).fetchall()
+                items = [self._coalesce_prompt_template(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "prompt_templates": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "prompt-templates":
+            project_slug = parts[2]
+            template_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM prompt_templates
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (template_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Prompt template not found")
+                return self._json({"ok": True, "prompt_template": self._coalesce_prompt_template(row)})
             finally:
                 conn.close()
 
@@ -1671,6 +1856,114 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "prompt-templates":
+            project_slug = parts[2]
+            name = str(body.get("name", "")).strip()
+            template_text = str(body.get("template_text", "")).strip()
+            if not name or not template_text:
+                return self._error(HTTPStatus.BAD_REQUEST, "Fields 'name' and 'template_text' are required")
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                template_id = be.uid()
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    INSERT INTO prompt_templates
+                      (id, project_id, name, template_text, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (template_id, project["id"], name, template_text, now, now),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "prompt_template.created",
+                    {"prompt_template_id": template_id, "name": name, "source": "api"},
+                    target_type="prompt_template",
+                    target_id=template_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM prompt_templates WHERE id = ?", (template_id,)).fetchone()
+                return self._json({"ok": True, "prompt_template": self._coalesce_prompt_template(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "asset-links":
+            project_slug = parts[2]
+            parent_asset_id = str(body.get("parent_asset_id", "")).strip()
+            child_asset_id = str(body.get("child_asset_id", "")).strip()
+            link_type = str(body.get("link_type", "derived_from")).strip().lower() or "derived_from"
+            valid_link_types = {"derived_from", "variant_of", "mask_for", "reference_of"}
+            if not parent_asset_id or not child_asset_id:
+                return self._error(HTTPStatus.BAD_REQUEST, "Fields 'parent_asset_id' and 'child_asset_id' are required")
+            if parent_asset_id == child_asset_id:
+                return self._error(HTTPStatus.BAD_REQUEST, "parent_asset_id and child_asset_id must differ")
+            if link_type not in valid_link_types:
+                return self._error(
+                    HTTPStatus.BAD_REQUEST,
+                    "Field 'link_type' must be one of: derived_from|variant_of|mask_for|reference_of",
+                )
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                parent_asset = conn.execute(
+                    "SELECT id FROM assets WHERE id = ? AND project_id = ?",
+                    (parent_asset_id, project["id"]),
+                ).fetchone()
+                child_asset = conn.execute(
+                    "SELECT id FROM assets WHERE id = ? AND project_id = ?",
+                    (child_asset_id, project["id"]),
+                ).fetchone()
+                if not parent_asset or not child_asset:
+                    return self._error(
+                        HTTPStatus.BAD_REQUEST,
+                        "Both parent_asset_id and child_asset_id must belong to this project",
+                    )
+                existing = conn.execute(
+                    """
+                    SELECT *
+                    FROM asset_links
+                    WHERE project_id = ? AND parent_asset_id = ? AND child_asset_id = ? AND link_type = ?
+                    """,
+                    (project["id"], parent_asset_id, child_asset_id, link_type),
+                ).fetchone()
+                if existing:
+                    return self._json({"ok": True, "asset_link": self._coalesce_asset_link(existing)})
+                link_id = be.uid()
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    INSERT INTO asset_links
+                      (id, project_id, parent_asset_id, child_asset_id, link_type, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (link_id, project["id"], parent_asset_id, child_asset_id, link_type, now),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "asset_link.created",
+                    {
+                        "asset_link_id": link_id,
+                        "parent_asset_id": parent_asset_id,
+                        "child_asset_id": child_asset_id,
+                        "link_type": link_type,
+                        "source": "api",
+                    },
+                    target_type="asset_link",
+                    target_id=link_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM asset_links WHERE id = ?", (link_id,)).fetchone()
+                return self._json({"ok": True, "asset_link": self._coalesce_asset_link(row)})
+            finally:
+                conn.close()
+
         if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3:] == ["chat", "sessions"]:
             project_slug = parts[2]
             title = str(body.get("title", "")).strip()
@@ -2163,9 +2456,7 @@ class Handler(BaseHTTPRequestHandler):
                     output_path = (self.server.repo_root / output).resolve()
                 else:
                     stamp = be.now_iso().replace(":", "-")
-                    output_path = (
-                        self.server.repo_root / "generated" / "exports" / f"{project['slug']}_{stamp}.tar.gz"
-                    ).resolve()
+                    output_path = (self.server.repo_root / be.DEFAULT_EXPORTS_BASE_DIR / f"{project['slug']}_{stamp}.tar.gz").resolve()
                 result = be.export_project_package(
                     conn,
                     self.server.db_path,
@@ -2509,6 +2800,141 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "prompt-templates":
+            project_slug = parts[2]
+            template_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    "SELECT * FROM prompt_templates WHERE id = ? AND project_id = ?",
+                    (template_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Prompt template not found")
+                name = str(body.get("name", row["name"])).strip()
+                if not name:
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'name' cannot be empty")
+                template_text = body.get("template_text")
+                if template_text is None:
+                    template_text = row["template_text"] or ""
+                else:
+                    template_text = str(template_text).strip()
+                if not template_text:
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'template_text' cannot be empty")
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    UPDATE prompt_templates
+                    SET name = ?, template_text = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (name, template_text, now, template_id),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "prompt_template.updated",
+                    {"prompt_template_id": template_id, "source": "api"},
+                    target_type="prompt_template",
+                    target_id=template_id,
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM prompt_templates WHERE id = ?", (template_id,)).fetchone()
+                return self._json({"ok": True, "prompt_template": self._coalesce_prompt_template(refreshed)})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "asset-links":
+            project_slug = parts[2]
+            link_id = parts[4]
+            valid_link_types = {"derived_from", "variant_of", "mask_for", "reference_of"}
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    "SELECT * FROM asset_links WHERE id = ? AND project_id = ?",
+                    (link_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Asset link not found")
+                parent_asset_id = str(body.get("parent_asset_id", row["parent_asset_id"])).strip()
+                child_asset_id = str(body.get("child_asset_id", row["child_asset_id"])).strip()
+                link_type = str(body.get("link_type", row["link_type"])).strip().lower()
+                if not parent_asset_id or not child_asset_id:
+                    return self._error(
+                        HTTPStatus.BAD_REQUEST,
+                        "Fields 'parent_asset_id' and 'child_asset_id' cannot be empty",
+                    )
+                if parent_asset_id == child_asset_id:
+                    return self._error(HTTPStatus.BAD_REQUEST, "parent_asset_id and child_asset_id must differ")
+                if link_type not in valid_link_types:
+                    return self._error(
+                        HTTPStatus.BAD_REQUEST,
+                        "Field 'link_type' must be one of: derived_from|variant_of|mask_for|reference_of",
+                    )
+                parent_asset = conn.execute(
+                    "SELECT id FROM assets WHERE id = ? AND project_id = ?",
+                    (parent_asset_id, project["id"]),
+                ).fetchone()
+                child_asset = conn.execute(
+                    "SELECT id FROM assets WHERE id = ? AND project_id = ?",
+                    (child_asset_id, project["id"]),
+                ).fetchone()
+                if not parent_asset or not child_asset:
+                    return self._error(
+                        HTTPStatus.BAD_REQUEST,
+                        "Both parent_asset_id and child_asset_id must belong to this project",
+                    )
+                duplicate = conn.execute(
+                    """
+                    SELECT id
+                    FROM asset_links
+                    WHERE project_id = ?
+                      AND parent_asset_id = ?
+                      AND child_asset_id = ?
+                      AND link_type = ?
+                      AND id <> ?
+                    """,
+                    (project["id"], parent_asset_id, child_asset_id, link_type, link_id),
+                ).fetchone()
+                if duplicate:
+                    return self._error(
+                        HTTPStatus.BAD_REQUEST,
+                        "An asset_link with this parent_asset_id, child_asset_id, and link_type already exists",
+                    )
+                conn.execute(
+                    """
+                    UPDATE asset_links
+                    SET parent_asset_id = ?, child_asset_id = ?, link_type = ?
+                    WHERE id = ?
+                    """,
+                    (parent_asset_id, child_asset_id, link_type, link_id),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "asset_link.updated",
+                    {
+                        "asset_link_id": link_id,
+                        "parent_asset_id": parent_asset_id,
+                        "child_asset_id": child_asset_id,
+                        "link_type": link_type,
+                        "source": "api",
+                    },
+                    target_type="asset_link",
+                    target_id=link_id,
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM asset_links WHERE id = ?", (link_id,)).fetchone()
+                return self._json({"ok": True, "asset_link": self._coalesce_asset_link(refreshed)})
+            finally:
+                conn.close()
+
         if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3:] == ["storage", "local"]:
             project_slug = parts[2]
             base_dir = body.get("base_dir")
@@ -2750,6 +3176,62 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 conn.commit()
                 return self._json({"ok": True, "item_id": item_id, "deleted": cur.rowcount})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "prompt-templates":
+            project_slug = parts[2]
+            template_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                cur = conn.execute(
+                    """
+                    DELETE FROM prompt_templates
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (template_id, project["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "prompt_template.deleted",
+                    {"prompt_template_id": template_id, "deleted": cur.rowcount, "source": "api"},
+                    target_type="prompt_template",
+                    target_id=template_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "prompt_template_id": template_id, "deleted": cur.rowcount})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "asset-links":
+            project_slug = parts[2]
+            link_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                cur = conn.execute(
+                    """
+                    DELETE FROM asset_links
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (link_id, project["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "asset_link.deleted",
+                    {"asset_link_id": link_id, "deleted": cur.rowcount, "source": "api"},
+                    target_type="asset_link",
+                    target_id=link_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "asset_link_id": link_id, "deleted": cur.rowcount})
             finally:
                 conn.close()
 
