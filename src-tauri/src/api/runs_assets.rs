@@ -1,13 +1,12 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::server::AppState;
-use crate::db::projects::{AssetSummary, ProjectsRepoError, RunJobSummary, RunSummary};
 
-type ApiObject<T> = (StatusCode, Json<T>);
+use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
+use crate::db::projects::{AssetSummary, RunJobSummary, RunSummary};
 
 const DEFAULT_RUNS_LIMIT: i64 = 200;
 const DEFAULT_ASSETS_LIMIT: i64 = 500;
@@ -34,12 +33,6 @@ pub struct SlugAssetPath {
     pub slug: String,
     #[serde(rename = "assetId")]
     pub asset_id: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ErrorResponse {
-    ok: bool,
-    error: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,38 +184,4 @@ pub async fn get_asset_detail_handler(
         Ok(Err(error)) => map_repo_error(error, "Asset not found"),
         Err(join_error) => internal_error(format!("asset detail task failed: {join_error}")),
     }
-}
-
-fn map_repo_error(error: ProjectsRepoError, not_found_message: &str) -> ApiObject<Value> {
-    match error {
-        ProjectsRepoError::NotFound => (
-            StatusCode::NOT_FOUND,
-            into_json(ErrorResponse {
-                ok: false,
-                error: String::from(not_found_message),
-            }),
-        ),
-        ProjectsRepoError::Validation(message) => (
-            StatusCode::BAD_REQUEST,
-            into_json(ErrorResponse {
-                ok: false,
-                error: message,
-            }),
-        ),
-        ProjectsRepoError::Sqlite(source) => internal_error(format!("database error: {source}")),
-    }
-}
-
-fn internal_error(message: String) -> ApiObject<Value> {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        into_json(ErrorResponse {
-            ok: false,
-            error: message,
-        }),
-    )
-}
-
-fn into_json(payload: impl Serialize) -> Json<Value> {
-    Json(serde_json::to_value(payload).expect("api payload should serialize"))
 }

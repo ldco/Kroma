@@ -1,25 +1,18 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::server::AppState;
-use crate::db::projects::{CostEventSummary, ProjectsRepoError, QualityReportSummary};
 
-type ApiObject<T> = (StatusCode, Json<T>);
+use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
+use crate::db::projects::{CostEventSummary, QualityReportSummary};
 
 const DEFAULT_LIMIT: i64 = 500;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ListAnalyticsQuery {
     pub limit: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ErrorResponse {
-    ok: bool,
-    error: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -55,7 +48,7 @@ pub async fn list_quality_reports_handler(
                 quality_reports,
             }),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => {
             internal_error(format!("quality report listing task failed: {join_error}"))
         }
@@ -81,41 +74,7 @@ pub async fn list_cost_events_handler(
                 cost_events,
             }),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("cost event listing task failed: {join_error}")),
     }
-}
-
-fn map_repo_error(error: ProjectsRepoError) -> ApiObject<Value> {
-    match error {
-        ProjectsRepoError::NotFound => (
-            StatusCode::NOT_FOUND,
-            into_json(ErrorResponse {
-                ok: false,
-                error: String::from("Project not found"),
-            }),
-        ),
-        ProjectsRepoError::Validation(message) => (
-            StatusCode::BAD_REQUEST,
-            into_json(ErrorResponse {
-                ok: false,
-                error: message,
-            }),
-        ),
-        ProjectsRepoError::Sqlite(source) => internal_error(format!("database error: {source}")),
-    }
-}
-
-fn internal_error(message: String) -> ApiObject<Value> {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        into_json(ErrorResponse {
-            ok: false,
-            error: message,
-        }),
-    )
-}
-
-fn into_json(payload: impl Serialize) -> Json<Value> {
-    Json(serde_json::to_value(payload).expect("api payload should serialize"))
 }

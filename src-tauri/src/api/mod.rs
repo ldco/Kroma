@@ -5,6 +5,7 @@ pub mod characters;
 pub mod chat;
 pub mod error;
 pub mod exports;
+mod handler_utils;
 pub mod projects;
 pub mod prompt_templates;
 pub mod provider_accounts;

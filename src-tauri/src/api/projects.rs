@@ -5,23 +5,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::server::AppState;
+
+use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
 use crate::db::projects::{
     ProjectCounts, ProjectInfo, ProjectStoragePayload, ProjectStorageProject, ProjectSummary,
-    ProjectsRepoError, StorageConfig, UpdateStorageLocalInput, UpdateStorageS3Input,
-    UpsertProjectInput,
+    StorageConfig, UpdateStorageLocalInput, UpdateStorageS3Input, UpsertProjectInput,
 };
-
-type ApiObject<T> = (StatusCode, Json<T>);
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ListProjectsQuery {
     pub username: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ErrorResponse {
-    ok: bool,
-    error: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,7 +59,7 @@ pub async fn list_projects_handler(
                 projects,
             }),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("project listing task failed: {join_error}")),
     }
 }
@@ -88,7 +81,7 @@ pub async fn get_project_handler(
                 storage: detail.storage,
             }),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("project detail task failed: {join_error}")),
     }
 }
@@ -105,7 +98,7 @@ pub async fn upsert_project_handler(
             StatusCode::OK,
             into_json(storage_response(project_storage, None)),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("project upsert task failed: {join_error}")),
     }
 }
@@ -120,7 +113,7 @@ pub async fn get_project_storage_handler(
 
     match result {
         Ok(Ok(payload)) => (StatusCode::OK, into_json(storage_response(payload, None))),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("project storage task failed: {join_error}")),
     }
 }
@@ -141,7 +134,7 @@ pub async fn update_project_storage_local_handler(
             StatusCode::OK,
             into_json(storage_response(updated, Some(String::from("local")))),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => {
             internal_error(format!("storage local update task failed: {join_error}"))
         }
@@ -164,7 +157,7 @@ pub async fn update_project_storage_s3_handler(
             StatusCode::OK,
             into_json(storage_response(updated, Some(String::from("s3")))),
         ),
-        Ok(Err(error)) => map_repo_error(error),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("storage s3 update task failed: {join_error}")),
     }
 }
@@ -179,38 +172,4 @@ fn storage_response(
         storage: payload.storage,
         updated,
     }
-}
-
-fn map_repo_error(error: ProjectsRepoError) -> ApiObject<Value> {
-    match error {
-        ProjectsRepoError::NotFound => (
-            StatusCode::NOT_FOUND,
-            into_json(ErrorResponse {
-                ok: false,
-                error: String::from("Project not found"),
-            }),
-        ),
-        ProjectsRepoError::Validation(message) => (
-            StatusCode::BAD_REQUEST,
-            into_json(ErrorResponse {
-                ok: false,
-                error: message,
-            }),
-        ),
-        ProjectsRepoError::Sqlite(source) => internal_error(format!("database error: {source}")),
-    }
-}
-
-fn internal_error(message: String) -> ApiObject<Value> {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        into_json(ErrorResponse {
-            ok: false,
-            error: message,
-        }),
-    )
-}
-
-fn into_json(payload: impl Serialize) -> Json<Value> {
-    Json(serde_json::to_value(payload).expect("api payload should serialize"))
 }

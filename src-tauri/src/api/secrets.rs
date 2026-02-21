@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::server::AppState;
-use crate::db::projects::{ProjectsRepoError, SecretSummary, UpsertSecretInput};
 
-type ApiObject<T> = (StatusCode, Json<T>);
+use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
+use crate::db::projects::{SecretSummary, UpsertSecretInput};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SlugSecretPath {
@@ -16,12 +16,6 @@ pub struct SlugSecretPath {
     pub provider_code: String,
     #[serde(rename = "secretName")]
     pub secret_name: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct ErrorResponse {
-    ok: bool,
-    error: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,38 +104,4 @@ pub async fn delete_secret_handler(
         Ok(Err(error)) => map_repo_error(error, "Secret not found"),
         Err(join_error) => internal_error(format!("secret delete task failed: {join_error}")),
     }
-}
-
-fn map_repo_error(error: ProjectsRepoError, not_found_message: &str) -> ApiObject<Value> {
-    match error {
-        ProjectsRepoError::NotFound => (
-            StatusCode::NOT_FOUND,
-            into_json(ErrorResponse {
-                ok: false,
-                error: String::from(not_found_message),
-            }),
-        ),
-        ProjectsRepoError::Validation(message) => (
-            StatusCode::BAD_REQUEST,
-            into_json(ErrorResponse {
-                ok: false,
-                error: message,
-            }),
-        ),
-        ProjectsRepoError::Sqlite(source) => internal_error(format!("database error: {source}")),
-    }
-}
-
-fn internal_error(message: String) -> ApiObject<Value> {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        into_json(ErrorResponse {
-            ok: false,
-            error: message,
-        }),
-    )
-}
-
-fn into_json(payload: impl Serialize) -> Json<Value> {
-    Json(serde_json::to_value(payload).expect("api payload should serialize"))
 }
