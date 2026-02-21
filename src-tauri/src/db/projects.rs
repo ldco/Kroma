@@ -287,6 +287,26 @@ pub struct ReferenceSetItemSummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatSessionSummary {
+    pub id: String,
+    pub project_id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatMessageSummary {
+    pub id: String,
+    pub project_id: String,
+    pub session_id: String,
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -473,6 +493,20 @@ pub struct UpdateReferenceSetItemInput {
     pub sort_order: Option<i64>,
     #[serde(default)]
     pub metadata_json: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CreateChatSessionInput {
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CreateChatMessageInput {
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub content: String,
 }
 
 #[derive(Debug, Error)]
@@ -2475,6 +2509,149 @@ impl ProjectsStore {
             }
         })
     }
+
+    pub fn list_chat_sessions(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<ChatSessionSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let mut stmt = conn.prepare(
+                "
+                SELECT id, project_id, title, status, created_at, updated_at
+                FROM chat_sessions
+                WHERE project_id = ?1
+                ORDER BY COALESCE(updated_at, '') DESC, id DESC
+            ",
+            )?;
+            let rows = stmt.query_map(params![project.id], row_to_chat_session_summary)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn create_chat_session(
+        &self,
+        slug: &str,
+        input: CreateChatSessionInput,
+    ) -> Result<ChatSessionSummary, ProjectsRepoError> {
+        let title = input
+            .title
+            .as_deref()
+            .and_then(normalize_optional_storage_field)
+            .unwrap_or_else(|| String::from("New Session"));
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let id = Uuid::new_v4().to_string();
+            let now = now_iso();
+            conn.execute(
+                "
+                INSERT INTO chat_sessions
+                  (id, project_id, title, status, created_at, updated_at)
+                VALUES
+                  (?1, ?2, ?3, 'active', ?4, ?4)
+            ",
+                params![id, project.id, title, now],
+            )?;
+
+            fetch_chat_session_by_id(conn, project.id.as_str(), id.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn get_chat_session_detail(
+        &self,
+        slug: &str,
+        session_id: &str,
+    ) -> Result<ChatSessionSummary, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            fetch_chat_session_by_id(conn, project.id.as_str(), session_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn list_chat_messages(
+        &self,
+        slug: &str,
+        session_id: &str,
+    ) -> Result<Vec<ChatMessageSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let session_exists =
+                fetch_chat_session_by_id(conn, project.id.as_str(), session_id)?.is_some();
+            if !session_exists {
+                return Err(ProjectsRepoError::NotFound);
+            }
+
+            let mut stmt = conn.prepare(
+                "
+                SELECT id, project_id, session_id, role, content, created_at
+                FROM chat_messages
+                WHERE project_id = ?1 AND session_id = ?2
+                ORDER BY rowid ASC
+            ",
+            )?;
+            let rows =
+                stmt.query_map(params![project.id, session_id], row_to_chat_message_summary)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn create_chat_message(
+        &self,
+        slug: &str,
+        session_id: &str,
+        input: CreateChatMessageInput,
+    ) -> Result<ChatMessageSummary, ProjectsRepoError> {
+        let role = normalize_chat_role(input.role.as_str())?;
+        let content = normalize_required_text(input.content.as_str(), "content")?;
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let session_exists =
+                fetch_chat_session_by_id(conn, project.id.as_str(), session_id)?.is_some();
+            if !session_exists {
+                return Err(ProjectsRepoError::NotFound);
+            }
+
+            let id = Uuid::new_v4().to_string();
+            let now = now_iso();
+            conn.execute(
+                "
+                INSERT INTO chat_messages
+                  (id, project_id, session_id, role, content, created_at)
+                VALUES
+                  (?1, ?2, ?3, ?4, ?5, ?6)
+            ",
+                params![id, project.id, session_id, role, content, now],
+            )?;
+
+            fetch_chat_message_by_id(conn, project.id.as_str(), session_id, id.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2712,6 +2889,24 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           metadata_json TEXT NOT NULL DEFAULT '{}',
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS project_storage (
@@ -3018,6 +3213,43 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
         conn,
         "reference_set_items",
         "updated_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+
+    ensure_column(conn, "chat_sessions", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "chat_sessions", "title", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(
+        conn,
+        "chat_sessions",
+        "status",
+        "TEXT NOT NULL DEFAULT 'active'",
+    )?;
+    ensure_column(
+        conn,
+        "chat_sessions",
+        "created_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "chat_sessions",
+        "updated_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+
+    ensure_column(conn, "chat_messages", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "chat_messages", "session_id", "TEXT NOT NULL")?;
+    ensure_column(
+        conn,
+        "chat_messages",
+        "role",
+        "TEXT NOT NULL DEFAULT 'user'",
+    )?;
+    ensure_column(conn, "chat_messages", "content", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(
+        conn,
+        "chat_messages",
+        "created_at",
         "TEXT NOT NULL DEFAULT ''",
     )?;
     Ok(())
@@ -3569,6 +3801,67 @@ fn fetch_reference_set_item_by_id(
     .map_err(ProjectsRepoError::from)
 }
 
+fn row_to_chat_session_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatSessionSummary> {
+    Ok(ChatSessionSummary {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        title: row.get("title")?,
+        status: row.get("status")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn fetch_chat_session_by_id(
+    conn: &Connection,
+    project_id: &str,
+    session_id: &str,
+) -> Result<Option<ChatSessionSummary>, ProjectsRepoError> {
+    conn.query_row(
+        "
+        SELECT id, project_id, title, status, created_at, updated_at
+        FROM chat_sessions
+        WHERE id = ?1 AND project_id = ?2
+        LIMIT 1
+    ",
+        params![session_id, project_id],
+        row_to_chat_session_summary,
+    )
+    .optional()
+    .map_err(ProjectsRepoError::from)
+}
+
+fn row_to_chat_message_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatMessageSummary> {
+    Ok(ChatMessageSummary {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        session_id: row.get("session_id")?,
+        role: row.get("role")?,
+        content: row.get("content")?,
+        created_at: row.get("created_at")?,
+    })
+}
+
+fn fetch_chat_message_by_id(
+    conn: &Connection,
+    project_id: &str,
+    session_id: &str,
+    message_id: &str,
+) -> Result<Option<ChatMessageSummary>, ProjectsRepoError> {
+    conn.query_row(
+        "
+        SELECT id, project_id, session_id, role, content, created_at
+        FROM chat_messages
+        WHERE id = ?1 AND project_id = ?2 AND session_id = ?3
+        LIMIT 1
+    ",
+        params![message_id, project_id, session_id],
+        row_to_chat_message_summary,
+    )
+    .optional()
+    .map_err(ProjectsRepoError::from)
+}
+
 fn fetch_jobs_with_candidates(
     conn: &Connection,
     run_id: &str,
@@ -3992,6 +4285,25 @@ fn normalize_provider_code(value: &str) -> Result<String, ProjectsRepoError> {
     normalize_slug(value).ok_or_else(|| {
         ProjectsRepoError::Validation(String::from("Field 'provider_code' is required"))
     })
+}
+
+fn normalize_chat_role(value: &str) -> Result<String, ProjectsRepoError> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Err(ProjectsRepoError::Validation(String::from(
+            "Field 'role' is required",
+        )));
+    }
+    if matches!(
+        normalized.as_str(),
+        "user" | "assistant" | "system" | "tool"
+    ) {
+        Ok(normalized)
+    } else {
+        Err(ProjectsRepoError::Validation(String::from(
+            "Field 'role' must be one of: user, assistant, system, tool",
+        )))
+    }
 }
 
 fn normalize_asset_link_type(value: &str) -> Result<String, ProjectsRepoError> {

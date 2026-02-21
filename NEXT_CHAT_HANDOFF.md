@@ -2,13 +2,13 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `42edcd8`
+Last commit before this handoff update: `5929cce`
 
 ## Current Architecture Decisions
 
-1. Rust backend (`src-tauri`) remains the active implementation path.
-2. Contract-first routing with parity and HTTP-surface tests is preserved.
-3. Implemented domain coverage now includes:
+1. Rust backend (`src-tauri`) is the primary implementation and test path.
+2. Contract-first routing and parity tests remain mandatory guardrails.
+3. Implemented domains now include:
 - projects/storage
 - runs/assets
 - asset-links
@@ -18,69 +18,68 @@ Last commit before this handoff update: `42edcd8`
 - provider accounts
 - style guides
 - characters
-- reference sets + nested items
-4. Repository layer remains source-of-truth for validation, normalization, and SQL mapping.
-5. Each implemented domain has dedicated integration tests aligned with contract routes.
+- reference sets + items
+- chat sessions + messages
+4. Repository layer continues to own validation, normalization, and persistence contracts.
+5. Each implemented route group has dedicated integration tests and updated contract-surface expectations.
 
 ## Completed Work In This Pass
 
-1. Implemented reference-set CRUD endpoints:
-- `GET /api/projects/{slug}/reference-sets`
-- `POST /api/projects/{slug}/reference-sets`
-- `GET /api/projects/{slug}/reference-sets/{referenceSetId}`
-- `PUT /api/projects/{slug}/reference-sets/{referenceSetId}`
-- `DELETE /api/projects/{slug}/reference-sets/{referenceSetId}`
-2. Implemented nested reference-set item CRUD endpoints:
-- `GET /api/projects/{slug}/reference-sets/{referenceSetId}/items`
-- `POST /api/projects/{slug}/reference-sets/{referenceSetId}/items`
-- `GET /api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}`
-- `PUT /api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}`
-- `DELETE /api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}`
-3. Added typed repository models + inputs for sets/items.
-4. Added schema support:
-- `reference_sets`
-- `reference_set_items`
-5. Added API module and route wiring:
-- `src-tauri/src/api/reference_sets.rs`
-- routing in `src-tauri/src/api/server.rs`
-6. Added integration tests:
-- `src-tauri/tests/reference_sets_endpoints.rs`
-7. Updated HTTP contract-surface expected statuses for all reference-set routes.
+1. Implemented chat session/message routes:
+- `GET /api/projects/{slug}/chat/sessions`
+- `POST /api/projects/{slug}/chat/sessions`
+- `GET /api/projects/{slug}/chat/sessions/{sessionId}`
+- `GET /api/projects/{slug}/chat/sessions/{sessionId}/messages`
+- `POST /api/projects/{slug}/chat/sessions/{sessionId}/messages`
+2. Added typed repository models + inputs:
+- `ChatSessionSummary`
+- `ChatMessageSummary`
+- `CreateChatSessionInput`
+- `CreateChatMessageInput`
+3. Added schema support:
+- `chat_sessions`
+- `chat_messages`
+4. Added API module + route wiring:
+- `src-tauri/src/api/chat.rs`
+- router dispatch updates in `src-tauri/src/api/server.rs`
+5. Added integration tests:
+- `src-tauri/tests/chat_endpoints.rs`
+6. Updated HTTP contract-surface status expectations for chat routes.
+7. Stabilized chat message ordering by using insertion order (`rowid`) for message listing.
 
 ## Major Refactors / Rewrites
 
-1. Continued consistent CRUD architecture across new domains.
-2. Introduced explicit nested-resource repository helpers (`fetch_reference_set_by_id`, `fetch_reference_set_item_by_id`).
-3. Enforced item content invariant (`content_uri` or `content_text` required) at repository boundary.
+1. Maintained nested-resource pattern for chat while keeping handler logic thin.
+2. Added strict role validation (`user|assistant|system|tool`) and required content checks.
+3. Preserved deterministic not-found semantics for missing project/session paths.
 
 ## Key Issues Found
 
-1. Reference-set and nested item routes were mounted but unimplemented.
-2. No persistence schema existed for either resource.
-3. Without explicit input schema in OpenAPI, endpoint-level behavior needed strong internal contracts and validation guards.
+1. Chat routes were contract-mounted but unimplemented.
+2. No chat schema existed prior to this pass.
+3. Created-at second resolution caused unstable message ordering in tests; resolved with insertion-order query.
 
 ## Remaining Technical Debt
 
-1. `db/projects.rs` is now very large and should be split into domain-focused modules.
-2. Candidate schema overlap remains (`run_job_candidates` vs `run_candidates`).
-3. Remaining unimplemented domains:
-- chat sessions/messages
+1. `db/projects.rs` is large and needs physical decomposition by domain.
+2. Candidate table overlap remains (`run_job_candidates` and `run_candidates`).
+3. Remaining unimplemented contract domains:
 - agent instructions
 - voice
 - secrets
 
 ## Next Phase Goals (Immediate)
 
-1. Implement chat sessions/messages domain skeleton with persisted list/create/read operations.
-2. Implement agent-instructions list/create.
-3. Start physical split of `db/projects.rs` (first extraction pass by domain).
+1. Implement agent-instructions list/create routes.
+2. Implement voice route set baseline.
+3. Begin module split for repository domains to reduce coupling.
 
 ## Validation Snapshot
 
 1. `cargo fmt --all`
 2. `cargo test`
 3. `npm run backend:rust:test --silent`
-4. Passing suites now include:
+4. Passing suites include:
 - contract parity
 - HTTP contract-surface
 - projects/storage
@@ -93,3 +92,4 @@ Last commit before this handoff update: `42edcd8`
 - style guides
 - characters
 - reference sets/items
+- chat

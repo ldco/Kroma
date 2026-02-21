@@ -1,6 +1,7 @@
 pub mod analytics;
 pub mod asset_links;
 pub mod characters;
+pub mod chat;
 pub mod error;
 pub mod exports;
 pub mod projects;

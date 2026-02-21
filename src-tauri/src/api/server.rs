@@ -229,6 +229,21 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
             HttpMethod::Delete,
             "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
         ) => delete(crate::api::reference_sets::delete_reference_set_item_handler),
+        (HttpMethod::Get, "/api/projects/{slug}/chat/sessions") => {
+            get(crate::api::chat::list_chat_sessions_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/chat/sessions") => {
+            post(crate::api::chat::create_chat_session_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/chat/sessions/{sessionId}") => {
+            get(crate::api::chat::get_chat_session_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/chat/sessions/{sessionId}/messages") => {
+            get(crate::api::chat::list_chat_messages_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/chat/sessions/{sessionId}/messages") => {
+            post(crate::api::chat::create_chat_message_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {
