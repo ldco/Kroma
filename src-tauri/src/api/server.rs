@@ -109,6 +109,21 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Get, "/api/projects/{slug}/assets/{assetId}") => {
             get(crate::api::runs_assets::get_asset_detail_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/asset-links") => {
+            get(crate::api::asset_links::list_asset_links_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/asset-links") => {
+            post(crate::api::asset_links::create_asset_link_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/asset-links/{linkId}") => {
+            get(crate::api::asset_links::get_asset_link_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/asset-links/{linkId}") => {
+            put(crate::api::asset_links::update_asset_link_handler)
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/asset-links/{linkId}") => {
+            delete(crate::api::asset_links::delete_asset_link_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

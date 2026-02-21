@@ -89,6 +89,11 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}/jobs") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/assets") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/assets/{assetId}") => StatusCode::NOT_FOUND,
+        (HttpMethod::Get, "/api/projects/{slug}/asset-links") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/asset-links") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Get, "/api/projects/{slug}/asset-links/{linkId}") => StatusCode::NOT_FOUND,
+        (HttpMethod::Put, "/api/projects/{slug}/asset-links/{linkId}") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Delete, "/api/projects/{slug}/asset-links/{linkId}") => StatusCode::NOT_FOUND,
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }

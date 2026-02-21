@@ -10,6 +10,10 @@ use uuid::Uuid;
 
 const DEFAULT_PROJECTS_BASE_DIR: &str = "var/projects";
 const DEFAULT_S3_PREFIX: &str = "iat-projects";
+const ASSET_LINK_TYPE_DERIVED_FROM: &str = "derived_from";
+const ASSET_LINK_TYPE_VARIANT_OF: &str = "variant_of";
+const ASSET_LINK_TYPE_MASK_FOR: &str = "mask_for";
+const ASSET_LINK_TYPE_REFERENCE_OF: &str = "reference_of";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectSummary {
@@ -155,6 +159,17 @@ pub struct AssetSummary {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AssetLinkSummary {
+    pub id: String,
+    pub project_id: String,
+    pub parent_asset_id: String,
+    pub child_asset_id: String,
+    pub link_type: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -191,6 +206,26 @@ pub struct UpdateStorageS3Input {
     pub profile: Option<String>,
     #[serde(default)]
     pub endpoint_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CreateAssetLinkInput {
+    #[serde(default)]
+    pub parent_asset_id: String,
+    #[serde(default)]
+    pub child_asset_id: String,
+    #[serde(default)]
+    pub link_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpdateAssetLinkInput {
+    #[serde(default)]
+    pub parent_asset_id: Option<String>,
+    #[serde(default)]
+    pub child_asset_id: Option<String>,
+    #[serde(default)]
+    pub link_type: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -684,6 +719,238 @@ impl ProjectsStore {
             .ok_or(ProjectsRepoError::NotFound)
         })
     }
+
+    pub fn list_asset_links(
+        &self,
+        slug: &str,
+        asset_id: Option<&str>,
+        link_type: Option<&str>,
+    ) -> Result<Vec<AssetLinkSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let mut sql = String::from(
+                "
+                SELECT
+                  id,
+                  project_id,
+                  parent_asset_id,
+                  child_asset_id,
+                  link_type,
+                  created_at,
+                  updated_at
+                FROM asset_links
+                WHERE project_id = ?1
+            ",
+            );
+            let mut values = vec![project.id];
+
+            if let Some(raw_asset_id) = asset_id.map(str::trim).filter(|value| !value.is_empty()) {
+                let index = values.len() + 1;
+                sql.push_str(
+                    format!(" AND (parent_asset_id = ?{index} OR child_asset_id = ?{index})")
+                        .as_str(),
+                );
+                values.push(raw_asset_id.to_string());
+            }
+
+            if let Some(raw_link_type) = link_type {
+                let normalized = normalize_asset_link_type(raw_link_type)?;
+                let index = values.len() + 1;
+                sql.push_str(format!(" AND link_type = ?{index}").as_str());
+                values.push(normalized);
+            }
+
+            sql.push_str(" ORDER BY COALESCE(updated_at, '') DESC, id DESC");
+            let mut stmt = conn.prepare(sql.as_str())?;
+            let rows = stmt.query_map(
+                rusqlite::params_from_iter(values.iter().map(String::as_str)),
+                row_to_asset_link_summary,
+            )?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn create_asset_link(
+        &self,
+        slug: &str,
+        input: CreateAssetLinkInput,
+    ) -> Result<AssetLinkSummary, ProjectsRepoError> {
+        let parent_asset_id =
+            normalize_required_identifier(input.parent_asset_id.as_str(), "parent_asset_id")?;
+        let child_asset_id =
+            normalize_required_identifier(input.child_asset_id.as_str(), "child_asset_id")?;
+        if parent_asset_id == child_asset_id {
+            return Err(ProjectsRepoError::Validation(String::from(
+                "parent_asset_id and child_asset_id must differ",
+            )));
+        }
+        let link_type = normalize_asset_link_type(
+            input
+                .link_type
+                .as_deref()
+                .unwrap_or(ASSET_LINK_TYPE_DERIVED_FROM),
+        )?;
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            ensure_asset_belongs_to_project(conn, project.id.as_str(), parent_asset_id.as_str())?;
+            ensure_asset_belongs_to_project(conn, project.id.as_str(), child_asset_id.as_str())?;
+
+            let id = Uuid::new_v4().to_string();
+            let now = now_iso();
+            let insert = conn.execute(
+                "
+                INSERT INTO asset_links
+                  (id, project_id, parent_asset_id, child_asset_id, link_type, created_at, updated_at)
+                VALUES
+                  (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+            ",
+                params![
+                    id,
+                    project.id,
+                    parent_asset_id,
+                    child_asset_id,
+                    link_type,
+                    now
+                ],
+            );
+
+            if let Err(source) = insert {
+                if is_unique_constraint_error(&source) {
+                    return Err(ProjectsRepoError::Validation(String::from(
+                        "Asset link already exists",
+                    )));
+                }
+                return Err(ProjectsRepoError::Sqlite(source));
+            }
+
+            fetch_asset_link_by_id(conn, project.id.as_str(), id.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn get_asset_link_detail(
+        &self,
+        slug: &str,
+        link_id: &str,
+    ) -> Result<AssetLinkSummary, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            fetch_asset_link_by_id(conn, project.id.as_str(), link_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn update_asset_link(
+        &self,
+        slug: &str,
+        link_id: &str,
+        input: UpdateAssetLinkInput,
+    ) -> Result<AssetLinkSummary, ProjectsRepoError> {
+        if input.parent_asset_id.is_none()
+            && input.child_asset_id.is_none()
+            && input.link_type.is_none()
+        {
+            return Err(ProjectsRepoError::Validation(String::from(
+                "Provide at least one of: parent_asset_id, child_asset_id, link_type",
+            )));
+        }
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let existing = fetch_asset_link_by_id(conn, project.id.as_str(), link_id)?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let parent_asset_id = if let Some(raw) = input.parent_asset_id.as_deref() {
+                normalize_required_identifier(raw, "parent_asset_id")?
+            } else {
+                existing.parent_asset_id.clone()
+            };
+            let child_asset_id = if let Some(raw) = input.child_asset_id.as_deref() {
+                normalize_required_identifier(raw, "child_asset_id")?
+            } else {
+                existing.child_asset_id.clone()
+            };
+            if parent_asset_id == child_asset_id {
+                return Err(ProjectsRepoError::Validation(String::from(
+                    "parent_asset_id and child_asset_id must differ",
+                )));
+            }
+
+            let link_type = if let Some(raw) = input.link_type.as_deref() {
+                normalize_asset_link_type(raw)?
+            } else {
+                existing.link_type.clone()
+            };
+
+            ensure_asset_belongs_to_project(conn, project.id.as_str(), parent_asset_id.as_str())?;
+            ensure_asset_belongs_to_project(conn, project.id.as_str(), child_asset_id.as_str())?;
+
+            let update = conn.execute(
+                "
+                UPDATE asset_links
+                SET parent_asset_id = ?1,
+                    child_asset_id = ?2,
+                    link_type = ?3,
+                    updated_at = ?4
+                WHERE id = ?5 AND project_id = ?6
+            ",
+                params![
+                    parent_asset_id,
+                    child_asset_id,
+                    link_type,
+                    now_iso(),
+                    link_id,
+                    project.id
+                ],
+            );
+
+            if let Err(source) = update {
+                if is_unique_constraint_error(&source) {
+                    return Err(ProjectsRepoError::Validation(String::from(
+                        "Asset link already exists",
+                    )));
+                }
+                return Err(ProjectsRepoError::Sqlite(source));
+            }
+
+            fetch_asset_link_by_id(conn, project.id.as_str(), link_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn delete_asset_link(&self, slug: &str, link_id: &str) -> Result<(), ProjectsRepoError> {
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let affected = conn.execute(
+                "DELETE FROM asset_links WHERE id = ?1 AND project_id = ?2",
+                params![link_id, project.id],
+            )?;
+            if affected == 0 {
+                Err(ProjectsRepoError::NotFound)
+            } else {
+                Ok(())
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -798,6 +1065,18 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           created_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS asset_links (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          parent_asset_id TEXT NOT NULL,
+          child_asset_id TEXT NOT NULL,
+          link_type TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(project_id, parent_asset_id, child_asset_id, link_type),
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS project_storage (
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL UNIQUE,
@@ -903,6 +1182,28 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     ensure_column(conn, "assets", "metadata_json", "TEXT")?;
     ensure_column(conn, "assets", "meta_json", "TEXT")?;
     ensure_column(conn, "assets", "created_at", "TEXT")?;
+
+    ensure_column(conn, "asset_links", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "asset_links", "parent_asset_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "asset_links", "child_asset_id", "TEXT NOT NULL")?;
+    ensure_column(
+        conn,
+        "asset_links",
+        "link_type",
+        "TEXT NOT NULL DEFAULT 'derived_from'",
+    )?;
+    ensure_column(
+        conn,
+        "asset_links",
+        "created_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "asset_links",
+        "updated_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
     Ok(())
 }
 
@@ -1092,6 +1393,44 @@ fn row_to_asset_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetSummar
             .get::<_, Option<String>>("created_at")?
             .unwrap_or_default(),
     })
+}
+
+fn row_to_asset_link_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<AssetLinkSummary> {
+    Ok(AssetLinkSummary {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        parent_asset_id: row.get("parent_asset_id")?,
+        child_asset_id: row.get("child_asset_id")?,
+        link_type: row.get("link_type")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn fetch_asset_link_by_id(
+    conn: &Connection,
+    project_id: &str,
+    link_id: &str,
+) -> Result<Option<AssetLinkSummary>, ProjectsRepoError> {
+    conn.query_row(
+        "
+        SELECT
+          id,
+          project_id,
+          parent_asset_id,
+          child_asset_id,
+          link_type,
+          created_at,
+          updated_at
+        FROM asset_links
+        WHERE id = ?1 AND project_id = ?2
+        LIMIT 1
+    ",
+        params![link_id, project_id],
+        row_to_asset_link_summary,
+    )
+    .optional()
+    .map_err(ProjectsRepoError::from)
 }
 
 fn fetch_jobs_with_candidates(
@@ -1486,6 +1825,88 @@ fn normalize_optional_storage_field(value: &str) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+fn normalize_required_identifier(
+    value: &str,
+    field_name: &str,
+) -> Result<String, ProjectsRepoError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err(ProjectsRepoError::Validation(format!(
+            "Field '{field_name}' is required"
+        )))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn normalize_asset_link_type(value: &str) -> Result<String, ProjectsRepoError> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Err(ProjectsRepoError::Validation(String::from(
+            "Field 'link_type' is required",
+        )));
+    }
+
+    if is_valid_asset_link_type(normalized.as_str()) {
+        Ok(normalized)
+    } else {
+        Err(ProjectsRepoError::Validation(String::from(
+            "Field 'link_type' must be one of: derived_from, variant_of, mask_for, reference_of",
+        )))
+    }
+}
+
+fn is_valid_asset_link_type(value: &str) -> bool {
+    matches!(
+        value,
+        ASSET_LINK_TYPE_DERIVED_FROM
+            | ASSET_LINK_TYPE_VARIANT_OF
+            | ASSET_LINK_TYPE_MASK_FOR
+            | ASSET_LINK_TYPE_REFERENCE_OF
+    )
+}
+
+fn ensure_asset_belongs_to_project(
+    conn: &Connection,
+    project_id: &str,
+    asset_id: &str,
+) -> Result<(), ProjectsRepoError> {
+    let exists = conn
+        .query_row(
+            "
+            SELECT id
+            FROM assets
+            WHERE id = ?1 AND project_id = ?2
+            LIMIT 1
+        ",
+            params![asset_id, project_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .is_some();
+
+    if exists {
+        Ok(())
+    } else {
+        Err(ProjectsRepoError::Validation(format!(
+            "Asset '{asset_id}' was not found in this project"
+        )))
+    }
+}
+
+fn is_unique_constraint_error(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ErrorCode::ConstraintViolation,
+                ..
+            },
+            _
+        )
+    )
 }
 
 fn parse_storage_defaults(settings_json: &str) -> StorageDefaults {
