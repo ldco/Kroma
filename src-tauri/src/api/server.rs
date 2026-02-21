@@ -94,6 +94,21 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Put, "/api/projects/{slug}/storage/s3") => {
             put(crate::api::projects::update_project_storage_s3_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/runs") => {
+            get(crate::api::runs_assets::list_runs_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}") => {
+            get(crate::api::runs_assets::get_run_detail_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}/jobs") => {
+            get(crate::api::runs_assets::list_run_jobs_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/assets") => {
+            get(crate::api::runs_assets::list_assets_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/assets/{assetId}") => {
+            get(crate::api::runs_assets::get_asset_detail_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {
