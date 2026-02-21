@@ -262,6 +262,24 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/cancel") => {
             post(crate::api::agent_instructions::cancel_agent_instruction_handler)
         }
+        (HttpMethod::Post, "/api/projects/{slug}/voice/stt") => {
+            post(crate::api::voice::voice_stt_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/voice/tts") => {
+            post(crate::api::voice::voice_tts_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/voice/requests/{requestId}") => {
+            get(crate::api::voice::get_voice_request_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/secrets") => {
+            get(crate::api::secrets::list_secrets_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/secrets") => {
+            post(crate::api::secrets::upsert_secret_handler)
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/secrets/{providerCode}/{secretName}") => {
+            delete(crate::api::secrets::delete_secret_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

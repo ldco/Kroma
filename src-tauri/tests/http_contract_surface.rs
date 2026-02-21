@@ -194,6 +194,16 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/cancel") => {
             StatusCode::NOT_FOUND
         }
+        (HttpMethod::Post, "/api/projects/{slug}/voice/stt") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/voice/tts") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Get, "/api/projects/{slug}/voice/requests/{requestId}") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/secrets") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/secrets") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Delete, "/api/projects/{slug}/secrets/{providerCode}/{secretName}") => {
+            StatusCode::NOT_FOUND
+        }
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }

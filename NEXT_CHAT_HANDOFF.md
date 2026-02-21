@@ -2,99 +2,72 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `eb76b55`
+Last commit before this handoff update: `6b39bb5`
 
 ## Current Architecture Decisions
 
-1. Rust backend (`src-tauri`) remains the active implementation path.
-2. Contract-first routing and parity checks are preserved as guardrails.
-3. Implemented API domains now include:
-- projects/storage
-- runs/assets
-- asset-links
-- analytics
-- exports
-- prompt templates
-- provider accounts
-- style guides
-- characters
-- reference sets/items
-- chat sessions/messages
-- agent instructions/events/actions
-4. Repository layer is still the single authority for validation and state transitions.
-5. Integration tests exist for each implemented domain and match mounted contract behavior.
+1. Rust backend (`src-tauri`) is the active and authoritative implementation path.
+2. Contract-first routing is enforced via:
+- route catalog (`src-tauri/src/api/routes.rs`)
+- mounted-route surface checks (`src-tauri/tests/http_contract_surface.rs`)
+- OpenAPI parity checks (`src-tauri/tests/contract_parity.rs`)
+3. Repository-level validation remains the single authority for payload rules and state transitions.
+4. API handlers stay thin: parse/extract input, delegate to store, map typed errors to HTTP.
+5. Secrets API returns non-sensitive summaries only (`has_value`, metadata), never raw secret value.
 
 ## Completed Work In This Pass
 
-1. Implemented agent instruction routes:
-- `GET /api/projects/{slug}/agent/instructions`
-- `POST /api/projects/{slug}/agent/instructions`
-- `GET /api/projects/{slug}/agent/instructions/{instructionId}`
-- `GET /api/projects/{slug}/agent/instructions/{instructionId}/events`
-- `POST /api/projects/{slug}/agent/instructions/{instructionId}/confirm`
-- `POST /api/projects/{slug}/agent/instructions/{instructionId}/cancel`
-2. Added typed repository models + inputs:
-- `AgentInstructionSummary`
-- `AgentInstructionEventSummary`
-- `CreateAgentInstructionInput`
-- `AgentInstructionActionInput`
-3. Added schema support:
-- `agent_instructions`
-- `agent_instruction_events`
-4. Added API module and route wiring:
-- `src-tauri/src/api/agent_instructions.rs`
-- dispatch updates in `src-tauri/src/api/server.rs`
-5. Added integration tests:
-- `src-tauri/tests/agent_instructions_endpoints.rs`
-6. Updated contract-surface status expectations for agent-instruction routes.
+1. Implemented voice endpoints:
+- `POST /api/projects/{slug}/voice/stt`
+- `POST /api/projects/{slug}/voice/tts`
+- `GET /api/projects/{slug}/voice/requests/{requestId}`
+2. Implemented secrets endpoints:
+- `GET /api/projects/{slug}/secrets`
+- `POST /api/projects/{slug}/secrets`
+- `DELETE /api/projects/{slug}/secrets/{providerCode}/{secretName}`
+3. Added repository models + inputs:
+- `VoiceRequestSummary`
+- `SecretSummary`
+- `CreateVoiceSttInput`
+- `CreateVoiceTtsInput`
+- `UpsertSecretInput`
+4. Added persistence schema support:
+- `voice_requests`
+- `project_secrets`
+5. Added endpoint integration tests:
+- `src-tauri/tests/voice_endpoints.rs`
+- `src-tauri/tests/secrets_endpoints.rs`
+6. Updated contract-surface expected statuses for all voice/secrets routes.
 
 ## Major Refactors / Rewrites
 
-1. Added explicit instruction state-transition rules in repository:
-- `pending -> confirmed`
-- `pending -> canceled`
-- reject `confirm` on canceled
-- reject `cancel` on confirmed
-2. Added instruction event recording helper to keep event trails deterministic.
-3. Kept handlers thin by centralizing transition/business rules in persistence layer.
+1. Added first-class voice request persistence (rather than route stubs), including detail lookup by request id.
+2. Added explicit secrets repository operations with normalized provider codes and strict required fields.
+3. Ensured secret responses are safe-by-default (metadata only, no secret echo).
 
 ## Key Issues Found
 
-1. Agent-instruction routes were mounted but unimplemented.
-2. No persistence schema existed for instructions/events.
-3. Transition behavior was undefined; explicit rules and errors are now enforced.
+1. Voice and secrets contract routes were listed but had no Rust implementations.
+2. No Rust persistence schema existed for voice requests or project secrets.
+3. No integration test coverage existed for either domain.
 
 ## Remaining Technical Debt
 
-1. `db/projects.rs` is very large and should be split into domain modules.
-2. Candidate overlap remains (`run_job_candidates` and `run_candidates`).
-3. Remaining unimplemented contract domains:
-- voice (`stt`, `tts`, `voice request detail`)
-- secrets (`list`, `upsert`, `delete`)
+1. `src-tauri/src/db/projects.rs` is still oversized and should be physically split by domain.
+2. API modules still repeat identical error/JSON helpers and can be centralized cleanly.
+3. Candidate overlap remains (`run_job_candidates` and `run_candidates`) and needs consolidation.
 
 ## Next Phase Goals (Immediate)
 
-1. Implement voice request persistence + endpoints as baseline (stub processing, real persistence/status).
-2. Implement secrets CRUD endpoints with safe response shape (no secret value echo).
-3. Begin physical repository split by domain to improve maintainability.
+1. Begin physical repository split for `db/projects.rs` by domain slices (start with newly added voice/secrets section).
+2. Introduce shared API response/error helpers to reduce duplicated handler boilerplate.
+3. Keep parity and endpoint integration suites green after each structural refactor step.
 
 ## Validation Snapshot
 
 1. `cargo fmt --all`
 2. `cargo test`
 3. `npm run backend:rust:test --silent`
-4. Passing suites now include:
-- contract parity
-- HTTP contract-surface
-- projects/storage
-- runs/assets
-- asset-links
-- analytics
-- exports
-- prompt templates
-- provider accounts
-- style guides
-- characters
-- reference sets/items
-- chat
-- agent instructions
+4. Passing suites include all prior domains plus:
+- voice
+- secrets
