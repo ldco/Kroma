@@ -151,6 +151,21 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Delete, "/api/projects/{slug}/prompt-templates/{templateId}") => {
             delete(crate::api::prompt_templates::delete_prompt_template_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/provider-accounts") => {
+            get(crate::api::provider_accounts::list_provider_accounts_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/provider-accounts") => {
+            post(crate::api::provider_accounts::upsert_provider_account_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/provider-accounts/{providerCode}") => {
+            get(crate::api::provider_accounts::get_provider_account_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/provider-accounts/{providerCode}") => {
+            put(crate::api::provider_accounts::update_provider_account_handler)
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/provider-accounts/{providerCode}") => {
+            delete(crate::api::provider_accounts::delete_provider_account_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

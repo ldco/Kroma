@@ -4,6 +4,7 @@ pub mod error;
 pub mod exports;
 pub mod projects;
 pub mod prompt_templates;
+pub mod provider_accounts;
 pub mod response;
 pub mod routes;
 pub mod runs_assets;

@@ -228,6 +228,19 @@ pub struct PromptTemplateSummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderAccountSummary {
+    pub project_id: String,
+    pub provider_code: String,
+    pub display_name: String,
+    pub account_ref: String,
+    pub base_url: String,
+    pub enabled: bool,
+    pub config_json: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -300,6 +313,36 @@ pub struct UpdatePromptTemplateInput {
     pub name: Option<String>,
     #[serde(default)]
     pub template_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpsertProviderAccountInput {
+    #[serde(default)]
+    pub provider_code: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub account_ref: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub config_json: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpdateProviderAccountInput {
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub account_ref: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub config_json: Option<Value>,
 }
 
 #[derive(Debug, Error)]
@@ -1340,6 +1383,231 @@ impl ProjectsStore {
             }
         })
     }
+
+    pub fn list_provider_accounts(
+        &self,
+        slug: &str,
+    ) -> Result<Vec<ProviderAccountSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let mut stmt = conn.prepare(
+                "
+                SELECT
+                  project_id,
+                  provider_code,
+                  display_name,
+                  account_ref,
+                  base_url,
+                  enabled,
+                  config_json,
+                  created_at,
+                  updated_at
+                FROM provider_accounts
+                WHERE project_id = ?1
+                ORDER BY provider_code ASC
+            ",
+            )?;
+            let rows = stmt.query_map(params![project.id], row_to_provider_account_summary)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn upsert_provider_account(
+        &self,
+        slug: &str,
+        input: UpsertProviderAccountInput,
+    ) -> Result<ProviderAccountSummary, ProjectsRepoError> {
+        let provider_code = normalize_provider_code(input.provider_code.as_str())?;
+        let display_name = input
+            .display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| provider_code.clone());
+        let account_ref = input
+            .account_ref
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+        let base_url = input
+            .base_url
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+        let enabled = input.enabled.unwrap_or(true);
+        let config_json = serde_json::to_string(
+            &input
+                .config_json
+                .unwrap_or_else(|| Value::Object(serde_json::Map::new())),
+        )
+        .unwrap_or_else(|_| String::from("{}"));
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let now = now_iso();
+            conn.execute(
+                "
+                INSERT INTO provider_accounts (
+                    project_id, provider_code, display_name, account_ref, base_url,
+                    enabled, config_json, created_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+                ON CONFLICT(project_id, provider_code) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    account_ref = excluded.account_ref,
+                    base_url = excluded.base_url,
+                    enabled = excluded.enabled,
+                    config_json = excluded.config_json,
+                    updated_at = excluded.updated_at
+            ",
+                params![
+                    project.id,
+                    provider_code,
+                    display_name,
+                    account_ref,
+                    base_url,
+                    if enabled { 1 } else { 0 },
+                    config_json,
+                    now
+                ],
+            )?;
+
+            fetch_provider_account_by_code(conn, project.id.as_str(), provider_code.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn get_provider_account_detail(
+        &self,
+        slug: &str,
+        provider_code: &str,
+    ) -> Result<ProviderAccountSummary, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let safe_provider_code =
+                normalize_slug(provider_code).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            fetch_provider_account_by_code(conn, project.id.as_str(), safe_provider_code.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn update_provider_account(
+        &self,
+        slug: &str,
+        provider_code: &str,
+        input: UpdateProviderAccountInput,
+    ) -> Result<ProviderAccountSummary, ProjectsRepoError> {
+        if input.display_name.is_none()
+            && input.account_ref.is_none()
+            && input.base_url.is_none()
+            && input.enabled.is_none()
+            && input.config_json.is_none()
+        {
+            return Err(ProjectsRepoError::Validation(String::from(
+                "Provide at least one of: display_name, account_ref, base_url, enabled, config_json",
+            )));
+        }
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let safe_provider_code =
+                normalize_slug(provider_code).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let existing = fetch_provider_account_by_code(
+                conn,
+                project.id.as_str(),
+                safe_provider_code.as_str(),
+            )?
+            .ok_or(ProjectsRepoError::NotFound)?;
+
+            let display_name = if let Some(raw) = input.display_name.as_deref() {
+                normalize_required_text(raw, "display_name")?
+            } else {
+                existing.display_name
+            };
+            let account_ref = if let Some(raw) = input.account_ref.as_deref() {
+                normalize_optional_storage_field(raw)
+            } else if existing.account_ref.trim().is_empty() {
+                None
+            } else {
+                Some(existing.account_ref)
+            };
+            let base_url = if let Some(raw) = input.base_url.as_deref() {
+                normalize_optional_storage_field(raw)
+            } else if existing.base_url.trim().is_empty() {
+                None
+            } else {
+                Some(existing.base_url)
+            };
+            let enabled = input.enabled.unwrap_or(existing.enabled);
+            let config_json_value = input.config_json.unwrap_or(existing.config_json);
+            let config_json =
+                serde_json::to_string(&config_json_value).unwrap_or_else(|_| String::from("{}"));
+
+            conn.execute(
+                "
+                UPDATE provider_accounts
+                SET display_name = ?1,
+                    account_ref = ?2,
+                    base_url = ?3,
+                    enabled = ?4,
+                    config_json = ?5,
+                    updated_at = ?6
+                WHERE project_id = ?7 AND provider_code = ?8
+            ",
+                params![
+                    display_name,
+                    account_ref,
+                    base_url,
+                    if enabled { 1 } else { 0 },
+                    config_json,
+                    now_iso(),
+                    project.id,
+                    safe_provider_code
+                ],
+            )?;
+
+            fetch_provider_account_by_code(conn, project.id.as_str(), safe_provider_code.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn delete_provider_account(
+        &self,
+        slug: &str,
+        provider_code: &str,
+    ) -> Result<(), ProjectsRepoError> {
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let safe_provider_code =
+                normalize_slug(provider_code).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let affected = conn.execute(
+                "DELETE FROM provider_accounts WHERE project_id = ?1 AND provider_code = ?2",
+                params![project.id, safe_provider_code],
+            )?;
+            if affected == 0 {
+                Err(ProjectsRepoError::NotFound)
+            } else {
+                Ok(())
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1519,6 +1787,19 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           UNIQUE(project_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_accounts (
+          project_id TEXT NOT NULL,
+          provider_code TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          account_ref TEXT,
+          base_url TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          config_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(project_id, provider_code)
         );
 
         CREATE TABLE IF NOT EXISTS project_storage (
@@ -1704,6 +1985,41 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     ensure_column(
         conn,
         "prompt_templates",
+        "updated_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+
+    ensure_column(conn, "provider_accounts", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "provider_accounts", "provider_code", "TEXT NOT NULL")?;
+    ensure_column(
+        conn,
+        "provider_accounts",
+        "display_name",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(conn, "provider_accounts", "account_ref", "TEXT")?;
+    ensure_column(conn, "provider_accounts", "base_url", "TEXT")?;
+    ensure_column(
+        conn,
+        "provider_accounts",
+        "enabled",
+        "INTEGER NOT NULL DEFAULT 1",
+    )?;
+    ensure_column(
+        conn,
+        "provider_accounts",
+        "config_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )?;
+    ensure_column(
+        conn,
+        "provider_accounts",
+        "created_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "provider_accounts",
         "updated_at",
         "TEXT NOT NULL DEFAULT ''",
     )?;
@@ -2054,6 +2370,54 @@ fn fetch_prompt_template_by_id(
     ",
         params![template_id, project_id],
         row_to_prompt_template_summary,
+    )
+    .optional()
+    .map_err(ProjectsRepoError::from)
+}
+
+fn row_to_provider_account_summary(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ProviderAccountSummary> {
+    Ok(ProviderAccountSummary {
+        project_id: row.get("project_id")?,
+        provider_code: row.get("provider_code")?,
+        display_name: row.get("display_name")?,
+        account_ref: row
+            .get::<_, Option<String>>("account_ref")?
+            .unwrap_or_default(),
+        base_url: row
+            .get::<_, Option<String>>("base_url")?
+            .unwrap_or_default(),
+        enabled: row.get::<_, Option<i64>>("enabled")?.unwrap_or(1) != 0,
+        config_json: parse_json_value(row.get::<_, Option<String>>("config_json")?),
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn fetch_provider_account_by_code(
+    conn: &Connection,
+    project_id: &str,
+    provider_code: &str,
+) -> Result<Option<ProviderAccountSummary>, ProjectsRepoError> {
+    conn.query_row(
+        "
+        SELECT
+          project_id,
+          provider_code,
+          display_name,
+          account_ref,
+          base_url,
+          enabled,
+          config_json,
+          created_at,
+          updated_at
+        FROM provider_accounts
+        WHERE project_id = ?1 AND provider_code = ?2
+        LIMIT 1
+    ",
+        params![project_id, provider_code],
+        row_to_provider_account_summary,
     )
     .optional()
     .map_err(ProjectsRepoError::from)
@@ -2476,6 +2840,12 @@ fn normalize_required_text(value: &str, field_name: &str) -> Result<String, Proj
     } else {
         Ok(trimmed.to_string())
     }
+}
+
+fn normalize_provider_code(value: &str) -> Result<String, ProjectsRepoError> {
+    normalize_slug(value).ok_or_else(|| {
+        ProjectsRepoError::Validation(String::from("Field 'provider_code' is required"))
+    })
 }
 
 fn normalize_asset_link_type(value: &str) -> Result<String, ProjectsRepoError> {
