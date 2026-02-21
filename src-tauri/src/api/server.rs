@@ -196,6 +196,39 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Delete, "/api/projects/{slug}/characters/{characterId}") => {
             delete(crate::api::characters::delete_character_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/reference-sets") => {
+            get(crate::api::reference_sets::list_reference_sets_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/reference-sets") => {
+            post(crate::api::reference_sets::create_reference_set_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/reference-sets/{referenceSetId}") => {
+            get(crate::api::reference_sets::get_reference_set_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/reference-sets/{referenceSetId}") => {
+            put(crate::api::reference_sets::update_reference_set_handler)
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/reference-sets/{referenceSetId}") => {
+            delete(crate::api::reference_sets::delete_reference_set_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/reference-sets/{referenceSetId}/items") => {
+            get(crate::api::reference_sets::list_reference_set_items_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/reference-sets/{referenceSetId}/items") => {
+            post(crate::api::reference_sets::create_reference_set_item_handler)
+        }
+        (
+            HttpMethod::Get,
+            "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
+        ) => get(crate::api::reference_sets::get_reference_set_item_handler),
+        (
+            HttpMethod::Put,
+            "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
+        ) => put(crate::api::reference_sets::update_reference_set_item_handler),
+        (
+            HttpMethod::Delete,
+            "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
+        ) => delete(crate::api::reference_sets::delete_reference_set_item_handler),
         _ => {
             let extension = Extension(route);
             match method {

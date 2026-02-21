@@ -140,6 +140,35 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Delete, "/api/projects/{slug}/characters/{characterId}") => {
             StatusCode::NOT_FOUND
         }
+        (HttpMethod::Get, "/api/projects/{slug}/reference-sets") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/reference-sets") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Get, "/api/projects/{slug}/reference-sets/{referenceSetId}") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/reference-sets/{referenceSetId}") => {
+            StatusCode::BAD_REQUEST
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/reference-sets/{referenceSetId}") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/reference-sets/{referenceSetId}/items") => {
+            StatusCode::NOT_FOUND
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/reference-sets/{referenceSetId}/items") => {
+            StatusCode::BAD_REQUEST
+        }
+        (
+            HttpMethod::Get,
+            "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
+        ) => StatusCode::NOT_FOUND,
+        (
+            HttpMethod::Put,
+            "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
+        ) => StatusCode::BAD_REQUEST,
+        (
+            HttpMethod::Delete,
+            "/api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}",
+        ) => StatusCode::NOT_FOUND,
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }
