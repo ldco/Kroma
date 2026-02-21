@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod asset_links;
 pub mod error;
 pub mod projects;

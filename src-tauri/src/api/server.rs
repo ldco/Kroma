@@ -124,6 +124,12 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Delete, "/api/projects/{slug}/asset-links/{linkId}") => {
             delete(crate::api::asset_links::delete_asset_link_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/quality-reports") => {
+            get(crate::api::analytics::list_quality_reports_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/cost-events") => {
+            get(crate::api::analytics::list_cost_events_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {
