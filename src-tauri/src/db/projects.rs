@@ -252,6 +252,17 @@ pub struct StyleGuideSummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CharacterSummary {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub description: String,
+    pub prompt_text: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -374,6 +385,26 @@ pub struct UpdateStyleGuideInput {
     pub instructions: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CreateCharacterInput {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub prompt_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpdateCharacterInput {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub prompt_text: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -1809,6 +1840,177 @@ impl ProjectsStore {
             }
         })
     }
+
+    pub fn list_characters(&self, slug: &str) -> Result<Vec<CharacterSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let mut stmt = conn.prepare(
+                "
+                SELECT id, project_id, name, description, prompt_text, created_at, updated_at
+                FROM characters
+                WHERE project_id = ?1
+                ORDER BY COALESCE(updated_at, '') DESC, id DESC
+            ",
+            )?;
+            let rows = stmt.query_map(params![project.id], row_to_character_summary)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn create_character(
+        &self,
+        slug: &str,
+        input: CreateCharacterInput,
+    ) -> Result<CharacterSummary, ProjectsRepoError> {
+        let name = normalize_required_text(input.name.as_str(), "name")?;
+        let description = input
+            .description
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+        let prompt_text = input
+            .prompt_text
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let id = Uuid::new_v4().to_string();
+            let now = now_iso();
+            let insert = conn.execute(
+                "
+                INSERT INTO characters
+                  (id, project_id, name, description, prompt_text, created_at, updated_at)
+                VALUES
+                  (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+            ",
+                params![id, project.id, name, description, prompt_text, now],
+            );
+            if let Err(source) = insert {
+                if is_unique_constraint_error(&source) {
+                    return Err(ProjectsRepoError::Validation(String::from(
+                        "Character name already exists",
+                    )));
+                }
+                return Err(ProjectsRepoError::Sqlite(source));
+            }
+
+            fetch_character_by_id(conn, project.id.as_str(), id.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn get_character_detail(
+        &self,
+        slug: &str,
+        character_id: &str,
+    ) -> Result<CharacterSummary, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            fetch_character_by_id(conn, project.id.as_str(), character_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn update_character(
+        &self,
+        slug: &str,
+        character_id: &str,
+        input: UpdateCharacterInput,
+    ) -> Result<CharacterSummary, ProjectsRepoError> {
+        if input.name.is_none() && input.description.is_none() && input.prompt_text.is_none() {
+            return Err(ProjectsRepoError::Validation(String::from(
+                "Provide at least one of: name, description, prompt_text",
+            )));
+        }
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let existing = fetch_character_by_id(conn, project.id.as_str(), character_id)?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            let name = if let Some(raw) = input.name.as_deref() {
+                normalize_required_text(raw, "name")?
+            } else {
+                existing.name
+            };
+            let description = if let Some(raw) = input.description.as_deref() {
+                normalize_optional_storage_field(raw)
+            } else if existing.description.trim().is_empty() {
+                None
+            } else {
+                Some(existing.description)
+            };
+            let prompt_text = if let Some(raw) = input.prompt_text.as_deref() {
+                normalize_optional_storage_field(raw)
+            } else if existing.prompt_text.trim().is_empty() {
+                None
+            } else {
+                Some(existing.prompt_text)
+            };
+
+            let update = conn.execute(
+                "
+                UPDATE characters
+                SET name = ?1, description = ?2, prompt_text = ?3, updated_at = ?4
+                WHERE id = ?5 AND project_id = ?6
+            ",
+                params![
+                    name,
+                    description,
+                    prompt_text,
+                    now_iso(),
+                    character_id,
+                    project.id
+                ],
+            );
+            if let Err(source) = update {
+                if is_unique_constraint_error(&source) {
+                    return Err(ProjectsRepoError::Validation(String::from(
+                        "Character name already exists",
+                    )));
+                }
+                return Err(ProjectsRepoError::Sqlite(source));
+            }
+
+            fetch_character_by_id(conn, project.id.as_str(), character_id)?
+                .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub fn delete_character(
+        &self,
+        slug: &str,
+        character_id: &str,
+    ) -> Result<(), ProjectsRepoError> {
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let affected = conn.execute(
+                "DELETE FROM characters WHERE id = ?1 AND project_id = ?2",
+                params![character_id, project.id],
+            )?;
+            if affected == 0 {
+                Err(ProjectsRepoError::NotFound)
+            } else {
+                Ok(())
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2009,6 +2211,17 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           name TEXT NOT NULL,
           instructions TEXT NOT NULL,
           notes TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(project_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS characters (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          prompt_text TEXT,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           UNIQUE(project_id, name)
@@ -2257,6 +2470,13 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
         "updated_at",
         "TEXT NOT NULL DEFAULT ''",
     )?;
+
+    ensure_column(conn, "characters", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "characters", "name", "TEXT NOT NULL")?;
+    ensure_column(conn, "characters", "description", "TEXT")?;
+    ensure_column(conn, "characters", "prompt_text", "TEXT")?;
+    ensure_column(conn, "characters", "created_at", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(conn, "characters", "updated_at", "TEXT NOT NULL DEFAULT ''")?;
     Ok(())
 }
 
@@ -2683,6 +2903,41 @@ fn fetch_style_guide_by_id(
     ",
         params![style_guide_id, project_id],
         row_to_style_guide_summary,
+    )
+    .optional()
+    .map_err(ProjectsRepoError::from)
+}
+
+fn row_to_character_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<CharacterSummary> {
+    Ok(CharacterSummary {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        name: row.get("name")?,
+        description: row
+            .get::<_, Option<String>>("description")?
+            .unwrap_or_default(),
+        prompt_text: row
+            .get::<_, Option<String>>("prompt_text")?
+            .unwrap_or_default(),
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn fetch_character_by_id(
+    conn: &Connection,
+    project_id: &str,
+    character_id: &str,
+) -> Result<Option<CharacterSummary>, ProjectsRepoError> {
+    conn.query_row(
+        "
+        SELECT id, project_id, name, description, prompt_text, created_at, updated_at
+        FROM characters
+        WHERE id = ?1 AND project_id = ?2
+        LIMIT 1
+    ",
+        params![character_id, project_id],
+        row_to_character_summary,
     )
     .optional()
     .map_err(ProjectsRepoError::from)

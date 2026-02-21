@@ -131,6 +131,15 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Delete, "/api/projects/{slug}/style-guides/{styleGuideId}") => {
             StatusCode::NOT_FOUND
         }
+        (HttpMethod::Get, "/api/projects/{slug}/characters") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/characters") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Get, "/api/projects/{slug}/characters/{characterId}") => StatusCode::NOT_FOUND,
+        (HttpMethod::Put, "/api/projects/{slug}/characters/{characterId}") => {
+            StatusCode::BAD_REQUEST
+        }
+        (HttpMethod::Delete, "/api/projects/{slug}/characters/{characterId}") => {
+            StatusCode::NOT_FOUND
+        }
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }
