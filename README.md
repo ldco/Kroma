@@ -3,7 +3,7 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/ldco/Kroma)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/ldco/Kroma)
 [![Build Status](https://img.shields.io/badge/build-%5BINSERT_STATUS%5D-lightgrey)](https://example.com/build-status)
 [![Language](https://img.shields.io/badge/language-Rust%20%7C%20Node.js%20%7C%20Python-informational)](https://github.com/ldco/Kroma)
 
