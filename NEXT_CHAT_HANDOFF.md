@@ -2,74 +2,66 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `e5b4416`
+Last commit before this handoff update: `ea63740`
 
 ## Current Status
 
-1. Rust backend remains green (`cargo test` + endpoint integration suites passing).
-2. Repository modularization is active:
-- extracted modules: `voice_secrets`, `chat_instructions`, `reference_sets`, `provider_style_character`, `prompt_templates`, `analytics_exports`
-- central repo file `src-tauri/src/db/projects.rs` now mainly holds projects/storage/runs/assets core logic and shared helpers.
-3. This pass covered both bug analysis/fixes and immediate next-phase extraction work.
+1. Backend codebase is green after latest extraction work and this review pass.
+2. Modularized repo domains now include:
+- `voice_secrets`
+- `chat_instructions`
+- `reference_sets`
+- `provider_style_character`
+- `prompt_templates`
+- `analytics_exports`
+3. README has been rewritten for a single golden-path setup and now includes a valid local logo asset.
 
 ## Scope of Analysis (This Pass)
 
-1. Reviewed extracted modules and integration points:
-- `src-tauri/src/db/projects/provider_style_character.rs`
-- `src-tauri/src/db/projects/prompt_templates.rs`
-- `src-tauri/src/db/projects.rs` (schema wiring/re-exports)
-2. Compared behavior consistency across related domains (`provider_accounts` vs `voice_secrets` provider-code validation).
-3. Re-ran full backend validation after each change set.
+1. Reviewed latest code changes from recent commits:
+- `src-tauri/src/db/projects/analytics_exports.rs`
+- `src-tauri/src/db/projects.rs` (module wiring and schema delegation)
+- recently updated `README.md`
+2. Re-ran full backend validation:
+- `cargo test`
+- `npm run backend:rust:test --silent`
 
 ## Issues Discovered
 
-1. Provider-account read/update/delete paths treated invalid `provider_code` as `NotFound`, while upsert/secrets paths treated invalid provider codes as `Validation`.
-- Impact: inconsistent API semantics and weaker input validation for the same field.
+1. README regression: header referenced `logo.png`, but the file did not exist in the repository.
+- Impact: broken image in rendered README and weaker first-impression DX.
+2. No functional regressions were found in the latest Rust extraction changes during this pass.
 
 ## Fixes Implemented
 
-1. Normalized provider-code validation behavior in:
-- `src-tauri/src/db/projects/provider_style_character.rs`
-2. Updated `get_provider_account_detail`, `update_provider_account`, and `delete_provider_account` to use `normalize_provider_code(...)` (validation error path) instead of slug->not-found fallback.
-3. Added regression test:
-- `src-tauri/src/db/projects.rs` (`provider_account_paths_validate_provider_code`)
-4. Validation run after fix:
-- `cargo fmt --all`
+1. Added missing `logo.png` to satisfy README header asset reference.
+2. Clarified runtime port expectation in `README.md` under local run flow:
+- Rust backend default bind is `127.0.0.1:8788`.
+3. Validation confirmed green after changes:
 - `cargo test`
 - `npm run backend:rust:test --silent`
-- Result: all passing.
-5. Started next phase immediately after push and completed extraction of analytics/export internals into:
-- `src-tauri/src/db/projects/analytics_exports.rs`
-6. Removed analytics/export structs/methods/mappers/schema-column wiring from `src-tauri/src/db/projects.rs`, keeping public API stable via re-exports.
-7. Re-ran:
-- `cargo fmt --all`
-- `cargo test`
-- `npm run backend:rust:test --silent`
-- Result: all passing.
 
 ## Remaining Risks / TODO
 
-1. `src-tauri/src/db/projects.rs` is still large; next high-value extraction targets are run/assets detail helpers and related schema slices.
-2. Candidate-table overlap still exists (`run_job_candidates` and `run_candidates`) and should be rationalized later.
-3. Prompt/provider/style/character low-level repo behavior is mostly covered via integration tests; further unit coverage can still improve failure-path granularity.
+1. `src-tauri/src/db/projects.rs` is still large; next extraction candidate remains run/assets-heavy internals.
+2. Candidate table overlap remains (`run_job_candidates` and `run_candidates`).
+3. README build-status badge still uses placeholder URL/value and should be replaced when CI badge target is finalized.
 
 ## Completed Work (This Pass)
 
-1. Completed bug analysis for newly extracted provider/style/character and prompt-template modules.
-2. Implemented provider-code validation consistency fix and added regression coverage.
-3. Started and completed the next extraction phase for analytics/export internals.
-4. Updated this handoff with current status, fixes, open tasks, and recommended next steps.
+1. Completed bug/potential-issue analysis on latest code and docs changes.
+2. Applied safe DX fix for missing README logo asset and clarified bind-port behavior.
+3. Re-validated backend test suites.
+4. Updated this handoff with current status, open tasks, and recommended next steps.
 
 ## Open Tasks
 
-1. Continue modularization by extracting the next run/assets-heavy slice from `src-tauri/src/db/projects.rs`.
-2. Keep contract/route parity and endpoint suites green after each extraction step.
+1. Continue modularization by extracting next run/assets helper slice from `src-tauri/src/db/projects.rs`.
+2. Keep contract parity and endpoint integration suites green after each incremental refactor.
+3. Replace placeholder build badge metadata in README when CI source is finalized.
 
 ## Recommended Next Steps
 
-1. Extract the next cohesive run/assets domain block (candidate/job/detail helpers + mappers) into a dedicated module.
-2. Keep stable type exports and schema delegation patterns in `projects.rs`.
-3. Re-run:
-- `cargo fmt --all`
-- `cargo test`
-- `npm run backend:rust:test --silent`
+1. Extract another cohesive run/assets block (helpers + row mappers) into a dedicated `db/projects/*` module.
+2. Preserve stable public exports in `projects.rs` and schema delegation pattern.
+3. Add at least one focused regression test for each extraction phase before next split.
