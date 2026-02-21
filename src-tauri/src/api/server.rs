@@ -85,6 +85,15 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Get, "/api/projects") => get(crate::api::projects::list_projects_handler),
         (HttpMethod::Post, "/api/projects") => post(crate::api::projects::upsert_project_handler),
         (HttpMethod::Get, "/api/projects/{slug}") => get(crate::api::projects::get_project_handler),
+        (HttpMethod::Get, "/api/projects/{slug}/storage") => {
+            get(crate::api::projects::get_project_storage_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/storage/local") => {
+            put(crate::api::projects::update_project_storage_local_handler)
+        }
+        (HttpMethod::Put, "/api/projects/{slug}/storage/s3") => {
+            put(crate::api::projects::update_project_storage_s3_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

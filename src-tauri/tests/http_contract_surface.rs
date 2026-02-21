@@ -81,6 +81,9 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Get, "/api/projects") => StatusCode::OK,
         (HttpMethod::Post, "/api/projects") => StatusCode::BAD_REQUEST,
         (HttpMethod::Get, "/api/projects/{slug}") => StatusCode::NOT_FOUND,
+        (HttpMethod::Get, "/api/projects/{slug}/storage") => StatusCode::NOT_FOUND,
+        (HttpMethod::Put, "/api/projects/{slug}/storage/local") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Put, "/api/projects/{slug}/storage/s3") => StatusCode::NOT_FOUND,
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }

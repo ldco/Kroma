@@ -2,80 +2,83 @@
 
 Date: 2026-02-21
 Branch: `master`
+Last commit before this handoff update: `ba03f4d`
 
 ## Current Architecture Decisions
 
-1. Rust backend is now the authoritative forward path (`src-tauri`), with contract-first route mounting from OpenAPI path/method inventory.
-2. API surface is split into:
-- `api/routes.rs`: canonical route catalog and domain grouping.
-- `api/server.rs`: router construction, health endpoint, stub fallback for not-yet-implemented endpoints.
-- `api/projects.rs`: real project handlers (`list`, `upsert`, `detail`).
-3. Data access for projects is centralized in a concrete store:
-- `db/projects.rs` (`ProjectsStore`) is the single entrypoint for project persistence logic.
-- Removed trait-object repository indirection for this phase to reduce abstraction overhead and improve clarity.
-4. Endpoint behavior policy:
-- Implemented endpoints return real data.
-- Unimplemented contract routes are mounted and return deterministic `501` with structured details.
-5. Runtime defaults:
-- Bind: `127.0.0.1:8788` (override with `KROMA_BACKEND_BIND`).
-- DB: `var/backend/app.db` repo-relative (override with `KROMA_BACKEND_DB`).
+1. Rust backend (`src-tauri`) is the primary forward path; script backend remains reference only.
+2. Routing is contract-first:
+- Route catalog is explicit (`api/routes.rs`) and parity-checked against OpenAPI.
+- Every OpenAPI route is mounted; unimplemented routes return deterministic `501` stubs.
+3. State uses concrete services, not dynamic repository interfaces:
+- `AppState` carries `Arc<ProjectsStore>`.
+- Removed `dyn` repository layer to reduce accidental complexity.
+4. Project domain persistence is SQLite-backed via `db/projects.rs` with explicit methods for:
+- project list/upsert/detail
+- storage read/update (local + s3)
+5. Runtime config:
+- `KROMA_BACKEND_BIND` for HTTP bind (default `127.0.0.1:8788`)
+- `KROMA_BACKEND_DB` for DB path (default `var/backend/app.db` repo-relative)
 
 ## Completed Work In This Pass
 
-1. Created Rust backend scaffold and test harness.
-2. Added OpenAPI contract parity tests (`tests/contract_parity.rs`).
-3. Added HTTP route-mount coverage test for all contract routes (`tests/http_contract_surface.rs`).
-4. Added real SQLite-backed project endpoints:
+1. Rust backend scaffold finalized with executable server and tests.
+2. Contract safety rails implemented:
+- `tests/contract_parity.rs`
+- `tests/http_contract_surface.rs`
+3. Implemented real project endpoints:
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{slug}`
-5. Refactored backend state/repository design:
-- Replaced dynamic `Arc<dyn ProjectsRepository>` pattern with concrete `Arc<ProjectsStore>`.
-6. Fixed slug normalization issue in list filtering:
-- non-normalizable `username` query values no longer collapse to implicit fallback slug.
-7. Added focused endpoint tests for create/list/detail and validation (`tests/projects_endpoints.rs`).
-8. Added npm scripts:
-- `backend:rust`
-- `backend:rust:test`
-
-## Major Refactors / Rewrites
-
-1. Rewrote `api/projects.rs` to typed request/response flow instead of ad-hoc payload extraction.
-2. Reworked `db/projects.rs` to expose explicit store methods and initialization API.
-3. Simplified server composition by removing unnecessary compatibility-oriented abstraction layers.
-
-## Key Issues Identified During Analysis
-
-1. Over-abstraction for early-stage code (`dyn` repository interface with one implementation).
-2. Monolithic project persistence file with mixed concerns (schema, parsing, storage defaults, CRUD logic).
-3. Input normalization edge case in query filtering (`slugify` fallback behavior leaking into filter semantics).
-
-## Remaining Technical Debt
-
-1. `db/projects.rs` still contains multiple responsibilities and should be split into smaller modules:
-- schema/migrations
-- normalization
-- storage policy resolution
-- store operations
-2. Most contract routes still return `501` stubs and need staged implementation.
-3. OpenAPI currently lacks strict response schemas for typed payload validation.
-
-## Next Phase Goals (Immediate)
-
-1. Implement project storage endpoints with real persistence:
+4. Implemented real storage endpoints:
 - `GET /api/projects/{slug}/storage`
 - `PUT /api/projects/{slug}/storage/local`
 - `PUT /api/projects/{slug}/storage/s3`
-2. Add integration tests for storage read/update behavior.
-3. Keep deterministic route-mount guarantee while replacing stubs endpoint-by-endpoint.
+5. Added storage integration tests:
+- `tests/storage_endpoints.rs`
+6. Fixed normalization bug:
+- username filter no longer collapses invalid input to fallback slug.
+
+## Major Refactors / Rewrites
+
+1. Removed dynamic repository abstraction (`Arc<dyn ...>`) in favor of concrete `ProjectsStore`.
+2. Reworked `api/projects.rs` into typed request/response handlers.
+3. Added explicit storage update semantics:
+- local updates require at least one explicit field
+- S3 fields can be updated independently
+- empty string input clears optional storage fields
+
+## Key Issues Found
+
+1. Early code had abstraction layers without multiple implementations.
+2. Slug fallback behavior leaked into query filtering and created implicit incorrect filters.
+3. Storage endpoints were contract-declared but not implemented.
+
+## Remaining Technical Debt
+
+1. `db/projects.rs` still combines schema, normalization, storage policy, and CRUD concerns in one file.
+2. Most non-project contract routes are still `501` stubs.
+3. OpenAPI response schemas remain underspecified for strict typed validation.
+
+## Next Phase Goals (Immediate)
+
+1. Implement run and asset read endpoints:
+- `GET /api/projects/{slug}/runs`
+- `GET /api/projects/{slug}/runs/{runId}`
+- `GET /api/projects/{slug}/runs/{runId}/jobs`
+- `GET /api/projects/{slug}/assets`
+- `GET /api/projects/{slug}/assets/{assetId}`
+2. Add endpoint integration tests for those read paths.
+3. Start splitting `db/projects.rs` into focused modules once read paths stabilize.
 
 ## Validation Snapshot
 
 1. `cargo fmt --all`
-2. `cargo test` (unit + parity + HTTP surface + project endpoint tests)
+2. `cargo test` (unit + parity + HTTP surface + project + storage endpoint tests)
 3. Runtime smoke checks:
 - `GET /health`
-- `GET /api/projects`
-- `POST /api/projects`
+- `GET/POST /api/projects`
 - `GET /api/projects/{slug}`
-
+- `GET /api/projects/{slug}/storage`
+- `PUT /api/projects/{slug}/storage/local`
+- `PUT /api/projects/{slug}/storage/s3`

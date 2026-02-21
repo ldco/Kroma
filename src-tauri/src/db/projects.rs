@@ -96,6 +96,30 @@ pub struct UpsertProjectInput {
     pub user_display_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpdateStorageLocalInput {
+    #[serde(default)]
+    pub base_dir: Option<String>,
+    #[serde(default)]
+    pub project_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpdateStorageS3Input {
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub bucket: Option<String>,
+    #[serde(default)]
+    pub prefix: Option<String>,
+    #[serde(default)]
+    pub region: Option<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
+    #[serde(default)]
+    pub endpoint_url: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectsRepoError {
     #[error("project not found")]
@@ -291,17 +315,168 @@ impl ProjectsStore {
             ensure_project_storage_defaults(&tx, &project)?;
             tx.commit()?;
 
-            let storage = self.with_connection(|conn_ro| {
-                resolve_storage(conn_ro, self.repo_root.as_path(), &project)
-            })?;
-            Ok(ProjectStoragePayload {
-                project: ProjectStorageProject {
-                    id: project.id,
-                    slug: project.slug,
-                    name: project.name,
-                },
-                storage,
+            self.with_connection(|conn_ro| {
+                project_storage_payload(conn_ro, self.repo_root.as_path(), &project)
             })
+        })
+    }
+
+    pub fn get_project_storage(
+        &self,
+        slug: &str,
+    ) -> Result<ProjectStoragePayload, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            project_storage_payload(conn, self.repo_root.as_path(), &project)
+        })
+    }
+
+    pub fn update_project_storage_local(
+        &self,
+        slug: &str,
+        input: UpdateStorageLocalInput,
+    ) -> Result<ProjectStoragePayload, ProjectsRepoError> {
+        if input.base_dir.is_none() && input.project_root.is_none() {
+            return Err(ProjectsRepoError::Validation(String::from(
+                "Provide at least one of: base_dir, project_root",
+            )));
+        }
+
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            ensure_project_storage_defaults(conn, &project)?;
+
+            if let Some(raw_base_dir) = input.base_dir {
+                let base_dir_update = normalize_required_storage_field(raw_base_dir.as_str())
+                    .map_err(ProjectsRepoError::Validation)?;
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET local_base_dir = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![base_dir_update, now_iso(), project.id],
+                )?;
+            }
+
+            if let Some(raw_project_root) = input.project_root {
+                let normalized_root = normalize_optional_storage_field(raw_project_root.as_str());
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET local_project_root = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![normalized_root, now_iso(), project.id],
+                )?;
+            }
+
+            project_storage_payload(conn, self.repo_root.as_path(), &project)
+        })
+    }
+
+    pub fn update_project_storage_s3(
+        &self,
+        slug: &str,
+        input: UpdateStorageS3Input,
+    ) -> Result<ProjectStoragePayload, ProjectsRepoError> {
+        self.with_connection_mut(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            ensure_project_storage_defaults(conn, &project)?;
+
+            if let Some(enabled) = input.enabled {
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET s3_enabled = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![if enabled { 1 } else { 0 }, now_iso(), project.id],
+                )?;
+            }
+
+            if let Some(raw) = input.bucket {
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET s3_bucket = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![
+                        normalize_optional_storage_field(raw.as_str()),
+                        now_iso(),
+                        project.id
+                    ],
+                )?;
+            }
+
+            if let Some(raw) = input.prefix {
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET s3_prefix = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![
+                        normalize_optional_storage_field(raw.as_str()),
+                        now_iso(),
+                        project.id
+                    ],
+                )?;
+            }
+
+            if let Some(raw) = input.region {
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET s3_region = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![
+                        normalize_optional_storage_field(raw.as_str()),
+                        now_iso(),
+                        project.id
+                    ],
+                )?;
+            }
+
+            if let Some(raw) = input.profile {
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET s3_profile = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![
+                        normalize_optional_storage_field(raw.as_str()),
+                        now_iso(),
+                        project.id
+                    ],
+                )?;
+            }
+
+            if let Some(raw) = input.endpoint_url {
+                conn.execute(
+                    "
+                    UPDATE project_storage
+                    SET s3_endpoint_url = ?1, updated_at = ?2
+                    WHERE project_id = ?3
+                ",
+                    params![
+                        normalize_optional_storage_field(raw.as_str()),
+                        now_iso(),
+                        project.id
+                    ],
+                )?;
+            }
+
+            project_storage_payload(conn, self.repo_root.as_path(), &project)
         })
     }
 }
@@ -756,6 +931,40 @@ fn resolve_storage(
             endpoint_url: defaults.s3_endpoint_url,
         },
     })
+}
+
+fn project_storage_payload(
+    conn: &Connection,
+    repo_root: &Path,
+    project: &ProjectRow,
+) -> Result<ProjectStoragePayload, ProjectsRepoError> {
+    let storage = resolve_storage(conn, repo_root, project)?;
+    Ok(ProjectStoragePayload {
+        project: ProjectStorageProject {
+            id: project.id.clone(),
+            slug: project.slug.clone(),
+            name: project.name.clone(),
+        },
+        storage,
+    })
+}
+
+fn normalize_required_storage_field(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Err(String::from("Field 'base_dir' must not be empty"))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn normalize_optional_storage_field(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn parse_storage_defaults(settings_json: &str) -> StorageDefaults {

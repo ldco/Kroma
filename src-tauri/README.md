@@ -32,6 +32,9 @@ The following routes are fully wired (SQLite-backed):
 - `GET /api/projects`
 - `POST /api/projects`
 - `GET /api/projects/{slug}`
+- `GET /api/projects/{slug}/storage`
+- `PUT /api/projects/{slug}/storage/local`
+- `PUT /api/projects/{slug}/storage/s3`
 
 All other contract routes are mounted and return deterministic `501` stub responses.
 

@@ -6,8 +6,9 @@ use serde_json::Value;
 
 use crate::api::server::AppState;
 use crate::db::projects::{
-    ProjectCounts, ProjectInfo, ProjectStorageProject, ProjectSummary, ProjectsRepoError,
-    StorageConfig, UpsertProjectInput,
+    ProjectCounts, ProjectInfo, ProjectStoragePayload, ProjectStorageProject, ProjectSummary,
+    ProjectsRepoError, StorageConfig, UpdateStorageLocalInput, UpdateStorageS3Input,
+    UpsertProjectInput,
 };
 
 type ApiObject<T> = (StatusCode, Json<T>);
@@ -39,10 +40,12 @@ struct ProjectDetailResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct ProjectUpsertResponse {
+struct ProjectStorageResponse {
     ok: bool,
     project: ProjectStorageProject,
     storage: StorageConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated: Option<String>,
 }
 
 pub async fn list_projects_handler(
@@ -100,14 +103,81 @@ pub async fn upsert_project_handler(
     match result {
         Ok(Ok(project_storage)) => (
             StatusCode::OK,
-            into_json(ProjectUpsertResponse {
-                ok: true,
-                project: project_storage.project,
-                storage: project_storage.storage,
-            }),
+            into_json(storage_response(project_storage, None)),
         ),
         Ok(Err(error)) => map_repo_error(error),
         Err(join_error) => internal_error(format!("project upsert task failed: {join_error}")),
+    }
+}
+
+pub async fn get_project_storage_handler(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiObject<Value> {
+    let store = state.projects_store.clone();
+    let result =
+        tokio::task::spawn_blocking(move || store.get_project_storage(slug.as_str())).await;
+
+    match result {
+        Ok(Ok(payload)) => (StatusCode::OK, into_json(storage_response(payload, None))),
+        Ok(Err(error)) => map_repo_error(error),
+        Err(join_error) => internal_error(format!("project storage task failed: {join_error}")),
+    }
+}
+
+pub async fn update_project_storage_local_handler(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(payload): Json<UpdateStorageLocalInput>,
+) -> ApiObject<Value> {
+    let store = state.projects_store.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        store.update_project_storage_local(slug.as_str(), payload)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(updated)) => (
+            StatusCode::OK,
+            into_json(storage_response(updated, Some(String::from("local")))),
+        ),
+        Ok(Err(error)) => map_repo_error(error),
+        Err(join_error) => {
+            internal_error(format!("storage local update task failed: {join_error}"))
+        }
+    }
+}
+
+pub async fn update_project_storage_s3_handler(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(payload): Json<UpdateStorageS3Input>,
+) -> ApiObject<Value> {
+    let store = state.projects_store.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        store.update_project_storage_s3(slug.as_str(), payload)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(updated)) => (
+            StatusCode::OK,
+            into_json(storage_response(updated, Some(String::from("s3")))),
+        ),
+        Ok(Err(error)) => map_repo_error(error),
+        Err(join_error) => internal_error(format!("storage s3 update task failed: {join_error}")),
+    }
+}
+
+fn storage_response(
+    payload: ProjectStoragePayload,
+    updated: Option<String>,
+) -> ProjectStorageResponse {
+    ProjectStorageResponse {
+        ok: true,
+        project: payload.project,
+        storage: payload.storage,
+        updated,
     }
 }
 
