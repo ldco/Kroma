@@ -2,7 +2,7 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `54741c1`
+Last commit before this handoff update: `3baf186`
 
 ## Current Architecture Decisions
 
@@ -59,12 +59,12 @@ Last commit before this handoff update: `54741c1`
 
 ## Remaining Technical Debt
 
-1. `src-tauri/src/db/projects.rs` is still large and should continue splitting (next candidates: reference sets, provider/style/character).
+1. `src-tauri/src/db/projects.rs` is still large and should continue splitting (next candidates: provider/style/character).
 2. Candidate table overlap remains (`run_job_candidates` and `run_candidates`).
 
 ## Next Phase Goals (Immediate)
 
-1. Continue physical repository split with the next domain slice (reference sets or provider/style/character).
+1. Continue physical repository split with the next domain slice (provider/style/character).
 2. Evaluate whether `api/response.rs` and `api/handler_utils.rs` should be unified into one response abstraction.
 3. Preserve strict parity checks and full test green status during each refactor step.
 
@@ -106,15 +106,22 @@ Last commit before this handoff update: `54741c1`
 - `cargo fmt --all`
 - `cargo test`
 - `npm run backend:rust:test --silent`
+4. Started the next phase immediately after push and extracted reference-set domain from `src-tauri/src/db/projects.rs` into:
+- `src-tauri/src/db/projects/reference_sets.rs`
+5. Wired `projects.rs` to re-export reference-set types and delegate schema/table/column setup to the new module.
+6. Re-ran validation after extraction:
+- `cargo fmt --all`
+- `cargo test`
+- `npm run backend:rust:test --silent`
 
 ### Open tasks
 
-1. Continue repository modularization by extracting the next domain from `src-tauri/src/db/projects.rs` (recommended: reference sets).
+1. Continue repository modularization by extracting the next domain from `src-tauri/src/db/projects.rs` (recommended: provider/style/character).
 2. Decide whether to consolidate `src-tauri/src/api/response.rs` and `src-tauri/src/api/handler_utils.rs` into one response abstraction.
 3. Install clippy component (`rustup component add clippy`) and enforce lint checks in CI/local workflow.
 
 ### Recommended next steps
 
-1. Start reference-set domain extraction into `src-tauri/src/db/projects/reference_sets.rs` with stable public re-exports in `projects.rs`.
+1. Start provider/style/character domain extraction with stable public re-exports in `projects.rs`.
 2. Keep parity/contract suite green after each extraction step (`contract_parity`, `http_contract_surface`, endpoint suites).
 3. After extraction, evaluate shared helper consolidation (`response.rs` + `handler_utils.rs`) and standardize one API envelope style.
