@@ -5,3 +5,4 @@ var/**
 tools/realesrgan/**
 tools/realesrgan-python/**
 tools/rembg/**
+src-tauri/target/

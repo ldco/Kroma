@@ -1,0 +1,34 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum PipelineStage {
+    Style,
+    Time,
+    Weather,
+    OptionalPasses,
+}
+
+impl PipelineStage {
+    pub const PRODUCTION_ORDER: [Self; 4] =
+        [Self::Style, Self::Time, Self::Weather, Self::OptionalPasses];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Style => "style",
+            Self::Time => "time",
+            Self::Weather => "weather",
+            Self::OptionalPasses => "optional_passes",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagePlan {
+    pub stages: Vec<PipelineStage>,
+}
+
+impl StagePlan {
+    pub fn production_default() -> Self {
+        Self {
+            stages: PipelineStage::PRODUCTION_ORDER.to_vec(),
+        }
+    }
+}
