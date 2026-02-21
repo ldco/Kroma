@@ -2,7 +2,7 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `4bc1198`
+Last commit before this handoff update: `bd37277`
 
 ## Current Architecture Decisions
 
@@ -13,7 +13,7 @@ Last commit before this handoff update: `4bc1198`
 - OpenAPI parity test (`src-tauri/tests/contract_parity.rs`)
 3. Repository layer keeps business validation and persistence logic centralized.
 4. API handlers remain thin and map typed repo errors to HTTP responses.
-5. `db/projects.rs` is being physically split by domain; voice+secrets, chat+agent-instructions, reference-sets, and provider/style/character are extracted to dedicated submodules.
+5. `db/projects.rs` is being physically split by domain; voice+secrets, chat+agent-instructions, reference-sets, provider/style/character, and prompt-templates are extracted to dedicated submodules.
 
 ## Completed Work In This Pass
 
@@ -59,12 +59,12 @@ Last commit before this handoff update: `4bc1198`
 
 ## Remaining Technical Debt
 
-1. `src-tauri/src/db/projects.rs` is still large and should continue splitting (next candidates: prompt-templates or run/assets analytics internals).
+1. `src-tauri/src/db/projects.rs` is still large and should continue splitting (next candidates: run/assets analytics internals).
 2. Candidate table overlap remains (`run_job_candidates` and `run_candidates`).
 
 ## Next Phase Goals (Immediate)
 
-1. Continue physical repository split with the next domain slice (prompt-templates or run/assets analytics internals).
+1. Continue physical repository split with the next domain slice (run/assets analytics internals).
 2. Evaluate whether `api/response.rs` and `api/handler_utils.rs` should be unified into one response abstraction.
 3. Preserve strict parity checks and full test green status during each refactor step.
 
@@ -120,15 +120,22 @@ Last commit before this handoff update: `4bc1198`
 - `cargo fmt --all`
 - `cargo test`
 - `npm run backend:rust:test --silent`
+10. Completed prompt-template extraction into:
+- `src-tauri/src/db/projects/prompt_templates.rs`
+11. Wired `projects.rs` to re-export prompt-template types and delegate schema/table/column setup to the new module.
+12. Re-ran validation after extraction:
+- `cargo fmt --all`
+- `cargo test`
+- `npm run backend:rust:test --silent`
 
 ### Open tasks
 
-1. Continue repository modularization by extracting the next domain from `src-tauri/src/db/projects.rs` (recommended: prompt-templates or run/assets analytics internals).
+1. Continue repository modularization by extracting the next domain from `src-tauri/src/db/projects.rs` (recommended: run/assets analytics internals).
 2. Decide whether to consolidate `src-tauri/src/api/response.rs` and `src-tauri/src/api/handler_utils.rs` into one response abstraction.
 3. Install clippy component (`rustup component add clippy`) and enforce lint checks in CI/local workflow.
 
 ### Recommended next steps
 
-1. Start prompt-template extraction with stable public re-exports in `projects.rs`.
+1. Start run/assets analytics internals extraction with stable public re-exports in `projects.rs`.
 2. Keep parity/contract suite green after each extraction step (`contract_parity`, `http_contract_surface`, endpoint suites).
 3. After extraction, evaluate shared helper consolidation (`response.rs` + `handler_utils.rs`) and standardize one API envelope style.
