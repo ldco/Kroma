@@ -130,6 +130,12 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Get, "/api/projects/{slug}/cost-events") => {
             get(crate::api::analytics::list_cost_events_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/exports") => {
+            get(crate::api::exports::list_exports_handler)
+        }
+        (HttpMethod::Get, "/api/projects/{slug}/exports/{exportId}") => {
+            get(crate::api::exports::get_export_detail_handler)
+        }
         _ => {
             let extension = Extension(route);
             match method {

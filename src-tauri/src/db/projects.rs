@@ -202,6 +202,22 @@ pub struct CostEventSummary {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectExportSummary {
+    pub id: String,
+    pub project_id: String,
+    pub run_id: String,
+    pub status: String,
+    pub export_format: String,
+    pub storage_uri: String,
+    pub rel_path: String,
+    pub file_size_bytes: i64,
+    pub checksum_sha256: String,
+    pub manifest_json: Value,
+    pub created_at: String,
+    pub completed_at: String,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -1066,6 +1082,85 @@ impl ProjectsStore {
             Ok(out)
         })
     }
+
+    pub fn list_project_exports(
+        &self,
+        slug: &str,
+        limit: i64,
+    ) -> Result<Vec<ProjectExportSummary>, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let capped = limit.clamp(1, 2000);
+
+            let mut stmt = conn.prepare(
+                "
+                SELECT
+                  id,
+                  project_id,
+                  run_id,
+                  status,
+                  export_format,
+                  storage_uri,
+                  rel_path,
+                  file_size_bytes,
+                  checksum_sha256,
+                  manifest_json,
+                  created_at,
+                  completed_at
+                FROM project_exports
+                WHERE project_id = ?1
+                ORDER BY COALESCE(created_at, '') DESC, id DESC
+                LIMIT ?2
+            ",
+            )?;
+            let rows =
+                stmt.query_map(params![project.id, capped], row_to_project_export_summary)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    pub fn get_project_export_detail(
+        &self,
+        slug: &str,
+        export_id: &str,
+    ) -> Result<ProjectExportSummary, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+
+            conn.query_row(
+                "
+                SELECT
+                  id,
+                  project_id,
+                  run_id,
+                  status,
+                  export_format,
+                  storage_uri,
+                  rel_path,
+                  file_size_bytes,
+                  checksum_sha256,
+                  manifest_json,
+                  created_at,
+                  completed_at
+                FROM project_exports
+                WHERE id = ?1 AND project_id = ?2
+                LIMIT 1
+            ",
+                params![export_id, project.id],
+                row_to_project_export_summary,
+            )
+            .optional()?
+            .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1222,6 +1317,21 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           created_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS project_exports (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          run_id TEXT,
+          status TEXT,
+          export_format TEXT,
+          storage_uri TEXT,
+          rel_path TEXT,
+          file_size_bytes INTEGER,
+          checksum_sha256 TEXT,
+          manifest_json TEXT,
+          created_at TEXT,
+          completed_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS project_storage (
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL UNIQUE,
@@ -1374,6 +1484,19 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     ensure_column(conn, "cost_events", "currency", "TEXT")?;
     ensure_column(conn, "cost_events", "meta_json", "TEXT")?;
     ensure_column(conn, "cost_events", "created_at", "TEXT")?;
+
+    ensure_column(conn, "project_exports", "project_id", "TEXT NOT NULL")?;
+    ensure_column(conn, "project_exports", "run_id", "TEXT")?;
+    ensure_column(conn, "project_exports", "status", "TEXT")?;
+    ensure_column(conn, "project_exports", "export_format", "TEXT")?;
+    ensure_column(conn, "project_exports", "storage_uri", "TEXT")?;
+    ensure_column(conn, "project_exports", "rel_path", "TEXT")?;
+    ensure_column(conn, "project_exports", "file_size_bytes", "INTEGER")?;
+    ensure_column(conn, "project_exports", "checksum_sha256", "TEXT")?;
+    ensure_column(conn, "project_exports", "manifest_json", "TEXT")?;
+    ensure_column(conn, "project_exports", "meta_json", "TEXT")?;
+    ensure_column(conn, "project_exports", "created_at", "TEXT")?;
+    ensure_column(conn, "project_exports", "completed_at", "TEXT")?;
     Ok(())
 }
 
@@ -1657,6 +1780,39 @@ fn row_to_cost_event_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<CostEv
         meta_json: parse_json_value(row.get::<_, Option<String>>("meta_json")?),
         created_at: row
             .get::<_, Option<String>>("created_at")?
+            .unwrap_or_default(),
+    })
+}
+
+fn row_to_project_export_summary(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ProjectExportSummary> {
+    Ok(ProjectExportSummary {
+        id: row.get("id")?,
+        project_id: row.get("project_id")?,
+        run_id: row.get::<_, Option<String>>("run_id")?.unwrap_or_default(),
+        status: row.get::<_, Option<String>>("status")?.unwrap_or_default(),
+        export_format: row
+            .get::<_, Option<String>>("export_format")?
+            .unwrap_or_default(),
+        storage_uri: row
+            .get::<_, Option<String>>("storage_uri")?
+            .unwrap_or_default(),
+        rel_path: row
+            .get::<_, Option<String>>("rel_path")?
+            .unwrap_or_default(),
+        file_size_bytes: row
+            .get::<_, Option<i64>>("file_size_bytes")?
+            .unwrap_or_default(),
+        checksum_sha256: row
+            .get::<_, Option<String>>("checksum_sha256")?
+            .unwrap_or_default(),
+        manifest_json: parse_json_value(row.get::<_, Option<String>>("manifest_json")?),
+        created_at: row
+            .get::<_, Option<String>>("created_at")?
+            .unwrap_or_default(),
+        completed_at: row
+            .get::<_, Option<String>>("completed_at")?
             .unwrap_or_default(),
     })
 }

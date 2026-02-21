@@ -96,6 +96,8 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Delete, "/api/projects/{slug}/asset-links/{linkId}") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/quality-reports") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/cost-events") => StatusCode::NOT_FOUND,
+        (HttpMethod::Get, "/api/projects/{slug}/exports") => StatusCode::NOT_FOUND,
+        (HttpMethod::Get, "/api/projects/{slug}/exports/{exportId}") => StatusCode::NOT_FOUND,
         _ => StatusCode::NOT_IMPLEMENTED,
     }
 }

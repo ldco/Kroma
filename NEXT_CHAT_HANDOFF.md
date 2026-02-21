@@ -2,62 +2,56 @@
 
 Date: 2026-02-21
 Branch: `master`
-Last commit before this handoff update: `1bb129c`
+Last commit before this handoff update: `9bdacc4`
 
 ## Current Architecture Decisions
 
-1. Rust backend (`src-tauri`) is the active delivery path.
-2. Contract-first router remains enforced:
-- `api/routes.rs` is the canonical route list.
-- parity tests ensure OpenAPI and route catalog alignment.
-- unimplemented domains return structured `501` stubs.
-3. API is now split by domain modules:
+1. Rust backend (`src-tauri`) continues as the primary implementation track.
+2. Router remains contract-first and parity-tested against OpenAPI.
+3. Implemented API is decomposed by domain modules:
 - `api/projects.rs`
 - `api/runs_assets.rs`
 - `api/asset_links.rs`
 - `api/analytics.rs`
-4. Repository API (`db/projects.rs`) now covers four concrete domains beyond projects/storage:
-- runs/assets read
-- asset-links CRUD
-- analytics read (`quality_reports`, `cost_events`)
-5. Validation stays repository-first for deterministic behavior and reduced handler complexity.
+- `api/exports.rs`
+4. Repository layer has typed read/write surfaces for implemented domains; handlers remain thin and policy-free.
+5. Domain list endpoints use explicit default limits and repository-side clamping.
 
 ## Completed Work In This Pass
 
-1. Implemented analytics endpoints end-to-end:
-- `GET /api/projects/{slug}/quality-reports`
-- `GET /api/projects/{slug}/cost-events`
-2. Added typed analytics persistence models:
-- `QualityReportSummary`
-- `CostEventSummary`
-3. Added schema support for analytics tables:
-- `quality_reports`
-- `cost_events`
-4. Added analytics API module and router wiring:
-- `src-tauri/src/api/analytics.rs`
-- dispatch in `src-tauri/src/api/server.rs`
-5. Added analytics integration tests:
-- `src-tauri/tests/analytics_endpoints.rs`
-6. Updated contract-surface status expectations for analytics routes.
+1. Implemented exports read endpoints end-to-end:
+- `GET /api/projects/{slug}/exports`
+- `GET /api/projects/{slug}/exports/{exportId}`
+2. Added typed export persistence model:
+- `ProjectExportSummary`
+3. Added schema support for exports table:
+- `project_exports`
+4. Added exports API module and route binding:
+- `src-tauri/src/api/exports.rs`
+- router dispatch in `src-tauri/src/api/server.rs`
+5. Added exports integration tests:
+- `src-tauri/tests/exports_endpoints.rs`
+6. Updated HTTP contract-surface expectations for exports routes.
 
 ## Major Refactors / Rewrites
 
-1. Continued domain decomposition at API level by introducing `api/analytics.rs`.
-2. Added explicit analytics row mappers to avoid handler-side data shaping.
-3. Kept contracts strongly typed and list limits explicit (default 500, clamped in store).
+1. Continued clean domain separation by introducing dedicated exports API module.
+2. Added explicit row mappers for exports to keep serialization contracts stable.
+3. Fixed two mapper anti-patterns encountered during development:
+- quality reports: removed fallback read from non-selected `meta_json`
+- exports: removed fallback read from non-selected `meta_json`
 
 ## Key Issues Found
 
-1. Analytics routes were mounted but unimplemented.
-2. Analytics persistence schema was absent.
-3. First pass had a mapper fallback to a non-selected column (`meta_json`) causing `500`; fixed by canonicalizing on `summary_json` for quality reports.
+1. Exports routes were mounted but previously returned `501` stubs.
+2. Exports persistence schema was missing.
+3. Mapper fallback-to-missing-column patterns caused runtime `500` failures during test pass; corrected to canonical JSON columns.
 
 ## Remaining Technical Debt
 
-1. `db/projects.rs` still carries multiple domains and should be split into per-domain modules.
-2. `run_job_candidates` remains in schema path while reads use `run_candidates` as canonical source.
-3. Remaining unimplemented contract domains:
-- exports
+1. `db/projects.rs` still contains multiple domains and should be split into domain-focused modules.
+2. Legacy overlap remains in candidate schema paths (`run_job_candidates` vs `run_candidates`).
+3. Unimplemented contract domains remain:
 - prompt templates
 - provider accounts
 - style guides
@@ -70,11 +64,9 @@ Last commit before this handoff update: `1bb129c`
 
 ## Next Phase Goals (Immediate)
 
-1. Implement exports read surfaces:
-- `GET /api/projects/{slug}/exports`
-- `GET /api/projects/{slug}/exports/{exportId}`
-2. Add integration tests for export listing + detail not-found behavior.
-3. Begin first repository file split (`db/projects.rs` -> domain submodules).
+1. Implement prompt-template domain (`GET/POST/GET by id/PUT/DELETE`).
+2. Add integration tests for prompt-template CRUD + validation.
+3. Start physical repository split to reduce `db/projects.rs` blast radius.
 
 ## Validation Snapshot
 
@@ -83,8 +75,9 @@ Last commit before this handoff update: `1bb129c`
 3. `npm run backend:rust:test --silent`
 4. Passing suites include:
 - contract parity
-- HTTP contract surface checks
-- projects/storage endpoints
-- runs/assets endpoints
-- asset-links endpoints
-- analytics endpoints
+- HTTP contract-surface
+- projects/storage
+- runs/assets
+- asset-links
+- analytics
+- exports
