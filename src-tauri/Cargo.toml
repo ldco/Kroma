@@ -3,7 +3,7 @@ name = "kroma-backend-core"
 version = "0.1.0"
 edition = "2021"
 description = "Kroma Rust backend core scaffold with API contract parity tests."
-license = "UNLICENSED"
+license = "MIT"
 publish = false
 
 [lib]

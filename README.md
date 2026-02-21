@@ -1,8 +1,8 @@
-<div align="center"><img src="logo.png" alt="Project Logo" width="150"/></div>
+<div align="center"><img src="logo.png" alt="Project Logo" width="500"/></div>
 
 <div align="center">
 
-[![License](https://img.shields.io/badge/license-UNLICENSED-lightgrey)](https://github.com/ldco/Kroma)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/ldco/Kroma)
 [![Build Status](https://img.shields.io/badge/build-%5BINSERT_STATUS%5D-lightgrey)](https://example.com/build-status)
 [![Language](https://img.shields.io/badge/language-Rust%20%7C%20Node.js%20%7C%20Python-informational)](https://github.com/ldco/Kroma)
@@ -251,5 +251,5 @@ curl -s http://127.0.0.1:8790/health
 
 ## License & Contact
 
-- License: `UNLICENSED` (current repository setting)
+- License: `MIT` (see `LICENSE`)
 - Contact: open an issue at `https://github.com/ldco/Kroma/issues`
