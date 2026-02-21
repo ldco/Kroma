@@ -181,6 +181,750 @@ def ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, c
     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
 
 
+def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return bool(row)
+
+
+def row_has_key(row: sqlite3.Row | None, key: str) -> bool:
+    return bool(row) and key in row.keys()
+
+
+def _settings_storage_defaults(project_slug: str) -> dict:
+    return {
+        "local": {
+            "base_dir": "generated/projects",
+            "project_root": "",
+        },
+        "s3": {
+            "enabled": False,
+            "bucket": "",
+            "prefix": "iat-projects",
+            "region": "",
+            "profile": "",
+            "endpoint_url": "",
+        },
+        "project_slug": project_slug,
+    }
+
+
+def _settings_to_storage_columns(settings: dict, project_slug: str) -> dict:
+    resolved = resolve_storage_settings(settings, project_slug)
+    local = resolved.get("local", {})
+    s3 = resolved.get("s3", {})
+    return {
+        "local_base_dir": str(local.get("base_dir") or "generated/projects").strip() or "generated/projects",
+        "local_project_root": str(local.get("project_root") or "").strip() or None,
+        "s3_enabled": 1 if bool(s3.get("enabled")) else 0,
+        "s3_bucket": str(s3.get("bucket") or "").strip() or None,
+        "s3_prefix": str(s3.get("prefix") or "").strip() or None,
+        "s3_region": str(s3.get("region") or "").strip() or None,
+        "s3_profile": str(s3.get("profile") or "").strip() or None,
+        "s3_endpoint_url": str(s3.get("endpoint_url") or "").strip() or None,
+    }
+
+
+def _storage_columns_to_settings(storage_row, project_slug: str) -> dict:
+    base = _settings_storage_defaults(project_slug)
+    if not storage_row:
+        return base
+    local = base["local"]
+    s3 = base["s3"]
+    local["base_dir"] = str(storage_row["local_base_dir"] or "generated/projects").strip() or "generated/projects"
+    local["project_root"] = str(storage_row["local_project_root"] or "").strip()
+    s3["enabled"] = bool(int(storage_row["s3_enabled"] or 0))
+    s3["bucket"] = str(storage_row["s3_bucket"] or "").strip()
+    s3["prefix"] = str(storage_row["s3_prefix"] or "").strip() or "iat-projects"
+    s3["region"] = str(storage_row["s3_region"] or "").strip()
+    s3["profile"] = str(storage_row["s3_profile"] or "").strip()
+    s3["endpoint_url"] = str(storage_row["s3_endpoint_url"] or "").strip()
+    return base
+
+
+def upsert_project_storage_from_settings(conn: sqlite3.Connection, project_row, settings: dict):
+    if not project_row:
+        return
+    cols = _settings_to_storage_columns(settings, project_row["slug"])
+    ts = now_iso()
+    existing = conn.execute(
+        "SELECT id FROM project_storage WHERE project_id = ?",
+        (project_row["id"],),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            """
+            UPDATE project_storage
+            SET local_base_dir = ?,
+                local_project_root = ?,
+                s3_enabled = ?,
+                s3_bucket = ?,
+                s3_prefix = ?,
+                s3_region = ?,
+                s3_profile = ?,
+                s3_endpoint_url = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                cols["local_base_dir"],
+                cols["local_project_root"],
+                cols["s3_enabled"],
+                cols["s3_bucket"],
+                cols["s3_prefix"],
+                cols["s3_region"],
+                cols["s3_profile"],
+                cols["s3_endpoint_url"],
+                ts,
+                existing["id"],
+            ),
+        )
+        return
+    conn.execute(
+        """
+        INSERT INTO project_storage
+          (id, project_id, local_base_dir, local_project_root, s3_enabled, s3_bucket,
+           s3_prefix, s3_region, s3_profile, s3_endpoint_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            uid(),
+            project_row["id"],
+            cols["local_base_dir"],
+            cols["local_project_root"],
+            cols["s3_enabled"],
+            cols["s3_bucket"],
+            cols["s3_prefix"],
+            cols["s3_region"],
+            cols["s3_profile"],
+            cols["s3_endpoint_url"],
+            ts,
+            ts,
+        ),
+    )
+
+
+def _sync_users_to_app_users(conn: sqlite3.Connection):
+    if not table_exists(conn, "users") or not table_exists(conn, "app_users"):
+        return
+    rows = conn.execute(
+        """
+        SELECT id, username, display_name, email, is_active, created_at, updated_at
+        FROM users
+        """
+    ).fetchall()
+    for r in rows:
+        conn.execute(
+            """
+            INSERT INTO app_users (id, username, display_name, email, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              username = excluded.username,
+              display_name = excluded.display_name,
+              email = excluded.email,
+              is_active = excluded.is_active,
+              updated_at = excluded.updated_at
+            """,
+            (r["id"], r["username"], r["display_name"], r["email"], r["is_active"], r["created_at"], r["updated_at"]),
+        )
+
+
+def _sync_project_owner_columns(conn: sqlite3.Connection):
+    if not table_exists(conn, "projects"):
+        return
+    if table_has_column(conn, "projects", "owner_user_id"):
+        conn.execute(
+            """
+            UPDATE projects
+            SET owner_user_id = user_id
+            WHERE owner_user_id IS NULL OR owner_user_id = ''
+            """
+        )
+    conn.execute(
+        """
+        UPDATE projects
+        SET user_id = owner_user_id
+        WHERE (user_id IS NULL OR user_id = '') AND owner_user_id IS NOT NULL
+        """
+    )
+
+
+def _sync_canonical_columns(conn: sqlite3.Connection):
+    conn.execute("UPDATE assets SET kind = asset_kind WHERE kind IS NULL OR kind = ''")
+    conn.execute("UPDATE assets SET storage_uri = rel_path WHERE storage_uri IS NULL OR storage_uri = ''")
+    conn.execute("UPDATE assets SET metadata_json = meta_json WHERE metadata_json IS NULL OR metadata_json = ''")
+    conn.execute("UPDATE assets SET asset_kind = kind WHERE (asset_kind IS NULL OR asset_kind = '') AND kind IS NOT NULL")
+    conn.execute(
+        "UPDATE assets SET rel_path = storage_uri WHERE (rel_path IS NULL OR rel_path = '') AND storage_uri IS NOT NULL"
+    )
+    conn.execute(
+        """
+        UPDATE assets
+        SET meta_json = metadata_json
+        WHERE (meta_json IS NULL OR meta_json = '' OR meta_json = '{}') AND metadata_json IS NOT NULL
+        """
+    )
+
+    conn.execute("UPDATE runs SET run_mode = mode WHERE run_mode IS NULL OR run_mode = ''")
+    conn.execute("UPDATE runs SET model_name = model WHERE model_name IS NULL OR model_name = ''")
+    conn.execute(
+        """
+        UPDATE runs
+        SET settings_snapshot_json = meta_json
+        WHERE settings_snapshot_json IS NULL OR settings_snapshot_json = ''
+        """
+    )
+
+    conn.execute(
+        """
+        UPDATE run_jobs
+        SET selected_candidate_index = selected_candidate
+        WHERE selected_candidate_index IS NULL AND selected_candidate IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE project_exports
+        SET sha256 = export_sha256
+        WHERE (sha256 IS NULL OR sha256 = '') AND export_sha256 IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE project_api_secrets
+        SET kms_key_ref = key_ref
+        WHERE kms_key_ref IS NULL OR kms_key_ref = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE project_api_secrets
+        SET key_ref = COALESCE(key_ref, kms_key_ref, 'local-master')
+        WHERE key_ref IS NULL OR key_ref = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE style_guides
+        SET rules_json = specs_json
+        WHERE (rules_json IS NULL OR rules_json = '' OR rules_json = '{}')
+          AND specs_json IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE provider_accounts
+        SET config_json = meta_json
+        WHERE (config_json IS NULL OR config_json = '' OR config_json = '{}')
+          AND meta_json IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE provider_accounts
+        SET meta_json = config_json
+        WHERE (meta_json IS NULL OR meta_json = '' OR meta_json = '{}')
+          AND config_json IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE provider_accounts
+        SET is_enabled = 1
+        WHERE is_enabled IS NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE reference_sets
+        SET name = title
+        WHERE (name IS NULL OR name = '')
+          AND title IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE reference_sets
+        SET kind = 'other'
+        WHERE kind IS NULL OR kind = ''
+        """
+    )
+    ref_rows = conn.execute(
+        """
+        SELECT id, notes
+        FROM reference_sets
+        WHERE (metadata_json IS NULL OR metadata_json = '' OR metadata_json = '{}')
+          AND notes IS NOT NULL
+          AND notes != ''
+        """
+    ).fetchall()
+    for row in ref_rows:
+        conn.execute(
+            "UPDATE reference_sets SET metadata_json = ? WHERE id = ?",
+            (to_json({"notes": row["notes"]}), row["id"]),
+        )
+
+
+def _find_asset_id_by_uri(conn: sqlite3.Connection, project_id: str, storage_uri: str | None):
+    path = normalize_rel_path(storage_uri or "")
+    if not path:
+        return None
+    row = conn.execute(
+        """
+        SELECT id
+        FROM assets
+        WHERE project_id = ? AND (storage_uri = ? OR rel_path = ?)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (project_id, path, path),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def _sync_run_candidates(conn: sqlite3.Connection):
+    if not table_exists(conn, "run_candidates") or not table_exists(conn, "run_job_candidates"):
+        return
+    rows = conn.execute(
+        """
+        SELECT c.*, r.project_id
+        FROM run_job_candidates c
+        JOIN run_jobs j ON j.id = c.job_id
+        JOIN runs r ON r.id = j.run_id
+        """
+    ).fetchall()
+    for r in rows:
+        output_asset_id = _find_asset_id_by_uri(conn, r["project_id"], r["output_path"])
+        final_asset_id = _find_asset_id_by_uri(conn, r["project_id"], r["final_output_path"])
+        conn.execute(
+            """
+            INSERT INTO run_candidates
+              (id, job_id, candidate_index, status, output_asset_id, final_asset_id,
+               rank_hard_failures, rank_soft_warnings, rank_avg_chroma_exceed, meta_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              job_id = excluded.job_id,
+              candidate_index = excluded.candidate_index,
+              status = excluded.status,
+              output_asset_id = excluded.output_asset_id,
+              final_asset_id = excluded.final_asset_id,
+              rank_hard_failures = excluded.rank_hard_failures,
+              rank_soft_warnings = excluded.rank_soft_warnings,
+              rank_avg_chroma_exceed = excluded.rank_avg_chroma_exceed,
+              meta_json = excluded.meta_json
+            """,
+            (
+                r["id"],
+                r["job_id"],
+                r["candidate_index"],
+                r["status"],
+                output_asset_id,
+                final_asset_id,
+                r["rank_hard_failures"],
+                r["rank_soft_warnings"],
+                r["rank_avg_chroma_exceed"],
+                r["meta_json"],
+                r["created_at"],
+            ),
+        )
+
+
+def _sync_project_storage_from_projects(conn: sqlite3.Connection):
+    if not table_exists(conn, "project_storage"):
+        return
+    projects = conn.execute("SELECT * FROM projects").fetchall()
+    for p in projects:
+        settings = load_project_settings(p)
+        upsert_project_storage_from_settings(conn, p, settings)
+
+
+def _apply_phase1_backfills(conn: sqlite3.Connection):
+    _sync_users_to_app_users(conn)
+    _sync_project_owner_columns(conn)
+    _sync_canonical_columns(conn)
+    _sync_project_storage_from_projects(conn)
+    _sync_run_candidates(conn)
+
+
+def _sync_phase2_columns(conn: sqlite3.Connection):
+    conn.execute(
+        """
+        UPDATE quality_reports
+        SET job_id = run_job_id
+        WHERE job_id IS NULL AND run_job_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE quality_reports
+        SET candidate_id = run_job_candidate_id
+        WHERE candidate_id IS NULL AND run_job_candidate_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE quality_reports
+        SET report_type = 'human_review'
+        WHERE report_type IS NULL OR report_type = ''
+        """
+    )
+    quality_rows = conn.execute(
+        """
+        SELECT id, rating, notes
+        FROM quality_reports
+        WHERE summary_json IS NULL OR summary_json = '' OR summary_json = '{}'
+        """
+    ).fetchall()
+    for row in quality_rows:
+        conn.execute(
+            "UPDATE quality_reports SET summary_json = ? WHERE id = ?",
+            (to_json({"rating": row["rating"], "notes": row["notes"]}), row["id"]),
+        )
+
+    conn.execute(
+        """
+        UPDATE cost_events
+        SET provider_code = 'unknown'
+        WHERE provider_code IS NULL OR provider_code = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE cost_events
+        SET operation_code = COALESCE(NULLIF(event_type, ''), 'legacy_event')
+        WHERE operation_code IS NULL OR operation_code = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE cost_events
+        SET cost_usd = (COALESCE(amount_cents, 0) / 100.0)
+        WHERE cost_usd IS NULL
+        """
+    )
+    cost_rows = conn.execute(
+        """
+        SELECT id, notes
+        FROM cost_events
+        WHERE meta_json IS NULL OR meta_json = ''
+        """
+    ).fetchall()
+    for row in cost_rows:
+        payload = {"notes": row["notes"]} if row["notes"] else {}
+        conn.execute("UPDATE cost_events SET meta_json = ? WHERE id = ?", (to_json(payload), row["id"]))
+    conn.execute(
+        """
+        UPDATE cost_events
+        SET event_type = COALESCE(NULLIF(event_type, ''), operation_code, 'legacy_event')
+        WHERE event_type IS NULL OR event_type = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE cost_events
+        SET amount_cents = CAST(ROUND(COALESCE(cost_usd, 0) * 100.0) AS INTEGER)
+        WHERE amount_cents IS NULL
+        """
+    )
+
+    conn.execute(
+        """
+        UPDATE audit_events
+        SET actor_user_id = user_id
+        WHERE actor_user_id IS NULL AND user_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE audit_events
+        SET event_code = COALESCE(NULLIF(action, ''), 'legacy_event')
+        WHERE event_code IS NULL OR event_code = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE audit_events
+        SET payload_json = COALESCE(NULLIF(details_json, ''), '{}')
+        WHERE payload_json IS NULL OR payload_json = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE audit_events
+        SET user_id = COALESCE(user_id, actor_user_id)
+        WHERE user_id IS NULL AND actor_user_id IS NOT NULL
+        """
+    )
+    conn.execute(
+        """
+        UPDATE audit_events
+        SET action = COALESCE(NULLIF(action, ''), event_code, 'legacy_event')
+        WHERE action IS NULL OR action = ''
+        """
+    )
+    conn.execute(
+        """
+        UPDATE audit_events
+        SET details_json = COALESCE(NULLIF(details_json, ''), payload_json, '{}')
+        WHERE details_json IS NULL OR details_json = ''
+        """
+    )
+
+
+def _seed_quality_reports_from_candidates(conn: sqlite3.Connection):
+    rows = conn.execute(
+        """
+        SELECT c.id AS candidate_id,
+               c.job_id AS job_id,
+               j.run_id AS run_id,
+               r.project_id AS project_id,
+               c.status AS status,
+               c.rank_hard_failures AS rank_hard_failures,
+               c.rank_soft_warnings AS rank_soft_warnings,
+               c.rank_avg_chroma_exceed AS rank_avg_chroma_exceed,
+               c.meta_json AS meta_json,
+               c.created_at AS created_at
+        FROM run_job_candidates c
+        JOIN run_jobs j ON j.id = c.job_id
+        JOIN runs r ON r.id = j.run_id
+        LEFT JOIN quality_reports q ON (q.run_job_candidate_id = c.id OR q.candidate_id = c.id)
+        WHERE q.id IS NULL
+        """
+    ).fetchall()
+    for row in rows:
+        summary = {
+            "status": row["status"],
+            "rank": {
+                "hard_failures": int(row["rank_hard_failures"] or 0),
+                "soft_warnings": int(row["rank_soft_warnings"] or 0),
+                "avg_chroma_exceed": float(row["rank_avg_chroma_exceed"] or 0.0),
+            },
+            "source": "phase2_backfill",
+        }
+        try:
+            parsed = json.loads(row["meta_json"] or "{}")
+            if isinstance(parsed, dict) and isinstance(parsed.get("output_guard"), dict):
+                summary["output_guard"] = parsed["output_guard"]
+        except Exception:
+            pass
+        insert_quality_report(
+            conn,
+            row["project_id"],
+            row["run_id"],
+            row["job_id"],
+            row["candidate_id"],
+            "output_guard",
+            summary,
+            created_at=row["created_at"] or now_iso(),
+        )
+
+
+def _apply_phase2_backfills(conn: sqlite3.Connection):
+    _sync_phase2_columns(conn)
+    _seed_quality_reports_from_candidates(conn)
+
+
+def insert_quality_report(
+    conn: sqlite3.Connection,
+    project_id: str,
+    run_id: str | None,
+    job_id: str | None,
+    candidate_id: str | None,
+    report_type: str,
+    summary: dict,
+    created_at: str | None = None,
+):
+    ts = created_at or now_iso()
+    summary_obj = summary if isinstance(summary, dict) else {"value": summary}
+    rating_raw = summary_obj.get("rating", 0)
+    try:
+        rating = int(rating_raw)
+    except Exception:
+        rating = 0
+    notes = str(summary_obj.get("notes", "") or "")
+    conn.execute(
+        """
+        INSERT INTO quality_reports
+          (id, project_id, run_id, run_job_id, run_job_candidate_id, job_id, candidate_id, report_type, summary_json, rating, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            uid(),
+            project_id,
+            run_id,
+            job_id,
+            candidate_id,
+            job_id,
+            candidate_id,
+            str(report_type or "output_guard"),
+            to_json(summary_obj),
+            rating,
+            notes,
+            ts,
+        ),
+    )
+
+
+def insert_cost_event(
+    conn: sqlite3.Connection,
+    project_id: str,
+    run_id: str | None,
+    provider_code: str,
+    operation_code: str,
+    units: float,
+    cost_usd: float,
+    currency: str = "USD",
+    meta: dict | None = None,
+    created_at: str | None = None,
+):
+    ts = created_at or now_iso()
+    safe_provider = str(provider_code or "unknown").strip() or "unknown"
+    safe_operation = str(operation_code or "legacy_event").strip() or "legacy_event"
+    safe_currency = str(currency or "USD").strip() or "USD"
+    safe_meta = meta if isinstance(meta, dict) else {}
+    try:
+        safe_units = float(units or 0)
+    except Exception:
+        safe_units = 0.0
+    try:
+        safe_cost_usd = float(cost_usd or 0)
+    except Exception:
+        safe_cost_usd = 0.0
+    amount_cents = int(round(safe_cost_usd * 100.0))
+    notes = str(safe_meta.get("notes", "") or "")
+    conn.execute(
+        """
+        INSERT INTO cost_events
+          (id, project_id, run_id, amount_cents, currency, event_type, notes, provider_code, operation_code, units, cost_usd, meta_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            uid(),
+            project_id,
+            run_id,
+            amount_cents,
+            safe_currency,
+            safe_operation,
+            notes,
+            safe_provider,
+            safe_operation,
+            safe_units,
+            safe_cost_usd,
+            to_json(safe_meta),
+            ts,
+        ),
+    )
+
+
+def extract_cost_event_rows(run_data: dict) -> list[dict]:
+    events: list[dict] = []
+
+    raw_events = run_data.get("cost_events")
+    if isinstance(raw_events, list):
+        for item in raw_events:
+            if not isinstance(item, dict):
+                continue
+            provider_code = item.get("provider_code") or item.get("provider") or "unknown"
+            operation_code = item.get("operation_code") or item.get("operation") or item.get("event_type") or "legacy_event"
+            units = item.get("units") or item.get("quantity") or 0
+            cost_usd = item.get("cost_usd")
+            if cost_usd is None and item.get("amount_cents") is not None:
+                try:
+                    cost_usd = float(item.get("amount_cents")) / 100.0
+                except Exception:
+                    cost_usd = 0
+            events.append(
+                {
+                    "provider_code": provider_code,
+                    "operation_code": operation_code,
+                    "units": units,
+                    "cost_usd": cost_usd or 0,
+                    "currency": item.get("currency") or "USD",
+                    "meta": item,
+                }
+            )
+
+    generation = run_data.get("generation")
+    if isinstance(generation, dict):
+        provider_code = generation.get("provider_code") or generation.get("provider") or "openai"
+        operation_code = generation.get("operation_code") or "image_generation"
+        units = generation.get("units") or generation.get("images") or generation.get("count") or 0
+        cost_usd = generation.get("cost_usd")
+        if cost_usd is None and generation.get("amount_cents") is not None:
+            try:
+                cost_usd = float(generation.get("amount_cents")) / 100.0
+            except Exception:
+                cost_usd = 0
+        if cost_usd is not None:
+            events.append(
+                {
+                    "provider_code": provider_code,
+                    "operation_code": operation_code,
+                    "units": units,
+                    "cost_usd": cost_usd,
+                    "currency": generation.get("currency") or "USD",
+                    "meta": generation,
+                }
+            )
+
+    if not events:
+        top_level_cost = run_data.get("cost_usd")
+        if top_level_cost is None and run_data.get("amount_cents") is not None:
+            try:
+                top_level_cost = float(run_data.get("amount_cents")) / 100.0
+            except Exception:
+                top_level_cost = None
+        if top_level_cost is not None:
+            events.append(
+                {
+                    "provider_code": "unknown",
+                    "operation_code": "run_total",
+                    "units": 1,
+                    "cost_usd": top_level_cost,
+                    "currency": run_data.get("currency") or "USD",
+                    "meta": {"source": "run_log_top_level"},
+                }
+            )
+
+    return events
+
+
+def emit_audit_event(
+    conn: sqlite3.Connection,
+    project_id: str | None,
+    actor_user_id: str | None,
+    event_code: str,
+    payload: dict | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+):
+    ts = now_iso()
+    safe_code = str(event_code or "legacy_event").strip() or "legacy_event"
+    payload_obj = payload if isinstance(payload, dict) else {}
+    conn.execute(
+        """
+        INSERT INTO audit_events
+          (id, project_id, user_id, actor_user_id, action, event_code, target_type, target_id, details_json, payload_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            uid(),
+            project_id,
+            actor_user_id,
+            actor_user_id,
+            safe_code,
+            safe_code,
+            target_type,
+            target_id,
+            to_json(payload_obj),
+            to_json(payload_obj),
+            ts,
+        ),
+    )
+
+
 def record_migration(conn: sqlite3.Connection, version: str, note: str = ""):
     conn.execute(
         """
@@ -195,6 +939,16 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          display_name TEXT NOT NULL,
+          email TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS app_users (
           id TEXT PRIMARY KEY,
           username TEXT NOT NULL UNIQUE,
           display_name TEXT NOT NULL,
@@ -269,6 +1023,24 @@ def init_schema(conn: sqlite3.Connection) -> None:
           created_at TEXT NOT NULL,
           UNIQUE(job_id, candidate_index),
           FOREIGN KEY(job_id) REFERENCES run_jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS run_candidates (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          candidate_index INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          output_asset_id TEXT,
+          final_asset_id TEXT,
+          rank_hard_failures INTEGER NOT NULL DEFAULT 0,
+          rank_soft_warnings INTEGER NOT NULL DEFAULT 0,
+          rank_avg_chroma_exceed REAL NOT NULL DEFAULT 0,
+          meta_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          UNIQUE(job_id, candidate_index),
+          FOREIGN KEY(job_id) REFERENCES run_jobs(id) ON DELETE CASCADE,
+          FOREIGN KEY(output_asset_id) REFERENCES assets(id) ON DELETE SET NULL,
+          FOREIGN KEY(final_asset_id) REFERENCES assets(id) ON DELETE SET NULL
         );
 
         CREATE TABLE IF NOT EXISTS assets (
@@ -407,6 +1179,168 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_agent_instructions_project ON agent_instructions(project_id, status, priority, created_at);
         CREATE INDEX IF NOT EXISTS idx_agent_instruction_events_instr ON agent_instruction_events(instruction_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_voice_requests_project ON voice_requests(project_id, status, created_at);
+
+        CREATE TABLE IF NOT EXISTS project_storage (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          total_bytes INTEGER NOT NULL DEFAULT 0,
+          used_bytes INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(project_id),
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_accounts (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          provider_code TEXT NOT NULL,
+          api_key TEXT NOT NULL,
+          meta_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(project_id, provider_code),
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS style_guides (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          specs_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS characters (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          code TEXT NOT NULL,
+          name TEXT NOT NULL,
+          bio TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(project_id, code),
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS reference_sets (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS reference_items (
+          id TEXT PRIMARY KEY,
+          reference_set_id TEXT NOT NULL,
+          asset_id TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          UNIQUE(reference_set_id, asset_id),
+          FOREIGN KEY(reference_set_id) REFERENCES reference_sets(id) ON DELETE CASCADE,
+          FOREIGN KEY(asset_id) REFERENCES assets(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS asset_links (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          parent_asset_id TEXT NOT NULL,
+          child_asset_id TEXT NOT NULL,
+          link_type TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE(parent_asset_id, child_asset_id, link_type),
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(parent_asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+          FOREIGN KEY(child_asset_id) REFERENCES assets(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS quality_reports (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          run_id TEXT,
+          run_job_id TEXT,
+          run_job_candidate_id TEXT,
+          job_id TEXT,
+          candidate_id TEXT,
+          report_type TEXT NOT NULL DEFAULT 'output_guard',
+          summary_json TEXT NOT NULL DEFAULT '{}',
+          rating INTEGER NOT NULL DEFAULT 0,
+          notes TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE SET NULL,
+          FOREIGN KEY(run_job_id) REFERENCES run_jobs(id) ON DELETE SET NULL,
+          FOREIGN KEY(run_job_candidate_id) REFERENCES run_job_candidates(id) ON DELETE SET NULL,
+          FOREIGN KEY(job_id) REFERENCES run_jobs(id) ON DELETE SET NULL,
+          FOREIGN KEY(candidate_id) REFERENCES run_candidates(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS prompt_templates (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          template_text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS cost_events (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL,
+          run_id TEXT,
+          amount_cents INTEGER NOT NULL,
+          currency TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          notes TEXT NOT NULL DEFAULT '',
+          provider_code TEXT NOT NULL DEFAULT 'unknown',
+          operation_code TEXT NOT NULL DEFAULT 'legacy_event',
+          units REAL NOT NULL DEFAULT 0,
+          cost_usd REAL NOT NULL DEFAULT 0,
+          meta_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+          FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_events (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          user_id TEXT,
+          actor_user_id TEXT,
+          action TEXT NOT NULL,
+          event_code TEXT NOT NULL DEFAULT 'legacy_event',
+          target_type TEXT,
+          target_id TEXT,
+          details_json TEXT NOT NULL DEFAULT '{}',
+          payload_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL,
+          FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY(actor_user_id) REFERENCES app_users(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_project_storage_project ON project_storage(project_id);
+        CREATE INDEX IF NOT EXISTS idx_provider_accounts_project ON provider_accounts(project_id);
+        CREATE INDEX IF NOT EXISTS idx_style_guides_project ON style_guides(project_id);
+        CREATE INDEX IF NOT EXISTS idx_characters_project ON characters(project_id);
+        CREATE INDEX IF NOT EXISTS idx_reference_sets_project ON reference_sets(project_id);
+        CREATE INDEX IF NOT EXISTS idx_reference_items_set ON reference_items(reference_set_id);
+        CREATE INDEX IF NOT EXISTS idx_asset_links_parent ON asset_links(parent_asset_id);
+        CREATE INDEX IF NOT EXISTS idx_asset_links_child ON asset_links(child_asset_id);
+        CREATE INDEX IF NOT EXISTS idx_quality_reports_project ON quality_reports(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_quality_reports_run ON quality_reports(run_id);
+        CREATE INDEX IF NOT EXISTS idx_prompt_templates_project ON prompt_templates(project_id);
+        CREATE INDEX IF NOT EXISTS idx_cost_events_project ON cost_events(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_cost_events_run ON cost_events(run_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_project ON audit_events(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_assets_sha256 ON assets(project_id, sha256);
         """
     )
 
@@ -422,14 +1356,147 @@ def init_schema(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_agent_instructions_queue ON agent_instructions(status, priority, next_attempt_at, created_at)"
     )
 
+    # canonical compatibility columns
+    ensure_column(conn, "projects", "owner_user_id", "TEXT")
+    ensure_column(conn, "assets", "kind", "TEXT")
+    ensure_column(conn, "assets", "storage_uri", "TEXT")
+    ensure_column(conn, "assets", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "runs", "run_mode", "TEXT")
+    ensure_column(conn, "runs", "model_name", "TEXT")
+    ensure_column(conn, "runs", "settings_snapshot_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "run_jobs", "selected_candidate_index", "INTEGER")
+    ensure_column(conn, "run_jobs", "final_asset_id", "TEXT")
+    ensure_column(conn, "project_exports", "export_asset_id", "TEXT")
+    ensure_column(conn, "project_exports", "sha256", "TEXT")
+    ensure_column(conn, "project_api_secrets", "kms_key_ref", "TEXT")
+    ensure_column(conn, "project_storage", "local_base_dir", "TEXT NOT NULL DEFAULT 'generated/projects'")
+    ensure_column(conn, "project_storage", "local_project_root", "TEXT")
+    ensure_column(conn, "project_storage", "s3_enabled", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "project_storage", "s3_bucket", "TEXT")
+    ensure_column(conn, "project_storage", "s3_prefix", "TEXT")
+    ensure_column(conn, "project_storage", "s3_region", "TEXT")
+    ensure_column(conn, "project_storage", "s3_profile", "TEXT")
+    ensure_column(conn, "project_storage", "s3_endpoint_url", "TEXT")
+    ensure_column(conn, "style_guides", "rules_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "style_guides", "is_default", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "characters", "identity_constraints_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "reference_sets", "name", "TEXT")
+    ensure_column(conn, "reference_sets", "kind", "TEXT NOT NULL DEFAULT 'other'")
+    ensure_column(conn, "reference_sets", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "reference_items", "weight", "REAL NOT NULL DEFAULT 1.0")
+    ensure_column(conn, "provider_accounts", "is_enabled", "INTEGER NOT NULL DEFAULT 1")
+    ensure_column(conn, "provider_accounts", "config_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "quality_reports", "job_id", "TEXT")
+    ensure_column(conn, "quality_reports", "candidate_id", "TEXT")
+    ensure_column(conn, "quality_reports", "report_type", "TEXT NOT NULL DEFAULT 'output_guard'")
+    ensure_column(conn, "quality_reports", "summary_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "cost_events", "provider_code", "TEXT NOT NULL DEFAULT 'unknown'")
+    ensure_column(conn, "cost_events", "operation_code", "TEXT NOT NULL DEFAULT 'legacy_event'")
+    ensure_column(conn, "cost_events", "units", "REAL NOT NULL DEFAULT 0")
+    ensure_column(conn, "cost_events", "cost_usd", "REAL NOT NULL DEFAULT 0")
+    ensure_column(conn, "cost_events", "meta_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "audit_events", "actor_user_id", "TEXT")
+    ensure_column(conn, "audit_events", "event_code", "TEXT NOT NULL DEFAULT 'legacy_event'")
+    ensure_column(conn, "audit_events", "payload_json", "TEXT NOT NULL DEFAULT '{}'")
+
+    # additional additive columns used by current runtime
+    ensure_column(conn, "assets", "storage_backend", "TEXT NOT NULL DEFAULT 'local'")
+    ensure_column(conn, "assets", "mime_type", "TEXT")
+    ensure_column(conn, "assets", "width", "INTEGER")
+    ensure_column(conn, "assets", "height", "INTEGER")
+    ensure_column(conn, "runs", "provider_code", "TEXT")
+    ensure_column(conn, "runs", "started_at", "TEXT")
+    ensure_column(conn, "runs", "finished_at", "TEXT")
+    ensure_column(conn, "run_jobs", "prompt_text", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "project_exports", "format", "TEXT NOT NULL DEFAULT 'tar.gz'")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_projects_owner_slug ON projects(owner_user_id, slug)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_project_created ON runs(project_id, created_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_run_jobs_run_status ON run_jobs(run_id, status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_run_candidates_job_idx ON run_candidates(job_id, candidate_index)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_project_kind_created ON assets(project_id, kind, created_at DESC)")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_assets_project_storage_uri ON assets(project_id, storage_uri) WHERE storage_uri IS NOT NULL"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_projects_owner_slug ON projects(owner_user_id, slug) WHERE owner_user_id IS NOT NULL"
+    )
+
+    _apply_phase1_backfills(conn)
+    _apply_phase2_backfills(conn)
+
     record_migration(conn, "20260220_0001_base_schema", "base schema + chat + storage + exports")
     record_migration(conn, "20260220_0002_instruction_queue", "instruction retries/locks columns")
     record_migration(conn, "20260220_0003_project_api_secrets", "encrypted provider secret storage")
+    record_migration(conn, "20260221_0004_provider_accounts", "provider_accounts table")
+    record_migration(conn, "20260221_0006_creative_knowledge", "style_guides, characters, reference_sets, reference_items tables")
+    record_migration(conn, "20260221_0007_assets_additive_cols", "assets: storage_backend, mime_type, width, height columns")
+    record_migration(conn, "20260221_0008_asset_links", "asset_links table")
+    record_migration(conn, "20260221_0009_runs_additive_cols", "runs: provider_code, started_at, finished_at columns")
+    record_migration(conn, "20260221_0010_run_jobs_prompt_text", "run_jobs: prompt_text column")
+    record_migration(conn, "20260221_0012_quality_reports", "quality_reports table")
+    record_migration(conn, "20260221_0013_prompt_templates", "prompt_templates table")
+    record_migration(conn, "20260221_0014_cost_events", "cost_events table")
+    record_migration(conn, "20260221_0015_project_exports_format", "project_exports: format column")
+    record_migration(conn, "20260221_0016_audit_events", "audit_events table")
+    record_migration(conn, "20260221_0003_project_storage_table", "project_storage table (schema only, data migration deferred)")
+    record_migration(conn, "20260221_0018_phase1_canonical_schema", "canonical columns/tables for app_users/run_candidates/owner_user_id")
+    record_migration(conn, "20260221_0019_phase1_backfill", "canonical backfill for users/projects/assets/runs/jobs/storage/candidates")
+    record_migration(conn, "20260221_0020_phase2_event_columns", "canonical quality_reports/cost_events/audit_events columns")
+    record_migration(conn, "20260221_0021_phase2_backfill", "backfill canonical event columns from legacy fields")
+    record_migration(conn, "20260221_0022_creative_schema_columns", "canonical creative columns for style_guides/characters/reference_sets/items")
+    record_migration(conn, "20260221_0023_provider_account_columns", "provider_accounts: is_enabled + config_json canonical columns")
     conn.commit()
 
 
 def get_user_by_username(conn: sqlite3.Connection, username: str):
+    row = conn.execute("SELECT * FROM app_users WHERE username = ?", (username,)).fetchone()
+    if row:
+        return row
     return conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+
+
+def get_user_by_id(conn: sqlite3.Connection, user_id: str):
+    row = conn.execute("SELECT * FROM app_users WHERE id = ?", (user_id,)).fetchone()
+    if row:
+        return row
+    return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def _upsert_user_dual(
+    conn: sqlite3.Connection,
+    user_id: str,
+    username: str,
+    display_name: str,
+    email: str | None,
+    ts: str,
+):
+    conn.execute(
+        """
+        INSERT INTO app_users (id, username, display_name, email, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          username = excluded.username,
+          display_name = excluded.display_name,
+          email = excluded.email,
+          is_active = 1,
+          updated_at = excluded.updated_at
+        """,
+        (user_id, username, display_name, email, ts, ts),
+    )
+    conn.execute(
+        """
+        INSERT INTO users (id, username, display_name, email, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          username = excluded.username,
+          display_name = excluded.display_name,
+          email = excluded.email,
+          is_active = 1,
+          updated_at = excluded.updated_at
+        """,
+        (user_id, username, display_name, email, ts, ts),
+    )
 
 
 def ensure_user(conn: sqlite3.Connection, username: str, display_name: str, email: str | None):
@@ -437,27 +1504,15 @@ def ensure_user(conn: sqlite3.Connection, username: str, display_name: str, emai
     ts = now_iso()
     row = get_user_by_username(conn, username)
     if row:
-        conn.execute(
-            """
-            UPDATE users
-            SET display_name = ?, email = ?, is_active = 1, updated_at = ?
-            WHERE id = ?
-            """,
-            (display_name, email, ts, row["id"]),
-        )
+        _upsert_user_dual(conn, row["id"], username, display_name, email, ts)
         conn.commit()
-        return conn.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone()
+        return get_user_by_id(conn, row["id"])
 
-    new_id = uid()
-    conn.execute(
-        """
-        INSERT INTO users (id, username, display_name, email, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 1, ?, ?)
-        """,
-        (new_id, username, display_name, email, ts, ts),
-    )
+    legacy = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    new_id = legacy["id"] if legacy else uid()
+    _upsert_user_dual(conn, new_id, username, display_name, email, ts)
     conn.commit()
-    return conn.execute("SELECT * FROM users WHERE id = ?", (new_id,)).fetchone()
+    return get_user_by_id(conn, new_id)
 
 
 def get_project(conn: sqlite3.Connection, project_id: str | None, project_slug: str | None):
@@ -480,10 +1535,13 @@ def load_project_settings(project_row) -> dict:
 
 
 def save_project_settings(conn: sqlite3.Connection, project_id: str, settings: dict):
+    project_row = get_project(conn, project_id, None)
     conn.execute(
         "UPDATE projects SET settings_json = ?, updated_at = ? WHERE id = ?",
         (to_json(settings or {}), now_iso(), project_id),
     )
+    if project_row:
+        upsert_project_storage_from_settings(conn, project_row, settings or {})
     conn.commit()
 
 
@@ -530,9 +1588,22 @@ def resolve_project_local_root(repo_root: Path, project_slug: str, storage_setti
     return (base_abs / project_slug).resolve()
 
 
-def project_storage_payload(repo_root: Path, project_row) -> dict:
-    settings = load_project_settings(project_row)
-    storage = resolve_storage_settings(settings, project_row["slug"])
+def project_storage_payload(repo_root: Path, project_row, conn: sqlite3.Connection | None = None) -> dict:
+    storage = None
+    if conn and table_exists(conn, "project_storage"):
+        storage_row = conn.execute(
+            """
+            SELECT *
+            FROM project_storage
+            WHERE project_id = ?
+            """,
+            (project_row["id"],),
+        ).fetchone()
+        if storage_row and row_has_key(storage_row, "local_base_dir"):
+            storage = _storage_columns_to_settings(storage_row, project_row["slug"])
+    if storage is None:
+        settings = load_project_settings(project_row)
+        storage = resolve_storage_settings(settings, project_row["slug"])
     local_root = resolve_project_local_root(repo_root, project_row["slug"], storage)
     return {
         "project": {
@@ -552,7 +1623,7 @@ def project_storage_payload(repo_root: Path, project_row) -> dict:
 
 def ensure_project(
     conn: sqlite3.Connection,
-    user_id: str,
+    owner_user_id: str,
     slug: str,
     name: str,
     description: str = "",
@@ -561,17 +1632,22 @@ def ensure_project(
     ts = now_iso()
     safe_slug = slugify(slug)
     row = conn.execute(
-        "SELECT * FROM projects WHERE user_id = ? AND slug = ?",
-        (user_id, safe_slug),
+        "SELECT * FROM projects WHERE owner_user_id = ? AND slug = ?",
+        (owner_user_id, safe_slug),
     ).fetchone()
+    if not row:
+        row = conn.execute(
+            "SELECT * FROM projects WHERE user_id = ? AND slug = ?",
+            (owner_user_id, safe_slug),
+        ).fetchone()
     if row:
         conn.execute(
             """
             UPDATE projects
-            SET name = ?, description = ?, status = ?, updated_at = ?
+            SET name = ?, description = ?, status = ?, owner_user_id = ?, user_id = COALESCE(user_id, ?), updated_at = ?
             WHERE id = ?
             """,
-            (name, description, status, ts, row["id"]),
+            (name, description, status, owner_user_id, owner_user_id, ts, row["id"]),
         )
         conn.commit()
         return conn.execute("SELECT * FROM projects WHERE id = ?", (row["id"],)).fetchone()
@@ -579,13 +1655,16 @@ def ensure_project(
     project_id = uid()
     conn.execute(
         """
-        INSERT INTO projects (id, user_id, slug, name, description, status, settings_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?)
+        INSERT INTO projects (id, owner_user_id, user_id, slug, name, description, status, settings_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
         """,
-        (project_id, user_id, safe_slug, name, description, status, ts, ts),
+        (project_id, owner_user_id, owner_user_id, safe_slug, name, description, status, ts, ts),
     )
+    project = conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if project:
+        upsert_project_storage_from_settings(conn, project, load_project_settings(project))
     conn.commit()
-    return conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+    return project
 
 
 def upsert_asset(
@@ -602,7 +1681,7 @@ def upsert_asset(
 ):
     clean_rel = normalize_rel_path(rel_path)
     if not clean_rel:
-        return
+        return None
 
     abs_path = (repo_root / clean_rel).resolve()
     file_hash = None
@@ -617,14 +1696,30 @@ def upsert_asset(
         payload.update(extra_meta)
 
     existing = conn.execute(
-        "SELECT id FROM assets WHERE project_id = ? AND rel_path = ?",
-        (project_id, clean_rel),
+        """
+        SELECT id
+        FROM assets
+        WHERE project_id = ? AND (rel_path = ? OR storage_uri = ?)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (project_id, clean_rel, clean_rel),
     ).fetchone()
     if existing:
         conn.execute(
             """
             UPDATE assets
-            SET run_id = ?, job_id = ?, candidate_id = ?, asset_kind = ?, sha256 = ?, meta_json = ?, created_at = ?
+            SET run_id = ?,
+                job_id = ?,
+                candidate_id = ?,
+                asset_kind = ?,
+                kind = ?,
+                rel_path = ?,
+                storage_uri = ?,
+                sha256 = ?,
+                meta_json = ?,
+                metadata_json = ?,
+                created_at = ?
             WHERE id = ?
             """,
             (
@@ -632,21 +1727,43 @@ def upsert_asset(
                 job_id,
                 candidate_id,
                 asset_kind,
+                asset_kind,
+                clean_rel,
+                clean_rel,
                 file_hash,
+                to_json(payload),
                 to_json(payload),
                 ts,
                 existing["id"],
             ),
         )
-        return
+        return existing["id"]
 
     conn.execute(
         """
-        INSERT INTO assets (id, project_id, run_id, job_id, candidate_id, asset_kind, rel_path, sha256, meta_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO assets
+          (id, project_id, run_id, job_id, candidate_id, asset_kind, kind, rel_path, storage_uri, sha256, meta_json, metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (uid(), project_id, run_id, job_id, candidate_id, asset_kind, clean_rel, file_hash, to_json(payload), ts),
+        (
+            uid(),
+            project_id,
+            run_id,
+            job_id,
+            candidate_id,
+            asset_kind,
+            asset_kind,
+            clean_rel,
+            clean_rel,
+            file_hash,
+            to_json(payload),
+            to_json(payload),
+            ts,
+        ),
     )
+    return conn.execute("SELECT id FROM assets WHERE project_id = ? AND storage_uri = ?", (project_id, clean_rel)).fetchone()[
+        "id"
+    ]
 
 
 def derive_run_status(run_data: dict) -> str:
@@ -666,41 +1783,48 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
     rel_run_log_path = path_for_storage(run_log_path, repo_root)
     run_status = derive_run_status(run_data)
     ts = now_iso()
+    run_mode = str(run_data.get("mode", ""))
+    model_name = str(run_data.get("model", ""))
+    run_meta = {
+        "timestamp": run_data.get("timestamp"),
+        "generation": run_data.get("generation"),
+        "postprocess": run_data.get("postprocess"),
+        "output_guard": run_data.get("output_guard"),
+    }
 
     existing_run = conn.execute(
         "SELECT id FROM runs WHERE project_id = ? AND run_log_path = ?",
         (project_row["id"], rel_run_log_path),
     ).fetchone()
     if existing_run:
+        conn.execute("DELETE FROM quality_reports WHERE run_id = ?", (existing_run["id"],))
+        conn.execute("DELETE FROM cost_events WHERE run_id = ?", (existing_run["id"],))
         conn.execute("DELETE FROM runs WHERE id = ?", (existing_run["id"],))
 
     run_id = uid()
     conn.execute(
         """
         INSERT INTO runs
-          (id, project_id, run_log_path, mode, stage, time_of_day, weather, model, image_size, image_quality, status, meta_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, project_id, run_log_path, mode, run_mode, stage, time_of_day, weather, model, model_name,
+           image_size, image_quality, status, meta_json, settings_snapshot_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
             project_row["id"],
             rel_run_log_path,
-            str(run_data.get("mode", "")),
+            run_mode,
+            run_mode,
             str(run_data.get("stage", "")),
             str(run_data.get("time", "")),
             str(run_data.get("weather", "")),
-            str(run_data.get("model", "")),
+            model_name,
+            model_name,
             str(run_data.get("size", "")),
             str(run_data.get("quality", "")),
             run_status,
-            to_json(
-                {
-                    "timestamp": run_data.get("timestamp"),
-                    "generation": run_data.get("generation"),
-                    "postprocess": run_data.get("postprocess"),
-                    "output_guard": run_data.get("output_guard"),
-                }
-            ),
+            to_json(run_meta),
+            to_json(run_meta),
             ts,
         ),
     )
@@ -712,24 +1836,34 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
     inserted_jobs = 0
     inserted_candidates = 0
     inserted_assets = 0
+    quality_reports_written = 0
+    cost_events_written = 0
 
     for idx, job in enumerate(jobs, start=1):
         if not isinstance(job, dict):
             continue
         job_key = str(job.get("id") or f"job_{idx}")
         job_id = uid()
+        selected_candidate = int(job["selected_candidate"]) if isinstance(job.get("selected_candidate"), int) else None
+        final_output_rel = normalize_rel_path(str(job.get("final_output") or "")) or None
+        prompt_text = str(job.get("prompt") or job.get("prompt_text") or "")
         conn.execute(
             """
-            INSERT INTO run_jobs (id, run_id, job_key, status, selected_candidate, final_output, meta_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO run_jobs
+              (id, run_id, job_key, status, selected_candidate, selected_candidate_index, final_output, final_asset_id,
+               prompt_text, meta_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
                 run_id,
                 job_key,
                 str(job.get("status", "")),
-                int(job["selected_candidate"]) if isinstance(job.get("selected_candidate"), int) else None,
-                normalize_rel_path(str(job.get("final_output") or "")) or None,
+                selected_candidate,
+                selected_candidate,
+                final_output_rel,
+                None,
+                prompt_text,
                 to_json(job),
                 ts,
             ),
@@ -759,6 +1893,8 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
             candidate_index = int(candidate.get("candidate_index", inserted_candidates + 1))
             output_path = normalize_rel_path(str(candidate.get("output") or "")) or None
             final_output_path = normalize_rel_path(str(candidate.get("final_output") or "")) or None
+            output_asset_id = None
+            final_asset_id = None
             conn.execute(
                 """
                 INSERT INTO run_job_candidates
@@ -783,7 +1919,7 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
             inserted_candidates += 1
 
             if output_path:
-                upsert_asset(
+                output_asset_id = upsert_asset(
                     conn,
                     project_row["id"],
                     run_id,
@@ -796,7 +1932,7 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
                 )
                 inserted_assets += 1
             if final_output_path and final_output_path != output_path:
-                upsert_asset(
+                final_asset_id = upsert_asset(
                     conn,
                     project_row["id"],
                     run_id,
@@ -808,10 +1944,70 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
                     compute_hashes,
                 )
                 inserted_assets += 1
+            elif final_output_path and final_output_path == output_path:
+                final_asset_id = output_asset_id
+
+            conn.execute(
+                """
+                INSERT INTO run_candidates
+                  (id, job_id, candidate_index, status, output_asset_id, final_asset_id,
+                   rank_hard_failures, rank_soft_warnings, rank_avg_chroma_exceed, meta_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  job_id = excluded.job_id,
+                  candidate_index = excluded.candidate_index,
+                  status = excluded.status,
+                  output_asset_id = excluded.output_asset_id,
+                  final_asset_id = excluded.final_asset_id,
+                  rank_hard_failures = excluded.rank_hard_failures,
+                  rank_soft_warnings = excluded.rank_soft_warnings,
+                  rank_avg_chroma_exceed = excluded.rank_avg_chroma_exceed,
+                  meta_json = excluded.meta_json
+                """,
+                (
+                    candidate_id,
+                    job_id,
+                    candidate_index,
+                    str(candidate.get("status", "")),
+                    output_asset_id,
+                    final_asset_id,
+                    int(rank.get("hard_failures", 0) or 0),
+                    int(rank.get("soft_warnings", 0) or 0),
+                    float(rank.get("avg_chroma_exceed", 0.0) or 0.0),
+                    to_json(candidate),
+                    ts,
+                ),
+            )
+
+            report_summary = {
+                "status": str(candidate.get("status", "")),
+                "rank": {
+                    "hard_failures": int(rank.get("hard_failures", 0) or 0),
+                    "soft_warnings": int(rank.get("soft_warnings", 0) or 0),
+                    "avg_chroma_exceed": float(rank.get("avg_chroma_exceed", 0.0) or 0.0),
+                },
+                "output_path": output_path,
+                "final_output_path": final_output_path,
+            }
+            if isinstance(candidate.get("output_guard"), dict):
+                report_summary["output_guard"] = candidate.get("output_guard")
+            if isinstance(candidate.get("qa"), dict):
+                report_summary["qa"] = candidate.get("qa")
+            insert_quality_report(
+                conn,
+                project_row["id"],
+                run_id,
+                job_id,
+                candidate_id,
+                "output_guard",
+                report_summary,
+                created_at=ts,
+            )
+            quality_reports_written += 1
 
         final_output = normalize_rel_path(str(job.get("final_output") or ""))
         if final_output:
-            upsert_asset(
+            final_asset_id = upsert_asset(
                 conn,
                 project_row["id"],
                 run_id,
@@ -823,7 +2019,62 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
                 compute_hashes,
                 extra_meta={"selected_candidate": job.get("selected_candidate")},
             )
+            conn.execute(
+                """
+                UPDATE run_jobs
+                SET final_asset_id = ?, final_output = COALESCE(final_output, ?)
+                WHERE id = ?
+                """,
+                (final_asset_id, final_output, job_id),
+            )
             inserted_assets += 1
+
+    output_guard = run_data.get("output_guard")
+    if isinstance(output_guard, dict):
+        insert_quality_report(
+            conn,
+            project_row["id"],
+            run_id,
+            None,
+            None,
+            "output_guard",
+            {"scope": "run", "output_guard": output_guard},
+            created_at=ts,
+        )
+        quality_reports_written += 1
+
+    for row in extract_cost_event_rows(run_data):
+        insert_cost_event(
+            conn,
+            project_row["id"],
+            run_id,
+            row.get("provider_code", "unknown"),
+            row.get("operation_code", "legacy_event"),
+            row.get("units", 0),
+            row.get("cost_usd", 0),
+            row.get("currency", "USD"),
+            row.get("meta", {}),
+            created_at=ts,
+        )
+        cost_events_written += 1
+
+    emit_audit_event(
+        conn,
+        project_row["id"],
+        None,
+        "run.ingested",
+        {
+            "run_id": run_id,
+            "run_log_path": rel_run_log_path,
+            "jobs": inserted_jobs,
+            "candidates": inserted_candidates,
+            "assets_upserted": inserted_assets,
+            "quality_reports_written": quality_reports_written,
+            "cost_events_written": cost_events_written,
+        },
+        target_type="run",
+        target_id=run_id,
+    )
 
     conn.commit()
     return {
@@ -832,6 +2083,8 @@ def ingest_run(conn: sqlite3.Connection, repo_root: Path, project_row, run_log_p
         "jobs": inserted_jobs,
         "candidates": inserted_candidates,
         "assets_upserted": inserted_assets,
+        "quality_reports_written": quality_reports_written,
+        "cost_events_written": cost_events_written,
         "status": run_status,
     }
 
@@ -873,8 +2126,14 @@ def export_project_package(
         init_schema(export_conn)
 
         # User + project.
-        owner = conn.execute("SELECT * FROM users WHERE id = ?", (project_row["user_id"],)).fetchone()
+        owner_user_id = (
+            project_row["owner_user_id"]
+            if row_has_key(project_row, "owner_user_id") and project_row["owner_user_id"]
+            else project_row["user_id"]
+        )
+        owner = conn.execute("SELECT * FROM app_users WHERE id = ?", (owner_user_id,)).fetchone()
         if owner:
+            copy_rows(conn, export_conn, "app_users", "id = ?", (owner["id"],))
             copy_rows(conn, export_conn, "users", "id = ?", (owner["id"],))
         copy_rows(conn, export_conn, "projects", "id = ?", (project_row["id"],))
 
@@ -885,6 +2144,8 @@ def export_project_package(
 
         jobs_copied = 0
         candidates_copied = 0
+        run_candidates_copied = 0
+        job_ids: list[str] = []
         if run_ids:
             placeholders = ", ".join(["?"] * len(run_ids))
             jobs_copied = copy_rows(conn, export_conn, "run_jobs", f"run_id IN ({placeholders})", tuple(run_ids))
@@ -904,7 +2165,19 @@ def export_project_package(
                 )
 
         assets_copied = copy_rows(conn, export_conn, "assets", "project_id = ?", (project_row["id"],))
+        if job_ids:
+            job_placeholders = ", ".join(["?"] * len(job_ids))
+            run_candidates_copied = copy_rows(
+                conn,
+                export_conn,
+                "run_candidates",
+                f"job_id IN ({job_placeholders})",
+                tuple(job_ids),
+            )
         snapshots_copied = copy_rows(conn, export_conn, "project_snapshots", "project_id = ?", (project_row["id"],))
+        quality_reports_copied = copy_rows(conn, export_conn, "quality_reports", "project_id = ?", (project_row["id"],))
+        cost_events_copied = copy_rows(conn, export_conn, "cost_events", "project_id = ?", (project_row["id"],))
+        audit_events_copied = copy_rows(conn, export_conn, "audit_events", "project_id = ?", (project_row["id"],))
         export_conn.commit()
         export_conn.close()
 
@@ -923,14 +2196,18 @@ def export_project_package(
                 "id": project_row["id"],
                 "slug": project_row["slug"],
                 "name": project_row["name"],
-                "user_id": project_row["user_id"],
+                "owner_user_id": owner_user_id,
             },
             "copied_rows": {
                 "runs": runs_copied,
                 "jobs": jobs_copied,
                 "candidates": candidates_copied,
+                "run_candidates": run_candidates_copied,
                 "assets": assets_copied,
                 "snapshots": snapshots_copied,
+                "quality_reports": quality_reports_copied,
+                "cost_events": cost_events_copied,
+                "audit_events": audit_events_copied,
             },
             "copied_files": copied_files,
         }
@@ -949,21 +2226,52 @@ def export_project_package(
             shutil.copytree(package_root, output_path)
 
     export_hash = sha256_of_file(output_path) if output_path.is_file() else None
+    export_storage_uri = path_for_storage(output_path, repo_root)
+    export_asset_id = upsert_asset(
+        conn,
+        project_row["id"],
+        None,
+        None,
+        None,
+        "export",
+        export_storage_uri,
+        repo_root,
+        compute_hashes=True,
+        extra_meta={"format": "tar.gz" if output_path.suffix == ".gz" else output_path.suffix.lstrip(".")},
+    )
     conn.execute(
         """
-        INSERT INTO project_exports (id, project_id, export_path, export_sha256, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO project_exports
+          (id, project_id, export_path, export_asset_id, export_sha256, sha256, created_at, format)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             uid(),
             project_row["id"],
-            path_for_storage(output_path, repo_root),
+            export_storage_uri,
+            export_asset_id,
+            export_hash,
             export_hash,
             now_iso(),
+            "tar.gz" if output_path.suffix == ".gz" else (output_path.suffix.lstrip(".") or "folder"),
         ),
     )
+    emit_audit_event(
+        conn,
+        project_row["id"],
+        None,
+        "project.exported",
+        {
+            "export_path": export_storage_uri,
+            "export_asset_id": export_asset_id,
+            "sha256": export_hash,
+            "include_files": bool(include_files),
+        },
+        target_type="project_export",
+        target_id=export_asset_id,
+    )
     conn.commit()
-    return {"export_path": str(output_path), "export_sha256": export_hash}
+    return {"export_path": str(output_path), "export_sha256": export_hash, "export_asset_id": export_asset_id}
 
 
 def require_project(conn: sqlite3.Connection, project_id: str, project_slug: str):
@@ -995,10 +2303,19 @@ def upsert_project_secret(
         conn.execute(
             """
             UPDATE project_api_secrets
-            SET secret_ciphertext = ?, key_ref = 'local-master', updated_at = ?
+            SET secret_ciphertext = ?, key_ref = 'local-master', kms_key_ref = 'local-master', updated_at = ?
             WHERE id = ?
             """,
             (ciphertext, ts, row["id"]),
+        )
+        emit_audit_event(
+            conn,
+            project_id,
+            None,
+            "secret.updated",
+            {"provider_code": provider_code, "secret_name": secret_name},
+            target_type="project_api_secret",
+            target_id=row["id"],
         )
         conn.commit()
         return row["id"]
@@ -1007,10 +2324,19 @@ def upsert_project_secret(
     conn.execute(
         """
         INSERT INTO project_api_secrets
-        (id, project_id, provider_code, secret_name, secret_ciphertext, key_ref, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'local-master', ?, ?)
+        (id, project_id, provider_code, secret_name, secret_ciphertext, key_ref, kms_key_ref, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'local-master', 'local-master', ?, ?)
         """,
         (secret_id, project_id, provider_code, secret_name, ciphertext, ts, ts),
+    )
+    emit_audit_event(
+        conn,
+        project_id,
+        None,
+        "secret.created",
+        {"provider_code": provider_code, "secret_name": secret_name},
+        target_type="project_api_secret",
+        target_id=secret_id,
     )
     conn.commit()
     return secret_id
@@ -1039,7 +2365,7 @@ def fetch_project_secret_value(
 def list_project_secrets(conn: sqlite3.Connection, project_id: str):
     return conn.execute(
         """
-        SELECT id, provider_code, secret_name, key_ref, created_at, updated_at
+        SELECT id, provider_code, secret_name, key_ref, kms_key_ref, created_at, updated_at
         FROM project_api_secrets
         WHERE project_id = ?
         ORDER BY provider_code, secret_name
@@ -1054,7 +2380,7 @@ def cmd_get_project_storage(args):
     conn = connect_db(db_path)
     init_schema(conn)
     project = require_project(conn, args.project_id, args.project_slug)
-    payload = project_storage_payload(repo_root, project)
+    payload = project_storage_payload(repo_root, project, conn)
     print(to_json({"ok": True, **payload}))
     conn.close()
 
@@ -1137,7 +2463,8 @@ def cmd_list_project_secrets(args):
                 "provider_code": r["provider_code"],
                 "secret_name": r["secret_name"],
                 "masked": masked,
-                "key_ref": r["key_ref"],
+                "kms_key_ref": r["kms_key_ref"] or r["key_ref"],
+                "key_ref": r["key_ref"] or r["kms_key_ref"],
                 "created_at": r["created_at"],
                 "updated_at": r["updated_at"],
             }
@@ -1160,6 +2487,14 @@ def cmd_delete_project_secret(args):
         WHERE project_id = ? AND provider_code = ? AND secret_name = ?
         """,
         (project["id"], provider_code, secret_name),
+    )
+    emit_audit_event(
+        conn,
+        project["id"],
+        None,
+        "secret.deleted",
+        {"provider_code": provider_code, "secret_name": secret_name, "deleted": cur.rowcount},
+        target_type="project_api_secret",
     )
     conn.commit()
     print(
@@ -1196,7 +2531,17 @@ def cmd_set_project_storage_local(args):
 
     save_project_settings(conn, project["id"], settings)
     refreshed = require_project(conn, project["id"], "")
-    payload = project_storage_payload(repo_root, refreshed)
+    emit_audit_event(
+        conn,
+        project["id"],
+        None,
+        "storage.local.updated",
+        {"base_dir": local.get("base_dir"), "project_root": local.get("project_root")},
+        target_type="project_storage",
+        target_id=project["id"],
+    )
+    conn.commit()
+    payload = project_storage_payload(repo_root, refreshed, conn)
     print(to_json({"ok": True, "updated": "local", **payload}))
     conn.close()
 
@@ -1228,7 +2573,24 @@ def cmd_set_project_storage_s3(args):
 
     save_project_settings(conn, project["id"], settings)
     refreshed = require_project(conn, project["id"], "")
-    payload = project_storage_payload(repo_root, refreshed)
+    emit_audit_event(
+        conn,
+        project["id"],
+        None,
+        "storage.s3.updated",
+        {
+            "enabled": bool(s3.get("enabled")),
+            "bucket": s3.get("bucket"),
+            "prefix": s3.get("prefix"),
+            "region": s3.get("region"),
+            "profile": s3.get("profile"),
+            "endpoint_url": s3.get("endpoint_url"),
+        },
+        target_type="project_storage",
+        target_id=project["id"],
+    )
+    conn.commit()
+    payload = project_storage_payload(repo_root, refreshed, conn)
     print(to_json({"ok": True, "updated": "s3", **payload}))
     conn.close()
 
@@ -1239,7 +2601,7 @@ def cmd_sync_project_s3(args):
     conn = connect_db(db_path)
     init_schema(conn)
     project = require_project(conn, args.project_id, args.project_slug)
-    payload = project_storage_payload(repo_root, project)
+    payload = project_storage_payload(repo_root, project, conn)
     local_root = Path(payload["storage"]["local"]["project_root"])
     s3_cfg = payload["storage"]["s3"]
     conn.close()
@@ -1344,6 +2706,16 @@ def cmd_create_project(args):
     user = ensure_user(conn, args.username, args.user_display_name, None)
     slug = slugify(args.slug or args.name)
     row = ensure_project(conn, user["id"], slug, args.name, args.description)
+    emit_audit_event(
+        conn,
+        row["id"],
+        user["id"],
+        "project.upserted",
+        {"slug": row["slug"], "name": row["name"]},
+        target_type="project",
+        target_id=row["id"],
+    )
+    conn.commit()
     print(
         to_json(
             {
@@ -1352,7 +2724,8 @@ def cmd_create_project(args):
                     "id": row["id"],
                     "slug": row["slug"],
                     "name": row["name"],
-                    "user_id": row["user_id"],
+                    "owner_user_id": row["owner_user_id"] if row_has_key(row, "owner_user_id") else row["user_id"],
+                    "user_id": row["user_id"] if row_has_key(row, "user_id") else row["owner_user_id"],
                 },
             }
         )
@@ -1368,7 +2741,7 @@ def cmd_list_projects(args):
     sql = """
       SELECT p.id, p.slug, p.name, p.status, p.created_at, p.updated_at, u.username
       FROM projects p
-      JOIN users u ON u.id = p.user_id
+      JOIN app_users u ON u.id = COALESCE(p.owner_user_id, p.user_id)
     """
     params = []
     if args.username:
@@ -1429,7 +2802,7 @@ def cmd_export_project(args):
     conn = connect_db(db_path)
     init_schema(conn)
     project = require_project(conn, args.project_id, args.project_slug)
-    storage_payload = project_storage_payload(repo_root, project)
+    storage_payload = project_storage_payload(repo_root, project, conn)
     source_files_root = Path(storage_payload["storage"]["local"]["project_root"])
 
     if args.output:

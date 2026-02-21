@@ -117,6 +117,188 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return row
 
+    def _json_cell(self, raw, fallback):
+        try:
+            parsed = json.loads(raw or "")
+            return parsed if parsed is not None else fallback
+        except Exception:
+            return fallback
+
+    def _coalesce_run_row(self, row):
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "run_mode": row["run_mode"] or row["mode"],
+            "status": row["status"],
+            "stage": row["stage"],
+            "time_of_day": row["time_of_day"],
+            "weather": row["weather"],
+            "model_name": row["model_name"] or row["model"],
+            "provider_code": row["provider_code"],
+            "settings_snapshot_json": self._json_cell(row["settings_snapshot_json"] or row["meta_json"], {}),
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "created_at": row["created_at"],
+            "run_log_path": row["run_log_path"],
+            "image_size": row["image_size"],
+            "image_quality": row["image_quality"],
+        }
+
+    def _fetch_candidates_for_job(self, conn, job_id):
+        rows = conn.execute(
+            """
+            SELECT
+              COALESCE(rc.id, ljc.id) AS id,
+              COALESCE(rc.job_id, ljc.job_id) AS job_id,
+              COALESCE(rc.candidate_index, ljc.candidate_index) AS candidate_index,
+              COALESCE(rc.status, ljc.status) AS status,
+              rc.output_asset_id AS output_asset_id,
+              rc.final_asset_id AS final_asset_id,
+              ljc.output_path AS output_path,
+              ljc.final_output_path AS final_output_path,
+              COALESCE(rc.rank_hard_failures, ljc.rank_hard_failures, 0) AS rank_hard_failures,
+              COALESCE(rc.rank_soft_warnings, ljc.rank_soft_warnings, 0) AS rank_soft_warnings,
+              COALESCE(rc.rank_avg_chroma_exceed, ljc.rank_avg_chroma_exceed, 0) AS rank_avg_chroma_exceed,
+              COALESCE(rc.meta_json, ljc.meta_json, '{}') AS meta_json,
+              COALESCE(rc.created_at, ljc.created_at) AS created_at
+            FROM run_job_candidates ljc
+            LEFT JOIN run_candidates rc ON rc.id = ljc.id
+            WHERE ljc.job_id = ?
+
+            UNION ALL
+
+            SELECT
+              rc.id AS id,
+              rc.job_id AS job_id,
+              rc.candidate_index AS candidate_index,
+              rc.status AS status,
+              rc.output_asset_id AS output_asset_id,
+              rc.final_asset_id AS final_asset_id,
+              NULL AS output_path,
+              NULL AS final_output_path,
+              rc.rank_hard_failures AS rank_hard_failures,
+              rc.rank_soft_warnings AS rank_soft_warnings,
+              rc.rank_avg_chroma_exceed AS rank_avg_chroma_exceed,
+              rc.meta_json AS meta_json,
+              rc.created_at AS created_at
+            FROM run_candidates rc
+            WHERE rc.job_id = ?
+              AND NOT EXISTS (SELECT 1 FROM run_job_candidates x WHERE x.id = rc.id)
+            ORDER BY candidate_index ASC, created_at ASC
+            """,
+            (job_id, job_id),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "job_id": r["job_id"],
+                "candidate_index": r["candidate_index"],
+                "status": r["status"],
+                "output_asset_id": r["output_asset_id"],
+                "final_asset_id": r["final_asset_id"],
+                "output_path": r["output_path"],
+                "final_output_path": r["final_output_path"],
+                "rank_hard_failures": r["rank_hard_failures"],
+                "rank_soft_warnings": r["rank_soft_warnings"],
+                "rank_avg_chroma_exceed": r["rank_avg_chroma_exceed"],
+                "meta_json": self._json_cell(r["meta_json"], {}),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    def _fetch_jobs_with_candidates(self, conn, run_id):
+        jobs = conn.execute(
+            """
+            SELECT *
+            FROM run_jobs
+            WHERE run_id = ?
+            ORDER BY created_at ASC, job_key ASC
+            """,
+            (run_id,),
+        ).fetchall()
+        out = []
+        for r in jobs:
+            out.append(
+                {
+                    "id": r["id"],
+                    "run_id": r["run_id"],
+                    "job_key": r["job_key"],
+                    "status": r["status"],
+                    "prompt_text": r["prompt_text"] or "",
+                    "selected_candidate_index": (
+                        r["selected_candidate_index"]
+                        if r["selected_candidate_index"] is not None
+                        else r["selected_candidate"]
+                    ),
+                    "final_asset_id": r["final_asset_id"],
+                    "final_output": r["final_output"],
+                    "meta_json": self._json_cell(r["meta_json"], {}),
+                    "created_at": r["created_at"],
+                    "candidates": self._fetch_candidates_for_job(conn, r["id"]),
+                }
+            )
+        return out
+
+    def _coalesce_style_guide(self, row):
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "name": row["name"],
+            "description": row["description"],
+            "rules_json": self._json_cell(row["rules_json"] or row["specs_json"], {}),
+            "is_default": bool(row["is_default"] or 0),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _coalesce_character(self, row):
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "code": row["code"],
+            "name": row["name"],
+            "bio": row["bio"],
+            "identity_constraints_json": self._json_cell(row["identity_constraints_json"], {}),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _coalesce_reference_set(self, row):
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "name": row["name"] or row["title"],
+            "kind": row["kind"] or "other",
+            "metadata_json": self._json_cell(row["metadata_json"], {}),
+            "notes": row["notes"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _coalesce_reference_item(self, row):
+        return {
+            "id": row["id"],
+            "reference_set_id": row["reference_set_id"],
+            "asset_id": row["asset_id"],
+            "weight": float(row["weight"] if row["weight"] is not None else 1.0),
+            "notes": row["notes"],
+            "created_at": row["created_at"],
+        }
+
+    def _coalesce_provider_account(self, row):
+        api_key_value = row["api_key"] if "api_key" in row.keys() else None
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "provider_code": row["provider_code"],
+            "is_enabled": bool(row["is_enabled"] if row["is_enabled"] is not None else 1),
+            "config_json": self._json_cell(row["config_json"] or row["meta_json"], {}),
+            "has_api_key": bool(api_key_value),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
     def _ensure_actor_user(self, conn, username):
         safe_username = str(username or "local").strip() or "local"
         display = "Local User" if safe_username == "local" else safe_username
@@ -129,6 +311,17 @@ class Handler(BaseHTTPRequestHandler):
             VALUES (?, ?, ?, ?, ?)
             """,
             (be.uid(), instruction_id, event_type, be.to_json(payload or {}), be.now_iso()),
+        )
+
+    def _emit_audit_event(self, conn, project_id, event_code, payload, actor_user_id=None, target_type=None, target_id=None):
+        be.emit_audit_event(
+            conn,
+            project_id,
+            actor_user_id,
+            event_code,
+            payload or {},
+            target_type=target_type,
+            target_id=target_id,
         )
 
     def _dispatch_instruction_if_configured(self, conn, instruction_row):
@@ -168,6 +361,14 @@ class Handler(BaseHTTPRequestHandler):
                 "error",
                 {"message": exc_message, "target_url": target_url},
             )
+            self._emit_audit_event(
+                conn,
+                instruction_row["project_id"],
+                "instruction.dispatch_failed",
+                {"instruction_id": instruction_row["id"], "error": exc_message, "target_url": target_url},
+                target_type="agent_instruction",
+                target_id=instruction_row["id"],
+            )
             conn.commit()
             return {"dispatched": True, "ok": False, "error": exc_message}
 
@@ -189,6 +390,19 @@ class Handler(BaseHTTPRequestHandler):
             instruction_row["id"],
             "result",
             {"agent_response": parsed, "target_url": target_url, "http_status": dispatch.get("http_status")},
+        )
+        self._emit_audit_event(
+            conn,
+            instruction_row["project_id"],
+            "instruction.dispatched",
+            {
+                "instruction_id": instruction_row["id"],
+                "status": db_status,
+                "target_url": target_url,
+                "http_status": dispatch.get("http_status"),
+            },
+            target_type="agent_instruction",
+            target_id=instruction_row["id"],
         )
         conn.commit()
         return {"dispatched": True, "ok": True, "agent_response": parsed}
@@ -217,7 +431,7 @@ class Handler(BaseHTTPRequestHandler):
                 sql = """
                   SELECT p.id, p.slug, p.name, p.description, p.status, p.created_at, p.updated_at, u.username
                   FROM projects p
-                  JOIN users u ON u.id = p.user_id
+                  JOIN app_users u ON u.id = COALESCE(p.owner_user_id, p.user_id)
                 """
                 params = []
                 if username:
@@ -264,7 +478,7 @@ class Handler(BaseHTTPRequestHandler):
                     "assets": conn.execute("SELECT COUNT(*) AS c FROM assets WHERE project_id = ?", (project["id"],))
                     .fetchone()["c"],
                 }
-                storage = be.project_storage_payload(self.server.repo_root, project)
+                storage = be.project_storage_payload(self.server.repo_root, project, conn)
                 return self._json(
                     {
                         "ok": True,
@@ -291,7 +505,7 @@ class Handler(BaseHTTPRequestHandler):
                 project = be.get_project(conn, "", project_slug)
                 if not project:
                     return self._error(HTTPStatus.NOT_FOUND, "Project not found")
-                payload = be.project_storage_payload(self.server.repo_root, project)
+                payload = be.project_storage_payload(self.server.repo_root, project, conn)
                 return self._json({"ok": True, **payload})
             finally:
                 conn.close()
@@ -333,6 +547,489 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "runs":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                try:
+                    limit = int((query.get("limit", ["200"])[0] or "200").strip())
+                except Exception:
+                    limit = 200
+                limit = max(1, min(limit, 1000))
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM runs
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (project["id"], limit),
+                ).fetchall()
+                items = [self._coalesce_run_row(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "runs": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "runs":
+            project_slug = parts[2]
+            run_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                run_row = conn.execute(
+                    """
+                    SELECT *
+                    FROM runs
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (run_id, project["id"]),
+                ).fetchone()
+                if not run_row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Run not found")
+                jobs = self._fetch_jobs_with_candidates(conn, run_row["id"])
+                return self._json({"ok": True, "run": self._coalesce_run_row(run_row), "jobs": jobs})
+            finally:
+                conn.close()
+
+        if len(parts) == 6 and parts[:2] == ["api", "projects"] and parts[3] == "runs" and parts[5] == "jobs":
+            project_slug = parts[2]
+            run_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                run_row = conn.execute(
+                    """
+                    SELECT id
+                    FROM runs
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (run_id, project["id"]),
+                ).fetchone()
+                if not run_row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Run not found")
+                jobs = self._fetch_jobs_with_candidates(conn, run_row["id"])
+                return self._json({"ok": True, "run_id": run_id, "count": len(jobs), "jobs": jobs})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "assets":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                try:
+                    limit = int((query.get("limit", ["500"])[0] or "500").strip())
+                except Exception:
+                    limit = 500
+                limit = max(1, min(limit, 2000))
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM assets
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (project["id"], limit),
+                ).fetchall()
+                assets = [
+                    {
+                        "id": r["id"],
+                        "project_id": r["project_id"],
+                        "kind": r["kind"] or r["asset_kind"],
+                        "asset_kind": r["asset_kind"] or r["kind"],
+                        "storage_uri": r["storage_uri"] or r["rel_path"],
+                        "rel_path": r["rel_path"] or r["storage_uri"],
+                        "storage_backend": r["storage_backend"],
+                        "mime_type": r["mime_type"],
+                        "width": r["width"],
+                        "height": r["height"],
+                        "sha256": r["sha256"],
+                        "run_id": r["run_id"],
+                        "job_id": r["job_id"],
+                        "candidate_id": r["candidate_id"],
+                        "metadata_json": self._json_cell(r["metadata_json"] or r["meta_json"], {}),
+                        "created_at": r["created_at"],
+                    }
+                    for r in rows
+                ]
+                return self._json({"ok": True, "count": len(assets), "assets": assets})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "assets":
+            project_slug = parts[2]
+            asset_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                r = conn.execute(
+                    """
+                    SELECT *
+                    FROM assets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (asset_id, project["id"]),
+                ).fetchone()
+                if not r:
+                    return self._error(HTTPStatus.NOT_FOUND, "Asset not found")
+                asset = {
+                    "id": r["id"],
+                    "project_id": r["project_id"],
+                    "kind": r["kind"] or r["asset_kind"],
+                    "asset_kind": r["asset_kind"] or r["kind"],
+                    "storage_uri": r["storage_uri"] or r["rel_path"],
+                    "rel_path": r["rel_path"] or r["storage_uri"],
+                    "storage_backend": r["storage_backend"],
+                    "mime_type": r["mime_type"],
+                    "width": r["width"],
+                    "height": r["height"],
+                    "sha256": r["sha256"],
+                    "run_id": r["run_id"],
+                    "job_id": r["job_id"],
+                    "candidate_id": r["candidate_id"],
+                    "metadata_json": self._json_cell(r["metadata_json"] or r["meta_json"], {}),
+                    "created_at": r["created_at"],
+                }
+                return self._json({"ok": True, "asset": asset})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "quality-reports":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                try:
+                    limit = int((query.get("limit", ["500"])[0] or "500").strip())
+                except Exception:
+                    limit = 500
+                limit = max(1, min(limit, 2000))
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM quality_reports
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (project["id"], limit),
+                ).fetchall()
+                reports = [
+                    {
+                        "id": r["id"],
+                        "project_id": r["project_id"],
+                        "run_id": r["run_id"],
+                        "job_id": r["job_id"] or r["run_job_id"],
+                        "candidate_id": r["candidate_id"] or r["run_job_candidate_id"],
+                        "report_type": r["report_type"],
+                        "summary_json": self._json_cell(r["summary_json"], {}),
+                        "rating": r["rating"],
+                        "notes": r["notes"],
+                        "created_at": r["created_at"],
+                    }
+                    for r in rows
+                ]
+                return self._json({"ok": True, "count": len(reports), "quality_reports": reports})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "cost-events":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                try:
+                    limit = int((query.get("limit", ["500"])[0] or "500").strip())
+                except Exception:
+                    limit = 500
+                limit = max(1, min(limit, 2000))
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM cost_events
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (project["id"], limit),
+                ).fetchall()
+                events = [
+                    {
+                        "id": r["id"],
+                        "project_id": r["project_id"],
+                        "run_id": r["run_id"],
+                        "provider_code": r["provider_code"],
+                        "operation_code": r["operation_code"] or r["event_type"],
+                        "units": r["units"],
+                        "cost_usd": r["cost_usd"],
+                        "currency": r["currency"],
+                        "meta_json": self._json_cell(r["meta_json"], {}),
+                        "amount_cents": r["amount_cents"],
+                        "event_type": r["event_type"],
+                        "notes": r["notes"],
+                        "created_at": r["created_at"],
+                    }
+                    for r in rows
+                ]
+                return self._json({"ok": True, "count": len(events), "cost_events": events})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "provider-accounts":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM provider_accounts
+                    WHERE project_id = ?
+                    ORDER BY provider_code ASC, created_at DESC
+                    """,
+                    (project["id"],),
+                ).fetchall()
+                items = [self._coalesce_provider_account(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "provider_accounts": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "provider-accounts":
+            project_slug = parts[2]
+            provider_code = parts[4].strip().lower()
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM provider_accounts
+                    WHERE project_id = ? AND provider_code = ?
+                    """,
+                    (project["id"], provider_code),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Provider account not found")
+                return self._json({"ok": True, "provider_account": self._coalesce_provider_account(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "style-guides":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM style_guides
+                    WHERE project_id = ?
+                    ORDER BY is_default DESC, created_at DESC
+                    """,
+                    (project["id"],),
+                ).fetchall()
+                items = [self._coalesce_style_guide(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "style_guides": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "style-guides":
+            project_slug = parts[2]
+            style_guide_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM style_guides
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (style_guide_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Style guide not found")
+                return self._json({"ok": True, "style_guide": self._coalesce_style_guide(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "characters":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM characters
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC
+                    """,
+                    (project["id"],),
+                ).fetchall()
+                items = [self._coalesce_character(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "characters": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "characters":
+            project_slug = parts[2]
+            character_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM characters
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (character_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Character not found")
+                return self._json({"ok": True, "character": self._coalesce_character(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "reference-sets":
+            project_slug = parts[2]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM reference_sets
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC
+                    """,
+                    (project["id"],),
+                ).fetchall()
+                items = [self._coalesce_reference_set(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "reference_sets": items})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "reference-sets":
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM reference_sets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (reference_set_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Reference set not found")
+                return self._json({"ok": True, "reference_set": self._coalesce_reference_set(row)})
+            finally:
+                conn.close()
+
+        if (
+            len(parts) == 6
+            and parts[:2] == ["api", "projects"]
+            and parts[3] == "reference-sets"
+            and parts[5] == "items"
+        ):
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                ref_set = conn.execute(
+                    """
+                    SELECT id
+                    FROM reference_sets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (reference_set_id, project["id"]),
+                ).fetchone()
+                if not ref_set:
+                    return self._error(HTTPStatus.NOT_FOUND, "Reference set not found")
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM reference_items
+                    WHERE reference_set_id = ?
+                    ORDER BY created_at ASC
+                    """,
+                    (reference_set_id,),
+                ).fetchall()
+                items = [self._coalesce_reference_item(r) for r in rows]
+                return self._json({"ok": True, "count": len(items), "reference_items": items})
+            finally:
+                conn.close()
+
+        if (
+            len(parts) == 7
+            and parts[:2] == ["api", "projects"]
+            and parts[3] == "reference-sets"
+            and parts[5] == "items"
+        ):
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            item_id = parts[6]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT ri.*
+                    FROM reference_items ri
+                    JOIN reference_sets rs ON rs.id = ri.reference_set_id
+                    WHERE ri.id = ? AND ri.reference_set_id = ? AND rs.project_id = ?
+                    """,
+                    (item_id, reference_set_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Reference item not found")
+                return self._json({"ok": True, "reference_item": self._coalesce_reference_item(row)})
+            finally:
+                conn.close()
+
         if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3:] == ["chat", "sessions"]:
             project_slug = parts[2]
             conn = self._db()
@@ -344,7 +1041,7 @@ class Handler(BaseHTTPRequestHandler):
                     """
                     SELECT s.*, u.username
                     FROM chat_sessions s
-                    JOIN users u ON u.id = s.user_id
+                    JOIN app_users u ON u.id = s.user_id
                     WHERE s.project_id = ?
                     ORDER BY s.updated_at DESC, s.created_at DESC
                     """,
@@ -381,7 +1078,7 @@ class Handler(BaseHTTPRequestHandler):
                 session = self._session_or_404(conn, project["id"], session_id)
                 if not session:
                     return
-                user = conn.execute("SELECT username FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+                user = conn.execute("SELECT username FROM app_users WHERE id = ?", (session["user_id"],)).fetchone()
                 return self._json(
                     {
                         "ok": True,
@@ -621,7 +1318,17 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 user = be.ensure_user(conn, username, display_name, None)
                 project = be.ensure_project(conn, user["id"], slug, name, description)
-                payload = be.project_storage_payload(self.server.repo_root, project)
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "project.upserted",
+                    {"slug": project["slug"], "name": project["name"], "source": "api"},
+                    actor_user_id=user["id"],
+                    target_type="project",
+                    target_id=project["id"],
+                )
+                conn.commit()
+                payload = be.project_storage_payload(self.server.repo_root, project, conn)
                 return self._json({"ok": True, "project": payload["project"], "storage": payload["storage"]})
             finally:
                 conn.close()
@@ -649,6 +1356,15 @@ class Handler(BaseHTTPRequestHandler):
                     secret_name,
                     secret_value,
                 )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "secret.upserted",
+                    {"provider_code": provider_code, "secret_name": secret_name, "source": "api"},
+                    target_type="project_api_secret",
+                    target_id=secret_id,
+                )
+                conn.commit()
                 return self._json(
                     {
                         "ok": True,
@@ -660,6 +1376,298 @@ class Handler(BaseHTTPRequestHandler):
                         },
                     }
                 )
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "provider-accounts":
+            project_slug = parts[2]
+            provider_code = str(body.get("provider_code", "")).strip().lower()
+            if not provider_code:
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'provider_code' is required")
+            is_enabled = 1 if parse_bool(body.get("is_enabled"), True) else 0
+            config_json = body.get("config_json", body.get("meta_json", {}))
+            if not isinstance(config_json, dict):
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'config_json' must be an object")
+            api_key = str(body.get("api_key", "")).strip()
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                existing = conn.execute(
+                    """
+                    SELECT *
+                    FROM provider_accounts
+                    WHERE project_id = ? AND provider_code = ?
+                    """,
+                    (project["id"], provider_code),
+                ).fetchone()
+                now = be.now_iso()
+                if existing:
+                    next_api_key = api_key if api_key else existing["api_key"]
+                    conn.execute(
+                        """
+                        UPDATE provider_accounts
+                        SET is_enabled = ?, config_json = ?, meta_json = ?, api_key = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (is_enabled, be.to_json(config_json), be.to_json(config_json), next_api_key, now, existing["id"]),
+                    )
+                    provider_account_id = existing["id"]
+                else:
+                    provider_account_id = be.uid()
+                    conn.execute(
+                        """
+                        INSERT INTO provider_accounts
+                          (id, project_id, provider_code, is_enabled, config_json, meta_json, api_key, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            provider_account_id,
+                            project["id"],
+                            provider_code,
+                            is_enabled,
+                            be.to_json(config_json),
+                            be.to_json(config_json),
+                            api_key,
+                            now,
+                            now,
+                        ),
+                    )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "provider_account.upserted",
+                    {"provider_account_id": provider_account_id, "provider_code": provider_code, "source": "api"},
+                    target_type="provider_account",
+                    target_id=provider_account_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM provider_accounts WHERE id = ?", (provider_account_id,)).fetchone()
+                return self._json({"ok": True, "provider_account": self._coalesce_provider_account(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "style-guides":
+            project_slug = parts[2]
+            name = str(body.get("name", "")).strip()
+            if not name:
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'name' is required")
+            description = str(body.get("description", "")).strip()
+            rules_json = body.get("rules_json", body.get("specs_json", {}))
+            if not isinstance(rules_json, dict):
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'rules_json' must be an object")
+            is_default = 1 if parse_bool(body.get("is_default"), False) else 0
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                style_guide_id = be.uid()
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    INSERT INTO style_guides
+                      (id, project_id, name, description, specs_json, rules_json, is_default, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        style_guide_id,
+                        project["id"],
+                        name,
+                        description,
+                        be.to_json(rules_json),
+                        be.to_json(rules_json),
+                        is_default,
+                        now,
+                        now,
+                    ),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "style_guide.created",
+                    {"style_guide_id": style_guide_id, "name": name, "source": "api"},
+                    target_type="style_guide",
+                    target_id=style_guide_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM style_guides WHERE id = ?", (style_guide_id,)).fetchone()
+                return self._json({"ok": True, "style_guide": self._coalesce_style_guide(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "characters":
+            project_slug = parts[2]
+            code = str(body.get("code", "")).strip()
+            name = str(body.get("name", "")).strip()
+            if not code or not name:
+                return self._error(HTTPStatus.BAD_REQUEST, "Fields 'code' and 'name' are required")
+            bio = str(body.get("bio", "")).strip()
+            constraints = body.get("identity_constraints_json", {})
+            if not isinstance(constraints, dict):
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'identity_constraints_json' must be an object")
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                character_id = be.uid()
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    INSERT INTO characters
+                      (id, project_id, code, name, bio, identity_constraints_json, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (character_id, project["id"], code, name, bio, be.to_json(constraints), now, now),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "character.created",
+                    {"character_id": character_id, "code": code, "name": name, "source": "api"},
+                    target_type="character",
+                    target_id=character_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
+                return self._json({"ok": True, "character": self._coalesce_character(row)})
+            finally:
+                conn.close()
+
+        if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "reference-sets":
+            project_slug = parts[2]
+            name = str(body.get("name", body.get("title", ""))).strip()
+            if not name:
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'name' is required")
+            kind = str(body.get("kind", "other")).strip().lower() or "other"
+            metadata_json = body.get("metadata_json", {})
+            if not isinstance(metadata_json, dict):
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'metadata_json' must be an object")
+            notes = str(body.get("notes", "")).strip()
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                reference_set_id = be.uid()
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    INSERT INTO reference_sets
+                      (id, project_id, title, name, kind, notes, metadata_json, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        reference_set_id,
+                        project["id"],
+                        name,
+                        name,
+                        kind,
+                        notes,
+                        be.to_json(metadata_json),
+                        now,
+                        now,
+                    ),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "reference_set.created",
+                    {"reference_set_id": reference_set_id, "name": name, "kind": kind, "source": "api"},
+                    target_type="reference_set",
+                    target_id=reference_set_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM reference_sets WHERE id = ?", (reference_set_id,)).fetchone()
+                return self._json({"ok": True, "reference_set": self._coalesce_reference_set(row)})
+            finally:
+                conn.close()
+
+        if (
+            len(parts) == 6
+            and parts[:2] == ["api", "projects"]
+            and parts[3] == "reference-sets"
+            and parts[5] == "items"
+        ):
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            asset_id = str(body.get("asset_id", "")).strip()
+            if not asset_id:
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'asset_id' is required")
+            notes = str(body.get("notes", "")).strip()
+            weight_raw = body.get("weight", 1.0)
+            try:
+                weight = float(weight_raw)
+            except Exception:
+                return self._error(HTTPStatus.BAD_REQUEST, "Field 'weight' must be a number")
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                ref_set = conn.execute(
+                    """
+                    SELECT id
+                    FROM reference_sets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (reference_set_id, project["id"]),
+                ).fetchone()
+                if not ref_set:
+                    return self._error(HTTPStatus.NOT_FOUND, "Reference set not found")
+                asset = conn.execute(
+                    """
+                    SELECT id
+                    FROM assets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (asset_id, project["id"]),
+                ).fetchone()
+                if not asset:
+                    return self._error(HTTPStatus.BAD_REQUEST, "asset_id does not belong to this project")
+
+                existing = conn.execute(
+                    """
+                    SELECT *
+                    FROM reference_items
+                    WHERE reference_set_id = ? AND asset_id = ?
+                    """,
+                    (reference_set_id, asset_id),
+                ).fetchone()
+                now = be.now_iso()
+                if existing:
+                    conn.execute(
+                        """
+                        UPDATE reference_items
+                        SET weight = ?, notes = ?
+                        WHERE id = ?
+                        """,
+                        (weight, notes, existing["id"]),
+                    )
+                    item_id = existing["id"]
+                else:
+                    item_id = be.uid()
+                    conn.execute(
+                        """
+                        INSERT INTO reference_items
+                          (id, reference_set_id, asset_id, weight, notes, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (item_id, reference_set_id, asset_id, weight, notes, now),
+                    )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "reference_item.upserted",
+                    {"reference_set_id": reference_set_id, "item_id": item_id, "asset_id": asset_id, "source": "api"},
+                    target_type="reference_item",
+                    target_id=item_id,
+                )
+                conn.commit()
+                row = conn.execute("SELECT * FROM reference_items WHERE id = ?", (item_id,)).fetchone()
+                return self._json({"ok": True, "reference_item": self._coalesce_reference_item(row)})
             finally:
                 conn.close()
 
@@ -841,6 +1849,14 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 if not requires_confirmation:
                     self._emit_instruction_event(conn, instruction_id, "queued", {"queued_at": now})
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "instruction.created",
+                    {"instruction_id": instruction_id, "instruction_type": instruction_type, "status": initial_status},
+                    target_type="agent_instruction",
+                    target_id=instruction_id,
+                )
                 conn.commit()
 
                 instruction_row = conn.execute(
@@ -911,6 +1927,15 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self._emit_instruction_event(conn, instruction_id, "status_change", {"status": "queued"})
                 self._emit_instruction_event(conn, instruction_id, "confirmed", {"user_id": user["id"]})
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "instruction.confirmed",
+                    {"instruction_id": instruction_id},
+                    actor_user_id=user["id"],
+                    target_type="agent_instruction",
+                    target_id=instruction_id,
+                )
                 conn.commit()
 
                 refreshed = conn.execute("SELECT * FROM agent_instructions WHERE id = ?", (instruction_id,)).fetchone()
@@ -958,6 +1983,14 @@ class Handler(BaseHTTPRequestHandler):
                     (now, now, instruction_id),
                 )
                 self._emit_instruction_event(conn, instruction_id, "status_change", {"status": "canceled", "reason": reason})
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "instruction.canceled",
+                    {"instruction_id": instruction_id, "reason": reason},
+                    target_type="agent_instruction",
+                    target_id=instruction_id,
+                )
                 conn.commit()
                 return self._json({"ok": True, "instruction_id": instruction_id, "status": "canceled"})
             finally:
@@ -1102,6 +2135,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not project:
                     return self._error(HTTPStatus.NOT_FOUND, "Project not found")
                 result = be.ingest_run(conn, self.server.repo_root, project, run_log_path, compute_hashes)
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "run.ingest.request",
+                    {"run_id": result.get("run_id"), "run_log": run_log, "source": "api"},
+                    target_type="run",
+                    target_id=result.get("run_id"),
+                )
+                conn.commit()
                 return self._json({"ok": True, "project_slug": project_slug, **result})
             finally:
                 conn.close()
@@ -1115,7 +2157,7 @@ class Handler(BaseHTTPRequestHandler):
                 project = be.get_project(conn, "", project_slug)
                 if not project:
                     return self._error(HTTPStatus.NOT_FOUND, "Project not found")
-                storage_payload = be.project_storage_payload(self.server.repo_root, project)
+                storage_payload = be.project_storage_payload(self.server.repo_root, project, conn)
                 source_files_root = Path(storage_payload["storage"]["local"]["project_root"])
                 if output:
                     output_path = (self.server.repo_root / output).resolve()
@@ -1133,6 +2175,15 @@ class Handler(BaseHTTPRequestHandler):
                     output_path,
                     include_files,
                 )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "project.export.request",
+                    {"export_asset_id": result.get("export_asset_id"), "output": str(output_path), "source": "api"},
+                    target_type="project_export",
+                    target_id=result.get("export_asset_id"),
+                )
+                conn.commit()
                 return self._json({"ok": True, "project_slug": project_slug, **result})
             finally:
                 conn.close()
@@ -1147,7 +2198,7 @@ class Handler(BaseHTTPRequestHandler):
                 project = be.get_project(conn, "", project_slug)
                 if not project:
                     return self._error(HTTPStatus.NOT_FOUND, "Project not found")
-                payload = be.project_storage_payload(self.server.repo_root, project)
+                payload = be.project_storage_payload(self.server.repo_root, project, conn)
             finally:
                 conn.close()
 
@@ -1165,6 +2216,26 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 # Command prints JSON on success; for API we return a deterministic payload.
                 be.cmd_sync_project_s3(sync_args)
+                conn = self._db()
+                try:
+                    project = be.get_project(conn, "", project_slug)
+                    if project:
+                        self._emit_audit_event(
+                            conn,
+                            project["id"],
+                            "storage.s3.sync_requested",
+                            {
+                                "dry_run": dry_run,
+                                "delete": delete,
+                                "allow_missing_local": allow_missing_local,
+                                "source": "api",
+                            },
+                            target_type="project_storage",
+                            target_id=project["id"],
+                        )
+                        conn.commit()
+                finally:
+                    conn.close()
                 return self._json(
                     {
                         "ok": True,
@@ -1190,6 +2261,254 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             return self._error(HTTPStatus.BAD_REQUEST, str(exc))
 
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "style-guides":
+            project_slug = parts[2]
+            style_guide_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    "SELECT * FROM style_guides WHERE id = ? AND project_id = ?",
+                    (style_guide_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Style guide not found")
+                name = str(body.get("name", row["name"])).strip()
+                description = str(body.get("description", row["description"])).strip()
+                rules_json = body.get("rules_json")
+                if rules_json is None:
+                    rules_json = self._json_cell(row["rules_json"] or row["specs_json"], {})
+                if not isinstance(rules_json, dict):
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'rules_json' must be an object")
+                is_default = 1 if parse_bool(body.get("is_default"), bool(row["is_default"] or 0)) else 0
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    UPDATE style_guides
+                    SET name = ?, description = ?, specs_json = ?, rules_json = ?, is_default = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (name, description, be.to_json(rules_json), be.to_json(rules_json), is_default, now, style_guide_id),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "style_guide.updated",
+                    {"style_guide_id": style_guide_id, "source": "api"},
+                    target_type="style_guide",
+                    target_id=style_guide_id,
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM style_guides WHERE id = ?", (style_guide_id,)).fetchone()
+                return self._json({"ok": True, "style_guide": self._coalesce_style_guide(refreshed)})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "provider-accounts":
+            project_slug = parts[2]
+            provider_code = parts[4].strip().lower()
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM provider_accounts
+                    WHERE project_id = ? AND provider_code = ?
+                    """,
+                    (project["id"], provider_code),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Provider account not found")
+                is_enabled = 1 if parse_bool(body.get("is_enabled"), bool(row["is_enabled"] or 0)) else 0
+                config_json = body.get("config_json")
+                if config_json is None:
+                    config_json = self._json_cell(row["config_json"] or row["meta_json"], {})
+                if not isinstance(config_json, dict):
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'config_json' must be an object")
+                api_key = body.get("api_key")
+                next_api_key = row["api_key"] if api_key is None else str(api_key).strip()
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    UPDATE provider_accounts
+                    SET is_enabled = ?, config_json = ?, meta_json = ?, api_key = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (is_enabled, be.to_json(config_json), be.to_json(config_json), next_api_key, now, row["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "provider_account.updated",
+                    {"provider_account_id": row["id"], "provider_code": provider_code, "source": "api"},
+                    target_type="provider_account",
+                    target_id=row["id"],
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM provider_accounts WHERE id = ?", (row["id"],)).fetchone()
+                return self._json({"ok": True, "provider_account": self._coalesce_provider_account(refreshed)})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "characters":
+            project_slug = parts[2]
+            character_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    "SELECT * FROM characters WHERE id = ? AND project_id = ?",
+                    (character_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Character not found")
+                code = str(body.get("code", row["code"])).strip()
+                name = str(body.get("name", row["name"])).strip()
+                bio = str(body.get("bio", row["bio"])).strip()
+                constraints = body.get("identity_constraints_json")
+                if constraints is None:
+                    constraints = self._json_cell(row["identity_constraints_json"], {})
+                if not isinstance(constraints, dict):
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'identity_constraints_json' must be an object")
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    UPDATE characters
+                    SET code = ?, name = ?, bio = ?, identity_constraints_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (code, name, bio, be.to_json(constraints), now, character_id),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "character.updated",
+                    {"character_id": character_id, "source": "api"},
+                    target_type="character",
+                    target_id=character_id,
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
+                return self._json({"ok": True, "character": self._coalesce_character(refreshed)})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "reference-sets":
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    "SELECT * FROM reference_sets WHERE id = ? AND project_id = ?",
+                    (reference_set_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Reference set not found")
+                name = str(body.get("name", row["name"] or row["title"])).strip()
+                kind = str(body.get("kind", row["kind"] or "other")).strip().lower() or "other"
+                notes = str(body.get("notes", row["notes"] or "")).strip()
+                metadata_json = body.get("metadata_json")
+                if metadata_json is None:
+                    metadata_json = self._json_cell(row["metadata_json"], {})
+                if not isinstance(metadata_json, dict):
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'metadata_json' must be an object")
+                now = be.now_iso()
+                conn.execute(
+                    """
+                    UPDATE reference_sets
+                    SET title = ?, name = ?, kind = ?, notes = ?, metadata_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (name, name, kind, notes, be.to_json(metadata_json), now, reference_set_id),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "reference_set.updated",
+                    {"reference_set_id": reference_set_id, "source": "api"},
+                    target_type="reference_set",
+                    target_id=reference_set_id,
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM reference_sets WHERE id = ?", (reference_set_id,)).fetchone()
+                return self._json({"ok": True, "reference_set": self._coalesce_reference_set(refreshed)})
+            finally:
+                conn.close()
+
+        if (
+            len(parts) == 7
+            and parts[:2] == ["api", "projects"]
+            and parts[3] == "reference-sets"
+            and parts[5] == "items"
+        ):
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            item_id = parts[6]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT ri.*
+                    FROM reference_items ri
+                    JOIN reference_sets rs ON rs.id = ri.reference_set_id
+                    WHERE ri.id = ? AND ri.reference_set_id = ? AND rs.project_id = ?
+                    """,
+                    (item_id, reference_set_id, project["id"]),
+                ).fetchone()
+                if not row:
+                    return self._error(HTTPStatus.NOT_FOUND, "Reference item not found")
+                asset_id = str(body.get("asset_id", row["asset_id"])).strip()
+                notes = str(body.get("notes", row["notes"] or "")).strip()
+                weight_raw = body.get("weight", row["weight"] if row["weight"] is not None else 1.0)
+                try:
+                    weight = float(weight_raw)
+                except Exception:
+                    return self._error(HTTPStatus.BAD_REQUEST, "Field 'weight' must be a number")
+                asset = conn.execute(
+                    """
+                    SELECT id
+                    FROM assets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (asset_id, project["id"]),
+                ).fetchone()
+                if not asset:
+                    return self._error(HTTPStatus.BAD_REQUEST, "asset_id does not belong to this project")
+                conn.execute(
+                    """
+                    UPDATE reference_items
+                    SET asset_id = ?, weight = ?, notes = ?
+                    WHERE id = ?
+                    """,
+                    (asset_id, weight, notes, item_id),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "reference_item.updated",
+                    {"reference_set_id": reference_set_id, "item_id": item_id, "asset_id": asset_id, "source": "api"},
+                    target_type="reference_item",
+                    target_id=item_id,
+                )
+                conn.commit()
+                refreshed = conn.execute("SELECT * FROM reference_items WHERE id = ?", (item_id,)).fetchone()
+                return self._json({"ok": True, "reference_item": self._coalesce_reference_item(refreshed)})
+            finally:
+                conn.close()
+
         if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3:] == ["storage", "local"]:
             project_slug = parts[2]
             base_dir = body.get("base_dir")
@@ -1211,7 +2530,16 @@ class Handler(BaseHTTPRequestHandler):
                     local["project_root"] = str(project_root).strip()
                 be.save_project_settings(conn, project["id"], settings)
                 refreshed = be.get_project(conn, project["id"], "")
-                payload = be.project_storage_payload(self.server.repo_root, refreshed)
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "storage.local.updated",
+                    {"base_dir": local.get("base_dir"), "project_root": local.get("project_root"), "source": "api"},
+                    target_type="project_storage",
+                    target_id=project["id"],
+                )
+                conn.commit()
+                payload = be.project_storage_payload(self.server.repo_root, refreshed, conn)
                 return self._json({"ok": True, "updated": "local", **payload})
             finally:
                 conn.close()
@@ -1235,7 +2563,24 @@ class Handler(BaseHTTPRequestHandler):
 
                 be.save_project_settings(conn, project["id"], settings)
                 refreshed = be.get_project(conn, project["id"], "")
-                payload = be.project_storage_payload(self.server.repo_root, refreshed)
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "storage.s3.updated",
+                    {
+                        "enabled": bool(s3.get("enabled")),
+                        "bucket": s3.get("bucket"),
+                        "prefix": s3.get("prefix"),
+                        "region": s3.get("region"),
+                        "profile": s3.get("profile"),
+                        "endpoint_url": s3.get("endpoint_url"),
+                        "source": "api",
+                    },
+                    target_type="project_storage",
+                    target_id=project["id"],
+                )
+                conn.commit()
+                payload = be.project_storage_payload(self.server.repo_root, refreshed, conn)
                 return self._json({"ok": True, "updated": "s3", **payload})
             finally:
                 conn.close()
@@ -1245,6 +2590,168 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urlparse(self.path)
         parts = [p for p in parsed.path.split("/") if p]
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "style-guides":
+            project_slug = parts[2]
+            style_guide_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                cur = conn.execute(
+                    """
+                    DELETE FROM style_guides
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (style_guide_id, project["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "style_guide.deleted",
+                    {"style_guide_id": style_guide_id, "deleted": cur.rowcount, "source": "api"},
+                    target_type="style_guide",
+                    target_id=style_guide_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "style_guide_id": style_guide_id, "deleted": cur.rowcount})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "provider-accounts":
+            project_slug = parts[2]
+            provider_code = parts[4].strip().lower()
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                row = conn.execute(
+                    """
+                    SELECT id
+                    FROM provider_accounts
+                    WHERE project_id = ? AND provider_code = ?
+                    """,
+                    (project["id"], provider_code),
+                ).fetchone()
+                provider_account_id = row["id"] if row else None
+                cur = conn.execute(
+                    """
+                    DELETE FROM provider_accounts
+                    WHERE project_id = ? AND provider_code = ?
+                    """,
+                    (project["id"], provider_code),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "provider_account.deleted",
+                    {
+                        "provider_account_id": provider_account_id,
+                        "provider_code": provider_code,
+                        "deleted": cur.rowcount,
+                        "source": "api",
+                    },
+                    target_type="provider_account",
+                    target_id=provider_account_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "provider_code": provider_code, "deleted": cur.rowcount})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "characters":
+            project_slug = parts[2]
+            character_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                cur = conn.execute(
+                    """
+                    DELETE FROM characters
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (character_id, project["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "character.deleted",
+                    {"character_id": character_id, "deleted": cur.rowcount, "source": "api"},
+                    target_type="character",
+                    target_id=character_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "character_id": character_id, "deleted": cur.rowcount})
+            finally:
+                conn.close()
+
+        if len(parts) == 5 and parts[:2] == ["api", "projects"] and parts[3] == "reference-sets":
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                cur = conn.execute(
+                    """
+                    DELETE FROM reference_sets
+                    WHERE id = ? AND project_id = ?
+                    """,
+                    (reference_set_id, project["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "reference_set.deleted",
+                    {"reference_set_id": reference_set_id, "deleted": cur.rowcount, "source": "api"},
+                    target_type="reference_set",
+                    target_id=reference_set_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "reference_set_id": reference_set_id, "deleted": cur.rowcount})
+            finally:
+                conn.close()
+
+        if (
+            len(parts) == 7
+            and parts[:2] == ["api", "projects"]
+            and parts[3] == "reference-sets"
+            and parts[5] == "items"
+        ):
+            project_slug = parts[2]
+            reference_set_id = parts[4]
+            item_id = parts[6]
+            conn = self._db()
+            try:
+                project = self._project_or_404(conn, project_slug)
+                if not project:
+                    return
+                cur = conn.execute(
+                    """
+                    DELETE FROM reference_items
+                    WHERE id = ?
+                      AND reference_set_id = ?
+                      AND reference_set_id IN (SELECT id FROM reference_sets WHERE project_id = ?)
+                    """,
+                    (item_id, reference_set_id, project["id"]),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "reference_item.deleted",
+                    {"reference_set_id": reference_set_id, "item_id": item_id, "deleted": cur.rowcount, "source": "api"},
+                    target_type="reference_item",
+                    target_id=item_id,
+                )
+                conn.commit()
+                return self._json({"ok": True, "item_id": item_id, "deleted": cur.rowcount})
+            finally:
+                conn.close()
 
         if len(parts) == 6 and parts[:2] == ["api", "projects"] and parts[3] == "secrets":
             project_slug = parts[2]
@@ -1261,6 +2768,13 @@ class Handler(BaseHTTPRequestHandler):
                     WHERE project_id = ? AND provider_code = ? AND secret_name = ?
                     """,
                     (project["id"], provider_code, secret_name),
+                )
+                self._emit_audit_event(
+                    conn,
+                    project["id"],
+                    "secret.deleted",
+                    {"provider_code": provider_code, "secret_name": secret_name, "deleted": cur.rowcount, "source": "api"},
+                    target_type="project_api_secret",
                 )
                 conn.commit()
                 return self._json(

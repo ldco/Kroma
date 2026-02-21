@@ -52,6 +52,458 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+  /api/projects/{slug}/storage/local:
+    put:
+      summary: Update local storage settings
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/storage/s3:
+    put:
+      summary: Update S3 storage settings
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/runs:
+    get:
+      summary: List runs for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/runs/{runId}:
+    get:
+      summary: Get run detail with jobs and candidates
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: runId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Run not found }
+  /api/projects/{slug}/runs/{runId}/jobs:
+    get:
+      summary: List jobs and candidates for a run
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: runId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Run not found }
+  /api/projects/{slug}/assets:
+    get:
+      summary: List assets for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/assets/{assetId}:
+    get:
+      summary: Get asset detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: assetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Asset not found }
+  /api/projects/{slug}/quality-reports:
+    get:
+      summary: List quality reports for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/cost-events:
+    get:
+      summary: List cost events for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/provider-accounts:
+    get:
+      summary: List provider accounts for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create or upsert provider account
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+  /api/projects/{slug}/provider-accounts/{providerCode}:
+    get:
+      summary: Get provider account detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: providerCode
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Provider account not found }
+    put:
+      summary: Update provider account
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: providerCode
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+        "404": { description: Provider account not found }
+    delete:
+      summary: Delete provider account
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: providerCode
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/style-guides:
+    get:
+      summary: List style guides for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create style guide
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/style-guides/{styleGuideId}:
+    get:
+      summary: Get style guide detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: styleGuideId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Style guide not found }
+    put:
+      summary: Update style guide
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: styleGuideId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Style guide not found }
+    delete:
+      summary: Delete style guide
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: styleGuideId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/characters:
+    get:
+      summary: List characters for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create character
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/characters/{characterId}:
+    get:
+      summary: Get character detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: characterId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Character not found }
+    put:
+      summary: Update character
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: characterId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Character not found }
+    delete:
+      summary: Delete character
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: characterId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/reference-sets:
+    get:
+      summary: List reference sets for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    post:
+      summary: Create reference set
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/reference-sets/{referenceSetId}:
+    get:
+      summary: Get reference set detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Reference set not found }
+    put:
+      summary: Update reference set
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+    delete:
+      summary: Delete reference set
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/reference-sets/{referenceSetId}/items:
+    get:
+      summary: List reference items in a reference set
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Reference set not found }
+    post:
+      summary: Add or upsert reference item in a reference set
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid asset id or payload }
+        "404": { description: Reference set not found }
+  /api/projects/{slug}/reference-sets/{referenceSetId}/items/{itemId}:
+    get:
+      summary: Get reference item detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Reference item not found }
+    put:
+      summary: Update reference item
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid asset id or payload }
+        "404": { description: Reference item not found }
+    delete:
+      summary: Delete reference item
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: referenceSetId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Reference item not found }
   /api/projects/{slug}/chat/sessions:
     get:
       summary: List chat sessions
@@ -81,6 +533,21 @@ paths:
                 context_json: { type: object }
       responses:
         "200": { description: OK }
+  /api/projects/{slug}/chat/sessions/{sessionId}:
+    get:
+      summary: Get chat session detail
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Chat session not found }
   /api/projects/{slug}/chat/sessions/{sessionId}/messages:
     get:
       summary: List messages in chat session
