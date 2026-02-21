@@ -2550,4 +2550,51 @@ mod tests {
         assert_eq!(unfiltered.len(), 1);
         assert_eq!(invalid_filter.len(), 1);
     }
+
+    #[test]
+    fn provider_account_paths_validate_provider_code() {
+        let repo = temp_repo();
+        let created = repo
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Delta"),
+                slug: None,
+                description: None,
+                username: Some(String::from("local")),
+                user_display_name: Some(String::from("Local User")),
+            })
+            .expect("project should be created");
+
+        let slug = created.project.slug;
+        let _ = repo
+            .upsert_provider_account(
+                slug.as_str(),
+                UpsertProviderAccountInput {
+                    provider_code: String::from("openai"),
+                    ..Default::default()
+                },
+            )
+            .expect("provider account should be upserted");
+
+        let detail_err = repo
+            .get_provider_account_detail(slug.as_str(), "!!!")
+            .expect_err("invalid provider code should fail validation");
+        assert!(matches!(detail_err, ProjectsRepoError::Validation(_)));
+
+        let update_err = repo
+            .update_provider_account(
+                slug.as_str(),
+                "!!!",
+                UpdateProviderAccountInput {
+                    display_name: Some(String::from("OpenAI Updated")),
+                    ..Default::default()
+                },
+            )
+            .expect_err("invalid provider code should fail validation");
+        assert!(matches!(update_err, ProjectsRepoError::Validation(_)));
+
+        let delete_err = repo
+            .delete_provider_account(slug.as_str(), "!!!")
+            .expect_err("invalid provider code should fail validation");
+        assert!(matches!(delete_err, ProjectsRepoError::Validation(_)));
+    }
 }

@@ -224,8 +224,7 @@ impl ProjectsStore {
     ) -> Result<ProviderAccountSummary, ProjectsRepoError> {
         self.with_connection(|conn| {
             let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
-            let safe_provider_code =
-                normalize_slug(provider_code).ok_or(ProjectsRepoError::NotFound)?;
+            let safe_provider_code = normalize_provider_code(provider_code)?;
             let project = fetch_project_by_slug(conn, safe_slug.as_str())?
                 .ok_or(ProjectsRepoError::NotFound)?;
 
@@ -253,8 +252,7 @@ impl ProjectsStore {
 
         self.with_connection_mut(|conn| {
             let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
-            let safe_provider_code =
-                normalize_slug(provider_code).ok_or(ProjectsRepoError::NotFound)?;
+            let safe_provider_code = normalize_provider_code(provider_code)?;
             let project = fetch_project_by_slug(conn, safe_slug.as_str())?
                 .ok_or(ProjectsRepoError::NotFound)?;
             let existing = fetch_provider_account_by_code(
@@ -323,8 +321,7 @@ impl ProjectsStore {
     ) -> Result<(), ProjectsRepoError> {
         self.with_connection_mut(|conn| {
             let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
-            let safe_provider_code =
-                normalize_slug(provider_code).ok_or(ProjectsRepoError::NotFound)?;
+            let safe_provider_code = normalize_provider_code(provider_code)?;
             let project = fetch_project_by_slug(conn, safe_slug.as_str())?
                 .ok_or(ProjectsRepoError::NotFound)?;
 
