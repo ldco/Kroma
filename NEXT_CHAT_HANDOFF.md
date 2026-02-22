@@ -2,7 +2,7 @@
 
 Date: 2026-02-22
 Branch: `master`
-HEAD / upstream (`origin/master`): `12981a3`
+HEAD / upstream (`origin/master`): `4c283af`
 Worktree: dirty (local uncommitted changes)
 
 ## Current Status
@@ -22,67 +22,41 @@ Worktree: dirty (local uncommitted changes)
    - `secrets` metadata only (`provider_code`, `secret_name`, `has_value`; no secret values) (committed on `master`)
    - prompt templates
 4. Product direction clarified: `scripts/` is transitional only; target architecture is a single Rust-owned application (API + runtime/orchestration + workers).
-5. Next phase has started locally: Rust pipeline runtime/trigger boundary exists and is now used by an initial Rust-owned HTTP trigger endpoint (`POST /api/projects/{slug}/runs/trigger`) with script-backed fallback execution.
-6. Product-scope cleanup (local, uncommitted) removed voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`); active pipeline/runtime script dependencies remain.
-7. A new progress tracker (`docs/ROADMAP.md`, local/untracked) now complements the full spec doc and should be kept in sync with major Phase 1 milestones.
+5. Rust pipeline runtime/trigger boundary and Rust-owned typed trigger endpoint (`POST /api/projects/{slug}/runs/trigger`) are now committed on `master` (script-backed execution remains behind the runtime boundary).
+6. Product-scope cleanup is now committed on `master`: voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`) were removed; active pipeline/runtime script dependencies remain.
+7. `docs/ROADMAP.md` is now tracked on `master` as the day-to-day progress board (kept alongside the larger spec doc).
 
 ## What Landed (Latest Relevant Backend Work)
 
-Latest commit on `master`: `12981a3`  
-Commit message: `feat(bootstrap): add reference sets and secrets metadata support`
+Latest commit on `master`: `4c283af`  
+Commit message: `refactor(api): remove voice legacy surface and split secrets module`
 
 ### Implemented
 
-1. `src-tauri/src/db/projects/bootstrap.rs`
-   - Added bootstrap export/import/preview/diff support for `reference_sets` + nested items.
-   - Added bootstrap export/import (metadata-only, merge-only) support for `secrets`.
-   - Added safety validation requiring explicit `reference_sets[].items` arrays (use `[]` for empty set).
-   - Preserves existing secret values on metadata import.
-2. `src-tauri/tests/bootstrap_endpoints.rs`
-   - Extended round-trip / replace-scope / dry-run coverage for `reference_sets` and secrets metadata.
-   - Added validation coverage for missing `reference_sets[].items`.
-3. `openapi/backend-api.openapi.yaml`
-   - Added bootstrap-import request schema for `reference_sets` and `secrets`.
-   - Documented `reference_sets` object requires `name` and `items`.
-4. `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md`
-   - Clarified `scripts/` are transitional and added explicit Phase 1 runtime consolidation priority.
+1. Voice legacy feature surface removed from Rust backend:
+   - deleted `src-tauri/src/api/voice.rs`
+   - removed `/voice/*` routes from route catalog/router/OpenAPI parity expectations
+   - deleted `src-tauri/tests/voice_endpoints.rs`
+2. Secrets DB code split out of the old mixed voice/secrets module:
+   - replaced `src-tauri/src/db/projects/voice_secrets.rs` with `src-tauri/src/db/projects/secrets.rs`
+   - `projects.rs` schema setup now calls `ensure_secret_tables` / `ensure_secret_columns`
+3. Legacy Python HTTP entrypoint removed:
+   - deleted `scripts/backend_api.py`
+   - removed `npm run backend:api` from `package.json`
+4. Scope/docs/script cleanup:
+   - removed voice schema remnants from `scripts/backend.py`
+   - removed voice flows from `scripts/contract-smoke.sh` and `scripts/contract_smoke.py`
+   - updated `README.md` and `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` to reflect current scope
+5. Prior commit (still relevant to current architecture): `6df48f7`
+   - `runs/trigger` refactor is typed end-to-end and no longer accepts raw Rust-side `extra_args`
 
 ## Local Work In Progress (Uncommitted)
 
-1. Phase 1 runtime consolidation kickoff (`src-tauri/src/pipeline/runtime.rs`, `src-tauri/src/pipeline/trigger.rs`, `src-tauri/src/pipeline/mod.rs`)
-   - Added typed Rust pipeline orchestration interface (`PipelineOrchestrator`)
-   - Added command execution adapter boundary (`PipelineCommandRunner`)
-   - Added temporary script-backed orchestrator (`ScriptPipelineOrchestrator`) targeting `scripts/image-lab.mjs`
-   - Added Rust trigger service (`PipelineTriggerService`) with run-mode spend confirmation enforcement and CLI flag injection
-   - Added unit tests for command building, slug validation, success/error execution paths, and trigger semantics
-2. Initial Rust-owned trigger endpoint (still script-backed under the Rust boundary)
-   - `POST /api/projects/{slug}/runs/trigger` added to route catalog + router + OpenAPI
-   - handler implemented in `src-tauri/src/api/runs_assets.rs`
-   - Rust-side validation for `mode` (`dry`/`run`)
-   - project existence check before invoking fallback orchestrator
-   - run-mode spend confirmation enforcement via `PipelineTriggerService`
-   - command failure mapping to API `400` with summarized message
-   - typed request fields for trigger input (`project_root`, `input`, `scene_refs`, `style_refs`, `stage`, `time`, `weather`, `candidates`)
-   - no raw CLI arg pass-through in Rust API/service/runtime (`extra_args` removed)
-   - CLI flag construction is isolated to the runtime orchestrator implementation
-   - exact one-of `input` / `scene_refs` invariant enforced in Rust (script parity)
-3. `src-tauri/src/api/server.rs`
-   - `AppState` owns a `PipelineTriggerService` initialized with the script-backed orchestrator (temporary fallback implementation)
-4. Added endpoint tests for the new trigger endpoint:
-   - validation + missing-project + missing confirmation paths
-   - success path using injected fake orchestrator/service (no `node` dependency)
-   - typed-field translation + validation-order coverage
-   - exact one-of input-source validation (`input` xor `scene_refs`) coverage
-   - conflicting typed inputs (`input` vs `scene_refs`) and `candidates` range validation coverage
-5. Scope cleanup (local, uncommitted):
-   - Removed Rust/OpenAPI/test/script voice request feature paths (`/voice/*`)
-   - Split `src-tauri/src/db/projects/voice_secrets.rs` into `src-tauri/src/db/projects/secrets.rs` and removed voice DB code while preserving secrets
-   - Deleted legacy Python HTTP backend entrypoint `scripts/backend_api.py`
-   - Removed voice schema remnants from `scripts/backend.py` (`voice_requests`, `voice_asset_id` schema/index bits)
-   - Updated README/spec/docs/handoff references to match removals
-6. Roadmap/progress tracking docs (local, uncommitted):
-   - Added `docs/ROADMAP.md` as the day-to-day status board
-   - Kept `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` as the fuller architecture/product reference
+1. OpenAPI docs improvement for bootstrap endpoints (current local change)
+   - Add response body schemas for `GET /api/projects/{slug}/bootstrap-prompt`
+   - Add response body schemas for `POST /api/projects/{slug}/bootstrap-import` (`200` / `400` / `404`)
+2. Handoff + roadmap doc refresh (current local change)
+   - Align `NEXT_CHAT_HANDOFF.md` / `docs/ROADMAP.md` with pushed commits `6df48f7` and `4c283af`
 
 ## Code Analysis (This Pass)
 
@@ -96,6 +70,7 @@ Scope reviewed:
 7. New progress tracker doc (`docs/ROADMAP.md`) for milestone/status handoff alignment
 8. Trigger contract refactor removing raw `extra_args` compatibility path from Rust layers
 9. Trigger validation tightening started: Rust now mirrors script one-of input-source requirement
+10. Voice/legacy cleanup completion pass (Rust + scripts + docs) and follow-up OpenAPI docs polish
 
 Issues discovered:
 1. Bug (fixed): `reference_sets` import accepted entries without an `items` field.
@@ -146,7 +121,9 @@ Result: passing.
 
 Local validation run for voice/legacy-scope cleanup:
 1. `cargo fmt`
-2. `cargo test --test bootstrap_endpoints --test contract_parity --test http_contract_surface --test pipeline_trigger_endpoints`
+2. `cargo test`
+3. `python3 -m py_compile scripts/backend.py scripts/contract_smoke.py`
+4. `bash -n scripts/contract-smoke.sh`
 
 Result: passing.
 

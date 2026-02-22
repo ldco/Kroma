@@ -51,8 +51,56 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200": { description: OK }
-        "404": { description: Project not found }
+        "200":
+          description: Bootstrap prompt export payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, bootstrap]
+                properties:
+                  ok: { type: boolean }
+                  bootstrap:
+                    type: object
+                    required:
+                      [
+                        schema_version,
+                        generated_at,
+                        project,
+                        settings,
+                        expected_response,
+                        prompt,
+                      ]
+                    properties:
+                      schema_version: { type: string }
+                      generated_at: { type: string }
+                      project:
+                        type: object
+                        properties:
+                          id: { type: string }
+                          slug: { type: string }
+                          name: { type: string }
+                          description: { type: string }
+                      settings:
+                        type: object
+                        properties:
+                          provider_accounts: { type: array, items: { type: object } }
+                          style_guides: { type: array, items: { type: object } }
+                          characters: { type: array, items: { type: object } }
+                          reference_sets: { type: array, items: { type: object } }
+                          secrets: { type: array, items: { type: object } }
+                          prompt_templates: { type: array, items: { type: object } }
+                      expected_response: { type: object }
+                      prompt: { type: string }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
   /api/projects/{slug}/bootstrap-import:
     post:
       summary: Import AI-generated bootstrap settings into a project
@@ -141,9 +189,79 @@ paths:
                           template_text: { type: string }
                 ai_response_text: { type: string }
       responses:
-        "200": { description: OK }
-        "400": { description: Invalid payload }
-        "404": { description: Project not found }
+        "200":
+          description: Bootstrap import result (or dry-run preview result)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, bootstrap_import]
+                properties:
+                  ok: { type: boolean }
+                  bootstrap_import:
+                    type: object
+                    required:
+                      [schema_version, mode, dry_run, project_updated, applied, changes, project, settings]
+                    properties:
+                      schema_version: { type: string }
+                      mode:
+                        type: string
+                        enum: [merge, replace]
+                      dry_run: { type: boolean }
+                      project_updated: { type: boolean }
+                      applied:
+                        type: object
+                        properties:
+                          provider_accounts: { type: integer }
+                          style_guides: { type: integer }
+                          characters: { type: integer }
+                          reference_sets: { type: integer }
+                          secrets: { type: integer }
+                          prompt_templates: { type: integer }
+                      changes:
+                        type: object
+                        properties:
+                          project: { type: object }
+                          provider_accounts: { type: object }
+                          style_guides: { type: object }
+                          characters: { type: object }
+                          reference_sets: { type: object }
+                          secrets: { type: object }
+                          prompt_templates: { type: object }
+                      project:
+                        type: object
+                        properties:
+                          id: { type: string }
+                          slug: { type: string }
+                          name: { type: string }
+                          description: { type: string }
+                      settings:
+                        type: object
+                        properties:
+                          provider_accounts: { type: array, items: { type: object } }
+                          style_guides: { type: array, items: { type: object } }
+                          characters: { type: array, items: { type: object } }
+                          reference_sets: { type: array, items: { type: object } }
+                          secrets: { type: array, items: { type: object } }
+                          prompt_templates: { type: array, items: { type: object } }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
   /api/projects/{slug}/storage:
     get:
       summary: Get project storage config

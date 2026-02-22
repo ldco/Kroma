@@ -75,6 +75,22 @@ Status:
 - `scripts/` documented as transitional, not end state
 - Phase 1 explicitly includes runtime consolidation into Rust (not just CRUD endpoint work)
 
+### Runtime Consolidation Foundation (Pushed)
+
+- Rust pipeline runtime boundary (`src-tauri/src/pipeline/runtime.rs`) added
+- Rust trigger service (`src-tauri/src/pipeline/trigger.rs`) added
+- Rust-owned `POST /api/projects/{slug}/runs/trigger` endpoint added
+- Trigger request contract is typed end-to-end (no raw `extra_args` passthrough)
+- Script parity validation enforced for input source (`input` xor `scene_refs`)
+
+### Scope Cleanup / Legacy Removal (Pushed)
+
+- Removed Rust voice endpoint surface (`/voice/*`) and associated tests
+- Removed legacy Python HTTP backend entrypoint `scripts/backend_api.py`
+- Split secrets DB code into `src-tauri/src/db/projects/secrets.rs`
+- Removed voice schema remnants from `scripts/backend.py`
+- Updated contract smoke scripts, README, and spec docs to match current scope
+
 ## In Progress (Local WIP)
 
 ### Phase 1 Runtime Consolidation Into Rust (Started)
@@ -141,6 +157,8 @@ Status:
    - chat
    - agent instructions
 2. Improve OpenAPI response documentation for bootstrap endpoints
+   - Done locally: response bodies for `/bootstrap-prompt` and `/bootstrap-import` are now documented
+   - next: expand nested field schemas/examples if SDK/client generation needs stronger typing
 3. Consider optimizing bootstrap `reference_sets` export loading (`N+1` query risk for large projects)
 
 ### Phase 1 Remaining (Larger Milestones)
