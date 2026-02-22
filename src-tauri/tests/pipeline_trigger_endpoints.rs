@@ -180,7 +180,7 @@ async fn pipeline_trigger_typed_fields_translate_to_cli_args() {
                 "mode":"dry",
                 "scene_refs":["scene_a.png","scene_b.png"],
                 "style_refs":["style_1.png"],
-                "stage":"style",
+                "stage":"weather",
                 "time":"day",
                 "weather":"clear",
                 "candidates":2
@@ -205,7 +205,7 @@ async fn pipeline_trigger_typed_fields_translate_to_cli_args() {
         seen[0].options.style_refs,
         vec![String::from("style_1.png")]
     );
-    assert_eq!(seen[0].options.stage, Some(PipelineStageFilter::Style));
+    assert_eq!(seen[0].options.stage, Some(PipelineStageFilter::Weather));
     assert_eq!(seen[0].options.time, Some(PipelineTimeFilter::Day));
     assert_eq!(seen[0].options.weather, Some(PipelineWeatherFilter::Clear));
     assert_eq!(seen[0].options.candidates, Some(2));
@@ -349,6 +349,85 @@ async fn pipeline_trigger_rejects_out_of_range_candidates() {
     assert_eq!(
         response["error"],
         json!("Field 'candidates' must be between 1 and 6")
+    );
+}
+
+#[tokio::test]
+async fn pipeline_trigger_rejects_time_without_time_or_weather_stage() {
+    let app = build_router_with_projects_store(test_store());
+
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Trigger Time Validation"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/trigger"),
+        Body::from(
+            json!({
+                "mode":"dry",
+                "scene_refs":["a.png"],
+                "time":"night"
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(
+        response["error"],
+        json!("Field 'time' requires stage 'time' or 'weather'")
+    );
+}
+
+#[tokio::test]
+async fn pipeline_trigger_rejects_weather_without_weather_stage() {
+    let app = build_router_with_projects_store(test_store());
+
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Trigger Weather Validation"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/trigger"),
+        Body::from(
+            json!({
+                "mode":"dry",
+                "scene_refs":["a.png"],
+                "stage":"time",
+                "weather":"rain"
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(
+        response["error"],
+        json!("Field 'weather' requires stage 'weather'")
     );
 }
 

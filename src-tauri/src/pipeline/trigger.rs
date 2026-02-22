@@ -129,6 +129,7 @@ impl PipelineTriggerService {
                 "Provide one of: input, scene_refs",
             )));
         }
+        validate_stage_parameter_usage(stage, time, weather)?;
 
         let confirm_spend = match mode {
             TriggerMode::Dry => false,
@@ -163,6 +164,28 @@ impl PipelineTriggerService {
             })
             .map_err(PipelineTriggerError::Runtime)
     }
+}
+
+fn validate_stage_parameter_usage(
+    stage: Option<TriggerStage>,
+    time: Option<TriggerTime>,
+    weather: Option<TriggerWeather>,
+) -> Result<(), PipelineTriggerError> {
+    if time.is_some()
+        && !matches!(stage, Some(TriggerStage::Time) | Some(TriggerStage::Weather))
+    {
+        return Err(PipelineTriggerError::InvalidRequest(String::from(
+            "Field 'time' requires stage 'time' or 'weather'",
+        )));
+    }
+
+    if weather.is_some() && !matches!(stage, Some(TriggerStage::Weather)) {
+        return Err(PipelineTriggerError::InvalidRequest(String::from(
+            "Field 'weather' requires stage 'weather'",
+        )));
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -341,6 +364,51 @@ mod tests {
                 params: TriggerRunParams::default(),
             })
             .expect_err("missing input source should fail");
+
+        assert!(matches!(err, PipelineTriggerError::InvalidRequest(_)));
+        assert!(orchestrator.take_seen().is_empty());
+    }
+
+    #[test]
+    fn rejects_time_without_time_or_weather_stage() {
+        let orchestrator = Arc::new(FakeOrchestrator::default());
+        let service = PipelineTriggerService::new(orchestrator.clone());
+
+        let err = service
+            .trigger(TriggerPipelineInput {
+                project_slug: String::from("demo"),
+                mode: TriggerMode::Dry,
+                confirm_spend: false,
+                params: TriggerRunParams {
+                    scene_refs: Some(vec![String::from("a.png")]),
+                    time: Some(TriggerTime::Night),
+                    ..TriggerRunParams::default()
+                },
+            })
+            .expect_err("time without matching stage should fail");
+
+        assert!(matches!(err, PipelineTriggerError::InvalidRequest(_)));
+        assert!(orchestrator.take_seen().is_empty());
+    }
+
+    #[test]
+    fn rejects_weather_without_weather_stage() {
+        let orchestrator = Arc::new(FakeOrchestrator::default());
+        let service = PipelineTriggerService::new(orchestrator.clone());
+
+        let err = service
+            .trigger(TriggerPipelineInput {
+                project_slug: String::from("demo"),
+                mode: TriggerMode::Dry,
+                confirm_spend: false,
+                params: TriggerRunParams {
+                    scene_refs: Some(vec![String::from("a.png")]),
+                    stage: Some(TriggerStage::Time),
+                    weather: Some(TriggerWeather::Rain),
+                    ..TriggerRunParams::default()
+                },
+            })
+            .expect_err("weather without weather stage should fail");
 
         assert!(matches!(err, PipelineTriggerError::InvalidRequest(_)));
         assert!(orchestrator.take_seen().is_empty());

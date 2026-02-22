@@ -344,12 +344,15 @@ paths:
                 stage:
                   type: string
                   enum: [style, time, weather]
+                  description: Defaults to `style`. Required for `time`/`weather` fields when they would otherwise be ignored.
                 time:
                   type: string
                   enum: [day, night]
+                  description: Allowed only when `stage` is `time` or `weather`.
                 weather:
                   type: string
                   enum: [clear, rain]
+                  description: Allowed only when `stage` is `weather`.
                 candidates:
                   type: integer
                   minimum: 1
