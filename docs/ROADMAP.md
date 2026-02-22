@@ -157,9 +157,11 @@ Status:
    - chat
    - agent instructions
 2. Improve OpenAPI response documentation for bootstrap endpoints
-   - Done locally: response bodies for `/bootstrap-prompt` and `/bootstrap-import` are now documented
+   - Pushed: response bodies for `/bootstrap-prompt` and `/bootstrap-import` are now documented
    - next: expand nested field schemas/examples if SDK/client generation needs stronger typing
 3. Consider optimizing bootstrap `reference_sets` export loading (`N+1` query risk for large projects)
+   - Done locally: batched `reference_set_items` query replaces per-set item queries in bootstrap export loading
+   - next: profile with larger seed data before spending time on further query tuning
 
 ### Phase 1 Remaining (Larger Milestones)
 

@@ -2,7 +2,7 @@
 
 Date: 2026-02-22
 Branch: `master`
-HEAD / upstream (`origin/master`): `4c283af`
+HEAD / upstream (`origin/master`): `8b0fd91`
 Worktree: dirty (local uncommitted changes)
 
 ## Current Status
@@ -28,35 +28,39 @@ Worktree: dirty (local uncommitted changes)
 
 ## What Landed (Latest Relevant Backend Work)
 
-Latest commit on `master`: `4c283af`  
-Commit message: `refactor(api): remove voice legacy surface and split secrets module`
+Latest commit on `master`: `8b0fd91`  
+Commit message: `docs(api): document bootstrap responses and refresh roadmap`
 
 ### Implemented
 
-1. Voice legacy feature surface removed from Rust backend:
+1. Bootstrap endpoint OpenAPI response docs improved:
+   - documented `GET /api/projects/{slug}/bootstrap-prompt` response body shape
+   - documented `POST /api/projects/{slug}/bootstrap-import` response body shape (`200` / `400` / `404`)
+2. Roadmap/handoff docs refreshed for recent Phase 1 progress (`6df48f7`, `4c283af`)
+3. Voice legacy feature surface removed from Rust backend (previous commit `4c283af`):
    - deleted `src-tauri/src/api/voice.rs`
    - removed `/voice/*` routes from route catalog/router/OpenAPI parity expectations
    - deleted `src-tauri/tests/voice_endpoints.rs`
-2. Secrets DB code split out of the old mixed voice/secrets module:
+4. Secrets DB code split out of the old mixed voice/secrets module:
    - replaced `src-tauri/src/db/projects/voice_secrets.rs` with `src-tauri/src/db/projects/secrets.rs`
    - `projects.rs` schema setup now calls `ensure_secret_tables` / `ensure_secret_columns`
-3. Legacy Python HTTP entrypoint removed:
+5. Legacy Python HTTP entrypoint removed:
    - deleted `scripts/backend_api.py`
    - removed `npm run backend:api` from `package.json`
-4. Scope/docs/script cleanup:
+6. Scope/docs/script cleanup:
    - removed voice schema remnants from `scripts/backend.py`
    - removed voice flows from `scripts/contract-smoke.sh` and `scripts/contract_smoke.py`
    - updated `README.md` and `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` to reflect current scope
-5. Prior commit (still relevant to current architecture): `6df48f7`
+7. Prior commit (still relevant to current architecture): `6df48f7`
    - `runs/trigger` refactor is typed end-to-end and no longer accepts raw Rust-side `extra_args`
 
 ## Local Work In Progress (Uncommitted)
 
-1. OpenAPI docs improvement for bootstrap endpoints (current local change)
-   - Add response body schemas for `GET /api/projects/{slug}/bootstrap-prompt`
-   - Add response body schemas for `POST /api/projects/{slug}/bootstrap-import` (`200` / `400` / `404`)
+1. Bootstrap export performance improvement (current local change)
+   - `load_reference_sets()` now batch-loads `reference_set_items` for the project and groups in Rust
+   - removes per-reference-set nested item queries during bootstrap export/snapshot loading
 2. Handoff + roadmap doc refresh (current local change)
-   - Align `NEXT_CHAT_HANDOFF.md` / `docs/ROADMAP.md` with pushed commits `6df48f7` and `4c283af`
+   - Align notes with pushed commits `4c283af` and `8b0fd91`
 
 ## Code Analysis (This Pass)
 
@@ -85,7 +89,7 @@ Remaining risks / TODO:
 1. `reference_sets` nested item behavior is authoritative per provided set (not per-item merge).
    - This is currently documented, but payloads do not yet include stable item IDs for fine-grained merge semantics.
 2. `load_reference_sets()` uses per-set item queries (N+1 query pattern) during bootstrap export/snapshot loading.
-   - Likely acceptable now, but may need optimization for large projects.
+   - Fixed locally with batched item loading; needs final commit/push and future profiling on larger datasets.
 3. `scripts/backend.py` still exists and remains an active dependency of `scripts/image-lab.mjs`.
    - Do not delete it until a Rust replacement path is wired for the needed pipeline operations.
 4. `runs/trigger` remains script-backed at execution time.
@@ -127,26 +131,34 @@ Local validation run for voice/legacy-scope cleanup:
 
 Result: passing.
 
+Local validation run for bootstrap export `reference_sets` loader optimization:
+1. `cargo fmt`
+2. `cargo test --test bootstrap_endpoints`
+
+Result: passing.
+
 ## Next Priority Work
 
-1. Continue tightening typed trigger validation/rules for supported combinations (one-of input-source invariant is done; next: mode-specific combinations and clearer invariants).
-2. Decide whether `chat` / `agent instructions` belong in bootstrap scope and define rules before implementation.
-3. Continue Phase 1 runtime consolidation (Rust app unification):
+1. Commit/push the local bootstrap `reference_sets` export loader optimization (batch item loading; removes N+1 query pattern).
+2. Continue tightening typed trigger validation/rules for supported combinations (one-of input-source invariant is done; next: mode-specific combinations and clearer invariants).
+3. Decide whether `chat` / `agent instructions` belong in bootstrap scope and define rules before implementation.
+4. Continue Phase 1 runtime consolidation (Rust app unification):
    - Rust pipeline orchestration replacement for `scripts/image-lab.mjs`
    - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary
    - Rust worker/dispatcher replacement for script workers
    - typed Rust tool adapters for external tools/APIs
-4. Add desktop UI bootstrap flow:
+5. Add desktop UI bootstrap flow:
    - export prompt action
    - paste/import modal
    - `dry_run` preview/diff confirmation
    - explicit merge vs replace UX
-5. Improve OpenAPI response docs for bootstrap endpoints (responses currently less documented than request schema).
-6. Keep `docs/ROADMAP.md` and `NEXT_CHAT_HANDOFF.md` aligned when Phase 1 milestones or priorities shift.
+6. Expand bootstrap OpenAPI response schemas/examples if client generation needs stricter typing (top-level responses are now documented).
+7. Keep `docs/ROADMAP.md` and `NEXT_CHAT_HANDOFF.md` aligned when Phase 1 milestones or priorities shift.
 
 ## Suggested Starting Point For Next Chat
 
-1. Tighten remaining `runs/trigger` typed validation rules (the `input` xor `scene_refs` invariant is done; next define mode/stage-specific combinations).
-2. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
-3. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after any milestone-level change.
-4. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.
+1. Commit/push the local `load_reference_sets()` batch-loading optimization, then re-evaluate bootstrap export performance with larger sample data.
+2. Tighten remaining `runs/trigger` typed validation rules (the `input` xor `scene_refs` invariant is done; next define mode/stage-specific combinations).
+3. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
+4. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after any milestone-level change.
+5. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.

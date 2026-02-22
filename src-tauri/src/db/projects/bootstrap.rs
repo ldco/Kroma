@@ -9,7 +9,7 @@ use super::{
     fetch_project_by_slug, normalize_optional_storage_field, normalize_provider_code,
     normalize_required_text, normalize_slug, now_iso, parse_json_value, CharacterSummary,
     ProjectsRepoError, ProjectsStore, PromptTemplateSummary, ProviderAccountSummary,
-    ReferenceSetItemSummary, ReferenceSetSummary, SecretSummary, StyleGuideSummary,
+    ReferenceSetItemSummary, SecretSummary, StyleGuideSummary,
 };
 
 const BOOTSTRAP_SCHEMA_VERSION: &str = "kroma.bootstrap.v1";
@@ -1819,75 +1819,81 @@ fn load_reference_sets(
     ",
     )?;
     let mut set_rows = set_stmt.query([project_id])?;
-    let mut out = Vec::new();
-
+    let mut sets = Vec::new();
     while let Some(set_row) = set_rows.next()? {
-        let reference_set = ReferenceSetSummary {
-            id: set_row.get("id")?,
-            project_id: project_id.to_string(),
-            name: set_row.get("name")?,
-            description: set_row
+        sets.push((
+            set_row.get::<_, String>("id")?,
+            set_row.get::<_, String>("name")?,
+            set_row
                 .get::<_, Option<String>>("description")?
                 .unwrap_or_default(),
-            created_at: String::new(),
-            updated_at: String::new(),
-        };
+        ));
+    }
 
-        let mut item_stmt = conn.prepare(
-            "
-            SELECT
-              id,
-              project_id,
-              reference_set_id,
-              label,
-              content_uri,
-              content_text,
-              sort_order,
-              metadata_json,
-              created_at,
-              updated_at
-            FROM reference_set_items
-            WHERE project_id = ?1 AND reference_set_id = ?2
-            ORDER BY sort_order ASC, COALESCE(updated_at, '') DESC, id DESC
-        ",
-        )?;
-        let item_rows = item_stmt.query_map(
-            params![project_id, reference_set.id.as_str()],
-            |row| -> rusqlite::Result<ReferenceSetItemSummary> {
-                Ok(ReferenceSetItemSummary {
-                    id: row.get("id")?,
-                    project_id: row.get("project_id")?,
-                    reference_set_id: row.get("reference_set_id")?,
-                    label: row.get("label")?,
-                    content_uri: row
-                        .get::<_, Option<String>>("content_uri")?
-                        .unwrap_or_default(),
-                    content_text: row
-                        .get::<_, Option<String>>("content_text")?
-                        .unwrap_or_default(),
-                    sort_order: row.get("sort_order")?,
-                    metadata_json: parse_json_value(row.get::<_, Option<String>>("metadata_json")?),
-                    created_at: row.get("created_at")?,
-                    updated_at: row.get("updated_at")?,
-                })
-            },
-        )?;
-        let mut items = Vec::new();
-        for row in item_rows {
-            let item = row?;
-            items.push(ProjectBootstrapReferenceSetItem {
+    if sets.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut item_stmt = conn.prepare(
+        "
+        SELECT
+          id,
+          project_id,
+          reference_set_id,
+          label,
+          content_uri,
+          content_text,
+          sort_order,
+          metadata_json,
+          created_at,
+          updated_at
+        FROM reference_set_items
+        WHERE project_id = ?1
+        ORDER BY reference_set_id ASC, sort_order ASC, COALESCE(updated_at, '') DESC, id DESC
+    ",
+    )?;
+    let item_rows = item_stmt.query_map(
+        params![project_id],
+        |row| -> rusqlite::Result<ReferenceSetItemSummary> {
+            Ok(ReferenceSetItemSummary {
+                id: row.get("id")?,
+                project_id: row.get("project_id")?,
+                reference_set_id: row.get("reference_set_id")?,
+                label: row.get("label")?,
+                content_uri: row
+                    .get::<_, Option<String>>("content_uri")?
+                    .unwrap_or_default(),
+                content_text: row
+                    .get::<_, Option<String>>("content_text")?
+                    .unwrap_or_default(),
+                sort_order: row.get("sort_order")?,
+                metadata_json: parse_json_value(row.get::<_, Option<String>>("metadata_json")?),
+                created_at: row.get("created_at")?,
+                updated_at: row.get("updated_at")?,
+            })
+        },
+    )?;
+
+    let mut items_by_set: BTreeMap<String, Vec<ProjectBootstrapReferenceSetItem>> = BTreeMap::new();
+    for row in item_rows {
+        let item = row?;
+        items_by_set.entry(item.reference_set_id).or_default().push(
+            ProjectBootstrapReferenceSetItem {
                 label: item.label,
                 content_uri: item.content_uri,
                 content_text: item.content_text,
                 sort_order: item.sort_order,
                 metadata_json: item.metadata_json,
-            });
-        }
+            },
+        );
+    }
 
+    let mut out = Vec::with_capacity(sets.len());
+    for (id, name, description) in sets {
         out.push(ProjectBootstrapReferenceSet {
-            name: reference_set.name,
-            description: reference_set.description,
-            items,
+            name,
+            description,
+            items: items_by_set.remove(id.as_str()).unwrap_or_default(),
         });
     }
 
