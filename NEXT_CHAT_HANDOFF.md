@@ -26,6 +26,16 @@ Worktree: dirty (local uncommitted changes)
 6. Product-scope cleanup is now committed on `master`: voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`) were removed; active pipeline/runtime script dependencies remain.
 7. `docs/ROADMAP.md` is now tracked on `master` as the day-to-day progress board (kept alongside the larger spec doc).
 
+## Architecture Direction (Non-Negotiable)
+
+1. Kroma is a desktop app and the target architecture is Rust-owned end to end (`src-tauri`).
+2. `scripts/` are transitional migration scaffolding only, not a supported long-term runtime.
+3. Temporary Rust wrappers around script behavior are allowed only while replacing that behavior with Rust modules.
+4. Every script-backed runtime path should have:
+   - a Rust replacement milestone
+   - a script deprecation/removal milestone
+5. Phase 1 is not complete until core runtime/orchestration, worker flows, and active backend integrations are owned by Rust modules.
+
 ## What Landed (Latest Relevant Backend Work)
 
 Latest backend commit on `master`: `a620df7`  

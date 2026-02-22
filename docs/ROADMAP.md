@@ -10,6 +10,15 @@ This file is the working progress tracker for Kroma.
 - `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` remains the full product/spec document.
 - This file is the day-to-day roadmap status board: what is done, in progress, and next.
 
+## Architecture Direction (Explicit)
+
+- Kroma is a desktop app and the target architecture is Rust-owned end to end (`src-tauri`).
+- `scripts/` are transitional migration scaffolding only, not a supported long-term runtime.
+- No permanent script wrappers/adapters as an end state:
+  - temporary Rust boundaries around scripts are allowed only to preserve momentum while replacing them
+  - every script-backed path must have a Rust replacement milestone and removal milestone
+- Phase 1 is not complete until core runtime/orchestration, worker flows, and active backend integrations are owned by Rust modules.
+
 ## Current Phase Status
 
 ### Phase 1 — Stabilize & Complete Backend (In Progress)
@@ -18,7 +27,7 @@ Progress summary:
 - Rust backend is primary API surface (`src-tauri`)
 - Metadata/database APIs are mostly migrated and contract-tested
 - Bootstrap import/export is implemented and expanding
-- Runtime consolidation into Rust has started (still uses script fallback behind Rust boundary)
+- Runtime consolidation into Rust has started (script fallback still exists, but removal is the direction and milestone target)
 
 ### Phase 2 — GUI Frontend (Not Started)
 
@@ -74,6 +83,7 @@ Status:
 
 - `scripts/` documented as transitional, not end state
 - Phase 1 explicitly includes runtime consolidation into Rust (not just CRUD endpoint work)
+- Desktop-app principle reaffirmed: move active runtime/workers/integrations into Rust; reduce and delete script paths as replacements land
 
 ### Runtime Consolidation Foundation (Pushed)
 
@@ -162,6 +172,7 @@ Status:
 4. Continue replacing script-backed orchestration behavior inside the runtime boundary (without widening the HTTP contract)
    - current default runtime path now routes backend ingest through Rust `pipeline::post_run` + `pipeline::backend_ops`
    - next: replace stdout `Run log:` parsing with structured handoff (script JSON or full Rust orchestration)
+   - target: remove script-owned post-run ingest/sync behavior entirely from `scripts/image-lab.mjs`
 
 ### Near-Term Backend / Bootstrap Work
 
@@ -177,15 +188,16 @@ Status:
 
 ### Phase 1 Remaining (Larger Milestones)
 
-1. Replace `scripts/image-lab.mjs` orchestration with Rust pipeline orchestration module
-2. Move run trigger + ingest parity fully into Rust services/endpoints
+1. Replace `scripts/image-lab.mjs` orchestration with Rust pipeline orchestration modules (desktop app owns generation/post-process flow)
+2. Move run trigger + ingest + sync parity fully into Rust services/endpoints (no script-owned post-run steps)
 3. Replace Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust worker/service modules
-4. Build typed Rust adapters for external tools/integrations
+4. Build typed Rust adapters for external tools/integrations (called from Rust, not shell scripts)
    - OpenAI image calls
    - rembg
    - ESRGAN
    - S3 sync
-5. Add parity tests and deprecation milestones for script paths
+5. Add parity tests plus explicit deprecation/removal milestones for script paths
+6. Remove remaining production runtime dependencies on `scripts/` (retain only dev/setup utilities if still needed)
 
 ## Later (Phase 2+)
 
