@@ -71,6 +71,7 @@ paths:
                 mode:
                   type: string
                   enum: [merge, replace]
+                dry_run: { type: boolean }
                 settings:
                   type: object
                   properties:

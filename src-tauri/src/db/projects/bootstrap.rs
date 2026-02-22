@@ -49,6 +49,7 @@ pub struct BootstrapAppliedSummary {
 pub struct ProjectBootstrapImportResult {
     pub schema_version: String,
     pub mode: String,
+    pub dry_run: bool,
     pub project_updated: bool,
     pub applied: BootstrapAppliedSummary,
     pub project: ProjectBootstrapProject,
@@ -59,6 +60,8 @@ pub struct ProjectBootstrapImportResult {
 pub struct ImportProjectBootstrapInput {
     #[serde(default)]
     pub mode: Option<String>,
+    #[serde(default)]
+    pub dry_run: Option<bool>,
     #[serde(default)]
     pub settings: Option<ProjectBootstrapSettingsInput>,
     #[serde(default)]
@@ -131,6 +134,13 @@ struct BootstrapAiResponseWrapper {
 struct BootstrapSnapshot {
     project: ProjectBootstrapProject,
     settings: ProjectBootstrapSettings,
+}
+
+#[derive(Debug, Clone)]
+struct BootstrapPreview {
+    project: ProjectBootstrapProject,
+    settings: ProjectBootstrapSettings,
+    project_updated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -213,9 +223,29 @@ impl ProjectsStore {
     ) -> Result<ProjectBootstrapImportResult, ProjectsRepoError> {
         let (mode_from_payload, settings_input) = resolve_bootstrap_settings_input(&input)?;
         let mode = parse_bootstrap_mode(input.mode.as_deref().or(mode_from_payload.as_deref()))?;
+        let dry_run = input.dry_run.unwrap_or(false);
         let settings = normalize_bootstrap_settings(settings_input)?;
+        let applied = BootstrapAppliedSummary {
+            provider_accounts: settings.provider_accounts.len(),
+            style_guides: settings.style_guides.len(),
+            prompt_templates: settings.prompt_templates.len(),
+        };
 
-        let (project_updated, applied) = self.with_connection_mut(|conn| {
+        if dry_run {
+            let snapshot = self.load_bootstrap_snapshot(slug)?;
+            let preview = preview_snapshot(snapshot, &settings, mode);
+            return Ok(ProjectBootstrapImportResult {
+                schema_version: String::from(BOOTSTRAP_SCHEMA_VERSION),
+                mode: String::from(mode.as_str()),
+                dry_run: true,
+                project_updated: preview.project_updated,
+                applied,
+                project: preview.project,
+                settings: preview.settings,
+            });
+        }
+
+        let project_updated = self.with_connection_mut(|conn| {
             let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
             let project = fetch_project_by_slug(conn, safe_slug.as_str())?
                 .ok_or(ProjectsRepoError::NotFound)?;
@@ -365,20 +395,14 @@ impl ProjectsStore {
             )?;
             tx.commit()?;
 
-            Ok((
-                project_updated,
-                BootstrapAppliedSummary {
-                    provider_accounts: settings.provider_accounts.len(),
-                    style_guides: settings.style_guides.len(),
-                    prompt_templates: settings.prompt_templates.len(),
-                },
-            ))
+            Ok(project_updated)
         })?;
 
         let snapshot = self.load_bootstrap_snapshot(slug)?;
         Ok(ProjectBootstrapImportResult {
             schema_version: String::from(BOOTSTRAP_SCHEMA_VERSION),
             mode: String::from(mode.as_str()),
+            dry_run: false,
             project_updated,
             applied,
             project: snapshot.project,
@@ -623,6 +647,193 @@ fn normalize_bootstrap_settings(
         style_guides: style_guides.into_values().collect(),
         prompt_templates: prompt_templates.into_values().collect(),
     })
+}
+
+fn preview_snapshot(
+    snapshot: BootstrapSnapshot,
+    settings: &NormalizedSettings,
+    mode: BootstrapImportMode,
+) -> BootstrapPreview {
+    let now = now_iso();
+    let mut project = snapshot.project.clone();
+    let mut project_updated = false;
+
+    if let Some(patch) = settings.project.as_ref() {
+        let next_name = patch.name.clone().unwrap_or_else(|| project.name.clone());
+        let next_description = patch
+            .description
+            .clone()
+            .unwrap_or_else(|| project.description.clone());
+        if next_name != project.name || next_description != project.description {
+            project.name = next_name;
+            project.description = next_description;
+            project_updated = true;
+        }
+    }
+
+    let provider_accounts = preview_provider_accounts(
+        snapshot.settings.provider_accounts,
+        settings,
+        mode,
+        project.id.as_str(),
+        now.as_str(),
+    );
+    let style_guides = preview_style_guides(
+        snapshot.settings.style_guides,
+        settings,
+        mode,
+        project.id.as_str(),
+        now.as_str(),
+    );
+    let prompt_templates = preview_prompt_templates(
+        snapshot.settings.prompt_templates,
+        settings,
+        mode,
+        project.id.as_str(),
+        now.as_str(),
+    );
+
+    BootstrapPreview {
+        project,
+        project_updated,
+        settings: ProjectBootstrapSettings {
+            provider_accounts,
+            style_guides,
+            prompt_templates,
+        },
+    }
+}
+
+fn preview_provider_accounts(
+    existing: Vec<ProviderAccountSummary>,
+    settings: &NormalizedSettings,
+    mode: BootstrapImportMode,
+    project_id: &str,
+    now: &str,
+) -> Vec<ProviderAccountSummary> {
+    let mut map: BTreeMap<String, ProviderAccountSummary> =
+        if matches!(mode, BootstrapImportMode::Replace) && settings.has_provider_accounts_section {
+            BTreeMap::new()
+        } else {
+            existing
+                .into_iter()
+                .map(|item| (item.provider_code.clone(), item))
+                .collect()
+        };
+
+    if settings.has_provider_accounts_section {
+        for provider in &settings.provider_accounts {
+            let created_at = map
+                .get(provider.provider_code.as_str())
+                .map(|item| item.created_at.clone())
+                .unwrap_or_else(|| now.to_string());
+            map.insert(
+                provider.provider_code.clone(),
+                ProviderAccountSummary {
+                    project_id: project_id.to_string(),
+                    provider_code: provider.provider_code.clone(),
+                    display_name: provider.display_name.clone(),
+                    account_ref: provider.account_ref.clone().unwrap_or_default(),
+                    base_url: provider.base_url.clone().unwrap_or_default(),
+                    enabled: provider.enabled,
+                    config_json: provider.config_json.clone(),
+                    created_at,
+                    updated_at: now.to_string(),
+                },
+            );
+        }
+    }
+
+    map.into_values().collect()
+}
+
+fn preview_style_guides(
+    existing: Vec<StyleGuideSummary>,
+    settings: &NormalizedSettings,
+    mode: BootstrapImportMode,
+    project_id: &str,
+    now: &str,
+) -> Vec<StyleGuideSummary> {
+    let mut map: BTreeMap<String, StyleGuideSummary> =
+        if matches!(mode, BootstrapImportMode::Replace) && settings.has_style_guides_section {
+            BTreeMap::new()
+        } else {
+            existing
+                .into_iter()
+                .map(|item| (item.name.to_ascii_lowercase(), item))
+                .collect()
+        };
+
+    if settings.has_style_guides_section {
+        for style in &settings.style_guides {
+            let key = style.name.to_ascii_lowercase();
+            let existing_summary = map.get(key.as_str()).cloned();
+            map.insert(
+                key,
+                StyleGuideSummary {
+                    id: existing_summary
+                        .as_ref()
+                        .map(|item| item.id.clone())
+                        .unwrap_or_else(|| format!("preview_style_{}", Uuid::new_v4())),
+                    project_id: project_id.to_string(),
+                    name: style.name.clone(),
+                    instructions: style.instructions.clone(),
+                    notes: style.notes.clone().unwrap_or_default(),
+                    created_at: existing_summary
+                        .as_ref()
+                        .map(|item| item.created_at.clone())
+                        .unwrap_or_else(|| now.to_string()),
+                    updated_at: now.to_string(),
+                },
+            );
+        }
+    }
+
+    map.into_values().collect()
+}
+
+fn preview_prompt_templates(
+    existing: Vec<PromptTemplateSummary>,
+    settings: &NormalizedSettings,
+    mode: BootstrapImportMode,
+    project_id: &str,
+    now: &str,
+) -> Vec<PromptTemplateSummary> {
+    let mut map: BTreeMap<String, PromptTemplateSummary> =
+        if matches!(mode, BootstrapImportMode::Replace) && settings.has_prompt_templates_section {
+            BTreeMap::new()
+        } else {
+            existing
+                .into_iter()
+                .map(|item| (item.name.to_ascii_lowercase(), item))
+                .collect()
+        };
+
+    if settings.has_prompt_templates_section {
+        for template in &settings.prompt_templates {
+            let key = template.name.to_ascii_lowercase();
+            let existing_summary = map.get(key.as_str()).cloned();
+            map.insert(
+                key,
+                PromptTemplateSummary {
+                    id: existing_summary
+                        .as_ref()
+                        .map(|item| item.id.clone())
+                        .unwrap_or_else(|| format!("preview_prompt_{}", Uuid::new_v4())),
+                    project_id: project_id.to_string(),
+                    name: template.name.clone(),
+                    template_text: template.template_text.clone(),
+                    created_at: existing_summary
+                        .as_ref()
+                        .map(|item| item.created_at.clone())
+                        .unwrap_or_else(|| now.to_string()),
+                    updated_at: now.to_string(),
+                },
+            );
+        }
+    }
+
+    map.into_values().collect()
 }
 
 fn load_provider_accounts(

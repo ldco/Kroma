@@ -432,6 +432,78 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
     );
 }
 
+#[tokio::test]
+async fn bootstrap_import_dry_run_previews_without_writing() {
+    let app = build_router_with_projects_store(test_store());
+
+    let create_project = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Bootstrap Dry Run"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = create_project["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let _seed_style = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/style-guides"),
+        Body::from(
+            json!({"name":"Existing Style","instructions":"Baseline instructions"}).to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+
+    let preview = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/bootstrap-import"),
+        Body::from(
+            json!({
+                "mode": "replace",
+                "dry_run": true,
+                "settings": {
+                    "style_guides": [
+                        {
+                            "name": "Preview Style",
+                            "instructions": "Preview-only style instructions."
+                        }
+                    ]
+                }
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(preview["bootstrap_import"]["dry_run"], json!(true));
+    assert_eq!(preview["bootstrap_import"]["mode"], json!("replace"));
+    assert_eq!(
+        preview["bootstrap_import"]["settings"]["style_guides"][0]["name"],
+        json!("Preview Style")
+    );
+
+    let persisted = send_json(
+        app,
+        Method::GET,
+        &format!("/api/projects/{slug}/style-guides"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(persisted["count"], json!(1));
+    assert_eq!(
+        persisted["style_guides"][0]["name"],
+        json!("Existing Style")
+    );
+}
+
 async fn send_json(
     app: axum::Router,
     method: Method,
