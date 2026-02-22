@@ -54,6 +54,21 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
         StatusCode::OK,
     )
     .await;
+    let _seed_character = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/characters"),
+        Body::from(
+            json!({
+                "name":"Protagonist",
+                "description":"Legacy character description",
+                "prompt_text":"Legacy character prompt"
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
 
     let exported = send_json(
         app.clone(),
@@ -68,6 +83,13 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
         exported["bootstrap"]["settings"]["provider_accounts"]
             .as_array()
             .expect("provider_accounts should be an array")
+            .len(),
+        1
+    );
+    assert_eq!(
+        exported["bootstrap"]["settings"]["characters"]
+            .as_array()
+            .expect("characters should be an array")
             .len(),
         1
     );
@@ -107,6 +129,13 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
                             "notes": "Primary style"
                         }
                     ],
+                    "characters": [
+                        {
+                            "name": "Protagonist",
+                            "description": "Refined protagonist profile",
+                            "prompt_text": "Consistent wardrobe, cinematic framing, same face."
+                        }
+                    ],
                     "prompt_templates": [
                         {
                             "name": "Hero Prompt",
@@ -138,6 +167,14 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
     assert_eq!(
         imported["bootstrap_import"]["changes"]["style_guides"]["replaced"],
         json!(true)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["applied"]["characters"],
+        json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["characters"]["updated"],
+        json!(1)
     );
     assert_eq!(
         imported["bootstrap_import"]["project"]["name"],
@@ -183,6 +220,21 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
     assert_eq!(
         style_guides["style_guides"][0]["name"],
         json!("Studio Look")
+    );
+
+    let characters = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/characters"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(characters["count"], json!(1));
+    assert_eq!(characters["characters"][0]["name"], json!("Protagonist"));
+    assert_eq!(
+        characters["characters"][0]["description"],
+        json!("Refined protagonist profile")
     );
 
     let templates = send_json(
@@ -382,6 +434,14 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
         StatusCode::OK,
     )
     .await;
+    let _seed_character = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/characters"),
+        Body::from(json!({"name":"Original Character","description":"Baseline"}).to_string()),
+        StatusCode::OK,
+    )
+    .await;
 
     let _replace_style_only = send_json(
         app.clone(),
@@ -431,7 +491,7 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
     assert_eq!(styles["style_guides"][0]["name"], json!("New Style"));
 
     let templates = send_json(
-        app,
+        app.clone(),
         Method::GET,
         &format!("/api/projects/{slug}/prompt-templates"),
         Body::empty(),
@@ -442,6 +502,20 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
     assert_eq!(
         templates["prompt_templates"][0]["name"],
         json!("Original Template")
+    );
+
+    let characters = send_json(
+        app,
+        Method::GET,
+        &format!("/api/projects/{slug}/characters"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(characters["count"], json!(1));
+    assert_eq!(
+        characters["characters"][0]["name"],
+        json!("Original Character")
     );
 
     assert_eq!(
@@ -455,6 +529,14 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
     assert_eq!(
         _replace_style_only["bootstrap_import"]["changes"]["style_guides"]["replaced"],
         json!(true)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["characters"]["provided"],
+        json!(false)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["characters"]["deleted"],
+        json!(0)
     );
 }
 
@@ -485,6 +567,16 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
         StatusCode::OK,
     )
     .await;
+    let _seed_character = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/characters"),
+        Body::from(
+            json!({"name":"Existing Character","prompt_text":"Baseline prompt"}).to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
 
     let preview = send_json(
         app.clone(),
@@ -499,6 +591,13 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
                         {
                             "name": "Preview Style",
                             "instructions": "Preview-only style instructions."
+                        }
+                    ],
+                    "characters": [
+                        {
+                            "name": "Preview Character",
+                            "description": "Preview-only character",
+                            "prompt_text": "Preview-only character prompt"
                         }
                     ]
                 }
@@ -523,12 +622,28 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
         json!(true)
     );
     assert_eq!(
+        preview["bootstrap_import"]["changes"]["characters"]["created"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["characters"]["deleted"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["characters"]["replaced"],
+        json!(true)
+    );
+    assert_eq!(
         preview["bootstrap_import"]["settings"]["style_guides"][0]["name"],
         json!("Preview Style")
     );
+    assert_eq!(
+        preview["bootstrap_import"]["settings"]["characters"][0]["name"],
+        json!("Preview Character")
+    );
 
     let persisted = send_json(
-        app,
+        app.clone(),
         Method::GET,
         &format!("/api/projects/{slug}/style-guides"),
         Body::empty(),
@@ -539,6 +654,20 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
     assert_eq!(
         persisted["style_guides"][0]["name"],
         json!("Existing Style")
+    );
+
+    let persisted_characters = send_json(
+        app,
+        Method::GET,
+        &format!("/api/projects/{slug}/characters"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(persisted_characters["count"], json!(1));
+    assert_eq!(
+        persisted_characters["characters"][0]["name"],
+        json!("Existing Character")
     );
 }
 

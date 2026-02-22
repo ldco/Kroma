@@ -7,8 +7,9 @@ use uuid::Uuid;
 
 use super::{
     fetch_project_by_slug, normalize_optional_storage_field, normalize_provider_code,
-    normalize_required_text, normalize_slug, now_iso, parse_json_value, ProjectsRepoError,
-    ProjectsStore, PromptTemplateSummary, ProviderAccountSummary, StyleGuideSummary,
+    normalize_required_text, normalize_slug, now_iso, parse_json_value, CharacterSummary,
+    ProjectsRepoError, ProjectsStore, PromptTemplateSummary, ProviderAccountSummary,
+    StyleGuideSummary,
 };
 
 const BOOTSTRAP_SCHEMA_VERSION: &str = "kroma.bootstrap.v1";
@@ -25,6 +26,7 @@ pub struct ProjectBootstrapProject {
 pub struct ProjectBootstrapSettings {
     pub provider_accounts: Vec<ProviderAccountSummary>,
     pub style_guides: Vec<StyleGuideSummary>,
+    pub characters: Vec<CharacterSummary>,
     pub prompt_templates: Vec<PromptTemplateSummary>,
 }
 
@@ -42,6 +44,7 @@ pub struct ProjectBootstrapExport {
 pub struct BootstrapAppliedSummary {
     pub provider_accounts: usize,
     pub style_guides: usize,
+    pub characters: usize,
     pub prompt_templates: usize,
 }
 
@@ -70,6 +73,7 @@ pub struct BootstrapImportChangeSummary {
     pub project: BootstrapProjectChangeSummary,
     pub provider_accounts: BootstrapSectionChangeSummary,
     pub style_guides: BootstrapSectionChangeSummary,
+    pub characters: BootstrapSectionChangeSummary,
     pub prompt_templates: BootstrapSectionChangeSummary,
 }
 
@@ -105,6 +109,8 @@ pub struct ProjectBootstrapSettingsInput {
     pub provider_accounts: Option<Vec<ProjectBootstrapProviderAccountInput>>,
     #[serde(default)]
     pub style_guides: Option<Vec<ProjectBootstrapStyleGuideInput>>,
+    #[serde(default)]
+    pub characters: Option<Vec<ProjectBootstrapCharacterInput>>,
     #[serde(default)]
     pub prompt_templates: Option<Vec<ProjectBootstrapPromptTemplateInput>>,
 }
@@ -149,6 +155,16 @@ pub struct ProjectBootstrapPromptTemplateInput {
     pub name: String,
     #[serde(default)]
     pub template_text: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProjectBootstrapCharacterInput {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub prompt_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -202,13 +218,22 @@ struct NormalizedPromptTemplate {
 }
 
 #[derive(Debug, Clone)]
+struct NormalizedCharacter {
+    name: String,
+    description: Option<String>,
+    prompt_text: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 struct NormalizedSettings {
     project: Option<NormalizedProjectPatch>,
     has_provider_accounts_section: bool,
     has_style_guides_section: bool,
+    has_characters_section: bool,
     has_prompt_templates_section: bool,
     provider_accounts: Vec<NormalizedProviderAccount>,
     style_guides: Vec<NormalizedStyleGuide>,
+    characters: Vec<NormalizedCharacter>,
     prompt_templates: Vec<NormalizedPromptTemplate>,
 }
 
@@ -258,6 +283,7 @@ impl ProjectsStore {
         let applied = BootstrapAppliedSummary {
             provider_accounts: settings.provider_accounts.len(),
             style_guides: settings.style_guides.len(),
+            characters: settings.characters.len(),
             prompt_templates: settings.prompt_templates.len(),
         };
 
@@ -323,6 +349,12 @@ impl ProjectsStore {
             if matches!(mode, BootstrapImportMode::Replace) && settings.has_style_guides_section {
                 tx.execute(
                     "DELETE FROM style_guides WHERE project_id = ?1",
+                    [&project.id],
+                )?;
+            }
+            if matches!(mode, BootstrapImportMode::Replace) && settings.has_characters_section {
+                tx.execute(
+                    "DELETE FROM characters WHERE project_id = ?1",
                     [&project.id],
                 )?;
             }
@@ -401,6 +433,35 @@ impl ProjectsStore {
                 )?;
             }
 
+            for character in &settings.characters {
+                tx.execute(
+                    "
+                    INSERT INTO characters (
+                        id,
+                        project_id,
+                        name,
+                        description,
+                        prompt_text,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+                    ON CONFLICT(project_id, name) DO UPDATE SET
+                        description = excluded.description,
+                        prompt_text = excluded.prompt_text,
+                        updated_at = excluded.updated_at
+                ",
+                    params![
+                        Uuid::new_v4().to_string(),
+                        project.id.as_str(),
+                        character.name.as_str(),
+                        character.description.as_deref(),
+                        character.prompt_text.as_deref(),
+                        now
+                    ],
+                )?;
+            }
+
             for template in &settings.prompt_templates {
                 tx.execute(
                     "
@@ -464,6 +525,7 @@ impl ProjectsStore {
                 .ok_or(ProjectsRepoError::NotFound)?;
             let provider_accounts = load_provider_accounts(conn, project.id.as_str())?;
             let style_guides = load_style_guides(conn, project.id.as_str())?;
+            let characters = load_characters(conn, project.id.as_str())?;
             let prompt_templates = load_prompt_templates(conn, project.id.as_str())?;
 
             Ok(BootstrapSnapshot {
@@ -476,6 +538,7 @@ impl ProjectsStore {
                 settings: ProjectBootstrapSettings {
                     provider_accounts,
                     style_guides,
+                    characters,
                     prompt_templates,
                 },
             })
@@ -658,6 +721,28 @@ fn normalize_bootstrap_settings(
         );
     }
 
+    let has_characters_section = input.characters.is_some();
+    let mut characters = BTreeMap::new();
+    for character in input.characters.unwrap_or_default() {
+        let name = normalize_required_text(character.name.as_str(), "characters[].name")?;
+        let description = character
+            .description
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+        let prompt_text = character
+            .prompt_text
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+        characters.insert(
+            name.to_ascii_lowercase(),
+            NormalizedCharacter {
+                name,
+                description,
+                prompt_text,
+            },
+        );
+    }
+
     let has_prompt_templates_section = input.prompt_templates.is_some();
     let mut prompt_templates = BTreeMap::new();
     for template in input.prompt_templates.unwrap_or_default() {
@@ -678,6 +763,7 @@ fn normalize_bootstrap_settings(
     if project.is_none()
         && !has_provider_accounts_section
         && !has_style_guides_section
+        && !has_characters_section
         && !has_prompt_templates_section
     {
         return Err(ProjectsRepoError::Validation(String::from(
@@ -689,9 +775,11 @@ fn normalize_bootstrap_settings(
         project,
         has_provider_accounts_section,
         has_style_guides_section,
+        has_characters_section,
         has_prompt_templates_section,
         provider_accounts: providers.into_values().collect(),
         style_guides: style_guides.into_values().collect(),
+        characters: characters.into_values().collect(),
         prompt_templates: prompt_templates.into_values().collect(),
     })
 }
@@ -723,6 +811,12 @@ fn compute_bootstrap_import_changes(
             after_settings.style_guides.as_slice(),
             normalized.has_style_guides_section,
             matches!(mode, BootstrapImportMode::Replace) && normalized.has_style_guides_section,
+        ),
+        characters: summarize_character_changes(
+            before.settings.characters.as_slice(),
+            after_settings.characters.as_slice(),
+            normalized.has_characters_section,
+            matches!(mode, BootstrapImportMode::Replace) && normalized.has_characters_section,
         ),
         prompt_templates: summarize_prompt_template_changes(
             before.settings.prompt_templates.as_slice(),
@@ -802,6 +896,23 @@ fn summarize_prompt_template_changes(
     )
 }
 
+fn summarize_character_changes(
+    before: &[CharacterSummary],
+    after: &[CharacterSummary],
+    provided: bool,
+    replaced: bool,
+) -> BootstrapSectionChangeSummary {
+    let before_map: BTreeMap<String, &CharacterSummary> = before
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    let after_map: BTreeMap<String, &CharacterSummary> = after
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    summarize_section_changes(before_map, after_map, provided, replaced, characters_equal)
+}
+
 fn summarize_section_changes<K, T, F>(
     before_map: BTreeMap<K, &T>,
     after_map: BTreeMap<K, &T>,
@@ -869,6 +980,12 @@ fn prompt_templates_equal(left: &PromptTemplateSummary, right: &PromptTemplateSu
     left.name == right.name && left.template_text == right.template_text
 }
 
+fn characters_equal(left: &CharacterSummary, right: &CharacterSummary) -> bool {
+    left.name == right.name
+        && left.description == right.description
+        && left.prompt_text == right.prompt_text
+}
+
 fn preview_snapshot(
     snapshot: BootstrapSnapshot,
     settings: &NormalizedSettings,
@@ -905,6 +1022,13 @@ fn preview_snapshot(
         project.id.as_str(),
         now.as_str(),
     );
+    let characters = preview_characters(
+        snapshot.settings.characters,
+        settings,
+        mode,
+        project.id.as_str(),
+        now.as_str(),
+    );
     let prompt_templates = preview_prompt_templates(
         snapshot.settings.prompt_templates,
         settings,
@@ -919,6 +1043,7 @@ fn preview_snapshot(
         settings: ProjectBootstrapSettings {
             provider_accounts,
             style_guides,
+            characters,
             prompt_templates,
         },
     }
@@ -1056,6 +1181,51 @@ fn preview_prompt_templates(
     map.into_values().collect()
 }
 
+fn preview_characters(
+    existing: Vec<CharacterSummary>,
+    settings: &NormalizedSettings,
+    mode: BootstrapImportMode,
+    project_id: &str,
+    now: &str,
+) -> Vec<CharacterSummary> {
+    let mut map: BTreeMap<String, CharacterSummary> =
+        if matches!(mode, BootstrapImportMode::Replace) && settings.has_characters_section {
+            BTreeMap::new()
+        } else {
+            existing
+                .into_iter()
+                .map(|item| (item.name.to_ascii_lowercase(), item))
+                .collect()
+        };
+
+    if settings.has_characters_section {
+        for character in &settings.characters {
+            let key = character.name.to_ascii_lowercase();
+            let existing_summary = map.get(key.as_str()).cloned();
+            map.insert(
+                key,
+                CharacterSummary {
+                    id: existing_summary
+                        .as_ref()
+                        .map(|item| item.id.clone())
+                        .unwrap_or_else(|| format!("preview_character_{}", Uuid::new_v4())),
+                    project_id: project_id.to_string(),
+                    name: character.name.clone(),
+                    description: character.description.clone().unwrap_or_default(),
+                    prompt_text: character.prompt_text.clone().unwrap_or_default(),
+                    created_at: existing_summary
+                        .as_ref()
+                        .map(|item| item.created_at.clone())
+                        .unwrap_or_else(|| now.to_string()),
+                    updated_at: now.to_string(),
+                },
+            );
+        }
+    }
+
+    map.into_values().collect()
+}
+
 fn load_provider_accounts(
     conn: &Connection,
     project_id: &str,
@@ -1154,6 +1324,38 @@ fn load_prompt_templates(
     Ok(out)
 }
 
+fn load_characters(
+    conn: &Connection,
+    project_id: &str,
+) -> Result<Vec<CharacterSummary>, ProjectsRepoError> {
+    let mut stmt = conn.prepare(
+        "
+        SELECT id, project_id, name, description, prompt_text, created_at, updated_at
+        FROM characters
+        WHERE project_id = ?1
+        ORDER BY COALESCE(updated_at, '') DESC, id DESC
+    ",
+    )?;
+    let mut rows = stmt.query([project_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(CharacterSummary {
+            id: row.get("id")?,
+            project_id: row.get("project_id")?,
+            name: row.get("name")?,
+            description: row
+                .get::<_, Option<String>>("description")?
+                .unwrap_or_default(),
+            prompt_text: row
+                .get::<_, Option<String>>("prompt_text")?
+                .unwrap_or_default(),
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
+        });
+    }
+    Ok(out)
+}
+
 fn bootstrap_response_template() -> Value {
     json!({
         "mode": "merge",
@@ -1181,6 +1383,13 @@ fn bootstrap_response_template() -> Value {
                     "notes": "[OPTIONAL_NOTES]"
                 }
             ],
+            "characters": [
+                {
+                    "name": "Hero Character",
+                    "description": "[OPTIONAL_CHARACTER_DESCRIPTION]",
+                    "prompt_text": "Describe the character and visual constraints."
+                }
+            ],
             "prompt_templates": [
                 {
                     "name": "Cover Prompt",
@@ -1201,6 +1410,7 @@ fn render_bootstrap_prompt(snapshot: &BootstrapSnapshot, expected_response: &Val
         },
         "provider_accounts": &snapshot.settings.provider_accounts,
         "style_guides": &snapshot.settings.style_guides,
+        "characters": &snapshot.settings.characters,
         "prompt_templates": &snapshot.settings.prompt_templates,
     });
 

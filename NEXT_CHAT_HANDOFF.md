@@ -2,77 +2,84 @@
 
 Date: 2026-02-22
 Branch: `master`
-Last commit before this handoff update: `c89ead6`
+Last pushed commit before this handoff update: `4fc5fdb`
 
 ## Current Status
 
-1. Bootstrap prompt export/import is live on `master` and pushed.
-2. Replace-mode destructive behavior was fixed and covered by regression tests.
-3. Next phase has started: bootstrap `dry_run` preview mode is implemented locally and validated by tests (not committed yet in this pass).
+1. Rust backend is the primary local API (`axum` + SQLite) and is passing the full backend test suite.
+2. Bootstrap prompt exchange is live and shipped on `master`:
+   - export prompt endpoint
+   - import endpoint (`merge` / `replace`)
+   - `dry_run` preview mode
+   - change-summary/diff metadata in responses
+3. Bootstrap import/export currently covers:
+   - project metadata
+   - provider accounts
+   - style guides
+   - prompt templates
+4. This pass added local (not yet committed) bootstrap support for `characters` across export/import/preview/diff.
 
-## Scope of Analysis (This Pass)
+## Scope (This Pass)
 
-1. Audited newly added bootstrap code paths end-to-end:
-- API handlers
-- route wiring
-- OpenAPI parity
-- DB import/export logic
-2. Focused on correctness/safety of `replace` semantics and payload omission edge cases.
-3. Added and ran regression coverage for identified edge cases.
-4. Began next phase by implementing non-destructive preview (`dry_run`) flow.
+1. Continued backend implementation of the bootstrap flow.
+2. Extended bootstrap domain coverage to include `characters`.
+3. Updated integration tests to exercise `characters` in:
+   - export/import round-trip
+   - replace scope safety
+   - dry-run preview no-write behavior
+4. Updated lightweight OpenAPI request schema docs for `bootstrap-import` to include `characters`.
 
-## Issues Discovered
+## Issues Found / Risks Addressed
 
-1. Critical logic issue (fixed):
-- `mode=replace` previously deleted provider/style/template records even when those sections were omitted from payload.
-- Risk: accidental project configuration loss.
-2. Product gap (next phase):
-- no preview-only import path for UI confirmation before write.
+1. Coverage gap (fixed):
+   - bootstrap feature previously did not support `characters`, forcing users to recreate them manually after AI bootstrap imports.
+2. Regression risk (mitigated):
+   - added tests to ensure `replace` mode still does not delete `characters` when that section is omitted.
+   - added dry-run assertions to confirm preview includes `characters` changes without persisting writes.
 
-## Fixes Implemented
+## Fixes / Changes Implemented (Local, Uncommitted)
 
-1. Replace-mode safety hardening:
-- replace now only affects sections explicitly present in payload.
-- omitted sections are preserved.
-2. Input model update:
-- bootstrap section lists are `Option<Vec<...>>` to distinguish omitted vs provided sections.
-3. Regression coverage:
-- `bootstrap_replace_mode_only_replaces_provided_sections` test added.
-4. Next phase started (local, uncommitted in this pass):
-- added `dry_run` input support.
-- added preview response handling (`dry_run` flag in result).
-- added `bootstrap_import_dry_run_previews_without_writing` test.
+1. `src-tauri/src/db/projects/bootstrap.rs`
+   - Added `characters` to bootstrap export settings.
+   - Added `characters` input parsing/normalization (`ProjectBootstrapCharacterInput`).
+   - Added merge/replace apply logic for `characters`.
+   - Added dry-run preview generation for `characters`.
+   - Added diff/change-summary computation for `characters`.
+   - Added `load_characters()` snapshot helper.
+   - Updated bootstrap prompt template + expected response schema to include `characters`.
+2. `src-tauri/tests/bootstrap_endpoints.rs`
+   - Extended round-trip test with seeded/imported `characters`.
+   - Extended replace-scope safety test with `characters`.
+   - Extended dry-run test with `characters` preview and persistence checks.
+3. `openapi/backend-api.openapi.yaml`
+   - Added `characters` request schema under `POST /api/projects/{slug}/bootstrap-import`.
 
 ## Validation
 
 Commands run:
 1. `cargo fmt`
-2. `cargo test --test bootstrap_endpoints --test contract_parity --test http_contract_surface`
-3. `cargo test`
+2. `cargo test --test bootstrap_endpoints`
+3. `cargo test --test bootstrap_endpoints --test contract_parity --test http_contract_surface`
+4. `cargo test`
 
-Result: passing.
-
-## Completed Work
-
-1. Completed bug analysis and remediation for bootstrap import safety.
-2. Updated docs and handoff to match corrected semantics.
-3. Committed and pushed main bootstrap feature + safety fix to `master`.
-4. Started and validated the next phase (`dry_run` preview) locally.
-
-## Remaining Risks / TODO
-
-1. `dry_run` preview changes are not committed yet in this pass.
-2. Bootstrap schema currently excludes characters/reference sets/secrets.
-3. No frontend import diff UI yet (backend preview now available locally in this pass).
+Result: all passing.
 
 ## Open Tasks
 
-1. Commit and push the new `dry_run` preview phase changes.
-2. Expose preview flow in desktop UI with explicit replace confirmation.
-3. Extend bootstrap scope to additional domains after preview UX is in place.
+1. Commit and push the local `characters` bootstrap support.
+2. Extend bootstrap coverage to the next domains:
+   - reference sets (likely highest value)
+   - secrets (metadata only, no secret values)
+   - voice/chat instructions (if included in bootstrap scope)
+3. Add desktop UI actions for bootstrap prompt export/import:
+   - export prompt button
+   - import modal (paste AI JSON)
+   - dry-run preview / diff confirmation
+   - merge vs replace confirmation UX
+4. Improve OpenAPI response documentation for bootstrap endpoints (currently request schema is only lightly documented).
 
 ## Recommended Next Steps
 
-1. Finalize and ship `dry_run` backend contract on `master`.
-2. Implement UI preview/diff modal before apply.
-3. Add targeted tests for case-collision and duplicate resolution during preview/apply.
+1. Commit/push this `characters` bootstrap backend phase as one focused commit.
+2. Implement `reference_sets` bootstrap import/export next (same pattern as `characters`).
+3. Start desktop UI integration using `dry_run` preview before enabling destructive replace imports.
