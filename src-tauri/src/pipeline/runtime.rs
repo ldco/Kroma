@@ -295,17 +295,28 @@ impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
         let mut result = self.inner.execute(&self.build_script_request(request))?;
 
-        let Some(run_log_path) = extract_run_log_path_from_stdout(result.stdout.as_str()) else {
+        let Some(summary) = parse_script_run_summary_from_stdout(result.stdout.as_str()) else {
             append_stderr_line(
                 &mut result.stderr,
                 "Rust post-run ingest skipped: missing 'Run log:' line in pipeline stdout",
             );
             return Ok(result);
         };
+        if let Some(project_slug) = summary.project_slug.as_deref() {
+            if project_slug != request.project_slug {
+                append_stderr_line(
+                    &mut result.stderr,
+                    format!(
+                        "Rust post-run ingest warning: script stdout project '{}' does not match request '{}'",
+                        project_slug, request.project_slug
+                    ),
+                );
+            }
+        }
 
         let finalize = self.post_run.finalize_run(PostRunFinalizeParams {
             ingest: PostRunIngestParams {
-                run_log_path,
+                run_log_path: summary.run_log_path,
                 project_slug: request.project_slug.clone(),
                 project_name: request.project_slug.clone(),
                 create_project_if_missing: true,
@@ -325,15 +336,56 @@ impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
     }
 }
 
-fn extract_run_log_path_from_stdout(stdout: &str) -> Option<PathBuf> {
-    stdout.lines().find_map(|line| {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PipelineScriptRunSummary {
+    run_log_path: PathBuf,
+    project_slug: Option<String>,
+    project_root: Option<String>,
+    jobs: Option<u64>,
+}
+
+fn parse_script_run_summary_from_stdout(stdout: &str) -> Option<PipelineScriptRunSummary> {
+    let mut run_log_path = None;
+    let mut project_slug = None;
+    let mut project_root = None;
+    let mut jobs = None;
+
+    for line in stdout.lines() {
         let trimmed = line.trim();
-        let value = trimmed.strip_prefix("Run log:")?.trim();
-        if value.is_empty() {
-            None
-        } else {
-            Some(PathBuf::from(value))
+        if let Some(value) = trimmed.strip_prefix("Run log:") {
+            let value = value.trim();
+            if !value.is_empty() {
+                run_log_path = Some(PathBuf::from(value));
+            }
+            continue;
         }
+        if let Some(value) = trimmed.strip_prefix("Project:") {
+            let value = value.trim();
+            if !value.is_empty() {
+                project_slug = Some(value.to_string());
+            }
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("Project root:") {
+            let value = value.trim();
+            if !value.is_empty() {
+                project_root = Some(value.to_string());
+            }
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("Jobs:") {
+            let count_token = value.split_whitespace().next().unwrap_or_default();
+            if let Ok(parsed) = count_token.parse::<u64>() {
+                jobs = Some(parsed);
+            }
+        }
+    }
+
+    Some(PipelineScriptRunSummary {
+        run_log_path: run_log_path?,
+        project_slug,
+        project_root,
+        jobs,
     })
 }
 
@@ -777,5 +829,21 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn parses_script_run_summary_from_stdout_lines() {
+        let parsed = parse_script_run_summary_from_stdout(
+            "Run log: var/projects/demo/runs/run_1.json\nProject: demo\nProject root: var/projects/demo\nJobs: 3 (run/completed)\n",
+        )
+        .expect("summary should parse");
+
+        assert_eq!(
+            parsed.run_log_path,
+            PathBuf::from("var/projects/demo/runs/run_1.json")
+        );
+        assert_eq!(parsed.project_slug.as_deref(), Some("demo"));
+        assert_eq!(parsed.project_root.as_deref(), Some("var/projects/demo"));
+        assert_eq!(parsed.jobs, Some(3));
     }
 }
