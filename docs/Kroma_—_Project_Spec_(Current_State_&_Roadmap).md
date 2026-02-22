@@ -1,9 +1,7 @@
 # Kroma — Project Spec (Current State & Roadmap)
 
-# Kroma — Full Project Specification
-
-**Last updated:** 2026-02-21  
-**Status:** Active development — Phase 1 in progress
+**Last updated:** 2026-02-22  
+**Status:** Active development — Rust backend is primary; pipeline scripts are still in use
 
 ---
 
@@ -24,110 +22,111 @@ It is **not** a GUI app today. It is a **backend-first, CLI-driven system** that
 | Project isolation | All data, files, and DB records are scoped to a project slug |
 | Post-processing | Background removal → upscale → color correction, all in one chain |
 
+### Current State Snapshot (2026-02-22)
+
+1. Rust backend (`src-tauri`) is the primary API/backend implementation.
+2. Metadata/database APIs are mostly migrated to Rust and contract-tested.
+3. `scripts/` is still required for the image pipeline, local tool wrappers, and compatibility utilities.
+4. Migration is partial: backend metadata APIs are far ahead of pipeline/runtime migration.
+
 ---
 
 ## 2. System Architecture
 
 ```mermaid
 graph TD
-    CLI["CLI Runner\nimage-lab.mjs (Node.js)"]
-    API["REST API Server\nbackend_api.py (Python)"]
+    RustAPI["Rust Backend Core\nsrc-tauri (axum + rusqlite)\nPrimary API surface"]
     DB["SQLite Database\nvar/backend/app.db"]
-    Worker["Instruction Worker\nagent_worker.py"]
-    Dispatch["Agent Dispatcher\nagent_dispatch.py"]
+    CLI["CLI Pipeline\nscripts/image-lab.mjs (Node.js)"]
+    Worker["Agent Worker (Transitional)\nscripts/agent_worker.py"]
+    LegacyPy["Legacy Python Backend (Compatibility)\nscripts/backend.py + backend_api.py"]
     OpenAI["OpenAI API\ngpt-image-1"]
     ESRGAN["Real-ESRGAN\n(local upscaler)"]
     Rembg["rembg\n(local BG removal)"]
-    S3["S3 Storage\n(optional)"]
     FS["Local Filesystem\nproject_root/"]
+    S3["S3 Storage\n(optional)"]
+
+    RustAPI --> DB
+    RustAPI --> FS
+    RustAPI --> S3
 
     CLI --> OpenAI
     CLI --> ESRGAN
     CLI --> Rembg
-    CLI --> DB
     CLI --> FS
-    API --> DB
-    API --> FS
-    API --> S3
+    CLI --> DB
+
     Worker --> DB
-    Worker --> Dispatch
-    Dispatch --> OpenAI
+    LegacyPy --> DB
 ```
 
-### Layer Breakdown
+### Layer Breakdown (Current)
 
-#### Layer 1 — CLI Pipeline (`scripts/image-lab.mjs`, Node.js)
-The main creative runner. Accepts commands: `run`, `dry`, `upscale`, `bgremove`, `color`, `qa`, `archive-bad`.
+#### Layer 1 — Rust Backend Core (`src-tauri`) — Primary
+This is the main backend surface now (`npm run backend:rust`, default `127.0.0.1:8788`).
 
-- Reads config from `settings/manifest.json` and `settings/presets.json`
-- Builds a job queue from `scene_refs` + `style_refs`
-- Calls **OpenAI Images Edits API** (`/v1/images/edits`) with `gpt-image-1`
-- Enforces spend guards (`--confirm-spend`, batch limits)
-- Writes reproducible run logs (JSON) per run
-- Runs post-processing chains: bg-remove → upscale → color correction
-- Runs QA guard (`scripts/output-guard.py`) to reject bad outputs automatically
-- Auto-ingests run results into the backend DB
+- Contract-first HTTP surface (`openapi/backend-api.openapi.yaml`)
+- Route parity checks + endpoint integration tests
+- SQLite schema ownership and migrations at runtime
+- Project/storage/asset/runs/chat/instruction/voice/secrets APIs
+- Bootstrap prompt export/import (`/bootstrap-prompt`, `/bootstrap-import`)
 
-#### Layer 2 — Backend Data Layer (`scripts/backend.py`, Python)
-SQLite-backed data management and CLI admin tool.
+#### Layer 2 — CLI Pipeline (`scripts/image-lab.mjs`) — Not yet migrated
+The generation and post-process pipeline is still script-based.
 
-- Schema initialization and migration tracking (`schema_migrations` table)
-- Project/user CRUD, storage policy resolution (local + S3)
-- Asset upsert with SHA-256 deduplication
-- Run log ingestion (runs → jobs → candidates → assets)
-- Encrypted secret management (Fernet encryption)
-- Project export as portable `.tar.gz` (DB slice + files)
-- S3 sync via AWS CLI
+- `dry`/`run` orchestration
+- OpenAI image edit calls
+- Local post-processing (rembg / Real-ESRGAN / color)
+- QA guard and candidate flow
 
-#### Layer 3 — REST API Server (`scripts/backend_api.py`, Python stdlib HTTP)
-Thin HTTP server wrapping the backend layer. Serves at `http://127.0.0.1:8787`.
+#### Layer 3 — `scripts/` Folder — Transitional but still required
+`scripts/` still exists because not all runtime responsibilities are migrated to Rust yet.
 
-- Full project/storage/secrets CRUD
-- Chat sessions and messages
-- Agent instruction lifecycle (create → confirm → queue → run → done/failed)
-- Voice STT/TTS request tracking
-- Run ingestion and project export endpoints
+It currently contains:
+- Active pipeline/runtime scripts (`image-lab.mjs`, tool wrappers)
+- Legacy compatibility surfaces (`backend.py`, `backend_api.py`)
+- Worker/dispatch utilities (`agent_worker.py`, `agent_dispatch.py`)
+- Migration/ops helpers (`db_migrate.py`, `contract_smoke.py`, setup scripts)
 
-#### Layer 4 — Agent Instruction Worker (`scripts/agent_worker.py`, Python)
-Async polling worker that processes queued agent instructions.
+### Why `scripts/` still exists
 
-- Polls DB every 2 seconds for `status = 'queued'` instructions
-- Acquires optimistic lock (`locked_by`, `locked_at`) to prevent double-processing
-- Resolves agent API target URL + token (env vars or encrypted DB secrets)
-- Dispatches instruction payload via HTTP POST (`agent_dispatch.py`)
-- Handles retries with exponential backoff (default: 3 attempts)
-- Emits structured events to `agent_instruction_events` table
+Short answer: **partial migration**.
+
+1. Rust now owns most backend data/API functionality.
+2. Generation orchestration + local media toolchain is still Node/Python script-driven.
+3. Some legacy Python commands are retained for compatibility while migration continues.
+
+So no, it is not all migrated to Rust yet.
 
 ---
 
 ## 3. File Structure
 
-```
+```text
 app/
-├── scripts/
-│   ├── image-lab.mjs          # Main CLI runner (Node.js)
-│   ├── backend.py             # DB layer + CLI admin commands
-│   ├── backend_api.py         # REST API server
-│   ├── agent_worker.py        # Instruction queue worker
-│   ├── agent_dispatch.py      # HTTP dispatcher for agent API
-│   ├── db_migrate.py          # Migration runner
-│   ├── output-guard.py        # QA guard (Pillow/chroma checks)
-│   ├── apply-color-correction.py
-│   ├── rembg-remove.py
-│   └── realesrgan-python-upscale.py
-├── settings/
-│   ├── manifest.json          # Single source of truth (prompts, refs, guards)
-│   ├── presets.json           # Reusable time/weather bundles
-│   ├── postprocess.json       # Upscale, bg-remove, color config
-│   └── color-correction.json  # Color profiles (neutral, cinematic_warm, cold_rain)
+├── src-tauri/                 # Rust backend core (primary API)
+│   ├── src/
+│   │   ├── api/
+│   │   ├── db/
+│   │   └── contract/
+│   └── tests/
+├── scripts/                   # Transitional + pipeline runtime scripts
+│   ├── image-lab.mjs
+│   ├── backend.py
+│   ├── backend_api.py
+│   ├── agent_worker.py
+│   ├── agent_dispatch.py
+│   ├── db_migrate.py
+│   ├── output-guard.py
+│   └── setup_tools.py
+├── settings/                  # Pipeline prompt/preset/postprocess configuration
 ├── openapi/
 │   └── backend-api.openapi.yaml
 ├── var/                       # Runtime state (not versioned)
-│   ├── backend/               # app.db, master.key
-│   └── projects/              # default local project roots (if project_root not explicit)
+│   ├── backend/
+│   └── projects/
 ├── tools/                     # Local tool runtime dirs (not versioned)
 └── docs/
-    └── WORKFLOW.md
 ```
 
 ---
@@ -185,51 +184,48 @@ Named color profiles: `neutral`, `cinematic_warm`, `cold_rain`.
 
 ## 6. Database — Current vs Target Schema
 
-The DB is managed by `scripts/backend.py` via `init_schema()`. Migrations are tracked in `schema_migrations`.
+The primary schema is now owned by Rust (`src-tauri/src/db/projects.rs` + submodules).  
+Tables are created/normalized on startup by the Rust backend.
 
-### Current Tables (implemented in `backend.py`)
-
-| Table | Status |
-|---|---|
-| `schema_migrations` | ✅ Implemented |
-| `users` | ✅ Implemented (single-user `local`) |
-| `projects` | ✅ Implemented |
-| `project_api_secrets` | ✅ Implemented (Fernet encrypted) |
-| `runs` | ✅ Implemented |
-| `run_jobs` | ✅ Implemented |
-| `run_job_candidates` | ✅ Implemented |
-| `assets` | ✅ Implemented |
-| `project_snapshots` | ✅ Implemented |
-| `project_exports` | ✅ Implemented |
-| `chat_sessions` | ✅ Implemented |
-| `chat_messages` | ✅ Implemented |
-| `agent_instructions` | ✅ Implemented (with retry/lock fields) |
-| `agent_instruction_events` | ✅ Implemented |
-| `voice_requests` | ✅ Implemented |
-
-### Target Tables (from `docs/TECH_SPEC.md` — not yet migrated)
+### Current Tables (implemented in Rust backend)
 
 | Table | Status | Notes |
 |---|---|---|
-| `app_users` | ⚠️ Rename from `users` | Add `email`, `is_active` columns |
-| `project_storage` | ⚠️ Extract from `projects` | Normalize storage policy into own table |
-| `provider_accounts` | ❌ Missing | Provider config per project |
-| `style_guides` | ❌ Missing | Style lock definitions |
-| `characters` | ❌ Missing | Character identity profiles |
-| `reference_sets` | ❌ Missing | Reusable reference packs |
-| `reference_items` | ❌ Missing | Files linked into reference sets |
-| `asset_links` | ❌ Missing | Derived-from graph between assets |
-| `run_candidates` | ⚠️ Rename from `run_job_candidates` | Add ranking columns |
-| `quality_reports` | ❌ Missing | Normalized QA/guard outcomes |
-| `prompt_templates` | ❌ Missing | Versioned prompt templates |
-| `cost_events` | ❌ Missing | Per-provider cost tracking |
-| `audit_events` | ❌ Missing | Full audit trail |
+| `users` | ✅ Present | Legacy compatibility |
+| `app_users` | ✅ Present | New canonical user table |
+| `projects` | ✅ Present | Project metadata |
+| `project_storage` | ✅ Present | Local + S3 storage policy |
+| `runs` / `run_jobs` | ✅ Present | Run/job tracking |
+| `run_job_candidates` | ✅ Present | Legacy compatibility |
+| `run_candidates` | ✅ Present | Ranked candidate model |
+| `assets` | ✅ Present | Asset registry |
+| `asset_links` | ✅ Present | Derived/reference relationships |
+| `provider_accounts` | ✅ Present | Per-project provider config |
+| `style_guides` | ✅ Present | Style lock definitions |
+| `characters` | ✅ Present | Character profiles |
+| `reference_sets` / `reference_set_items` | ✅ Present | Reference pack system |
+| `prompt_templates` | ✅ Present | Prompt templates |
+| `quality_reports` | ✅ Present | QA report rows |
+| `cost_events` | ✅ Present | Cost tracking events |
+| `project_exports` | ✅ Present | Export metadata |
+| `chat_sessions` / `chat_messages` | ✅ Present | Chat history |
+| `agent_instructions` / `agent_instruction_events` | ✅ Present | Instruction lifecycle |
+| `voice_requests` | ✅ Present | STT/TTS request tracking |
+| `project_secrets` | ✅ Present | Project secret storage |
+
+### Remaining Gaps / Cleanup
+
+| Item | Status | Notes |
+|---|---|---|
+| `audit_events` table | ❌ Missing | Still pending |
+| Legacy table cleanup (`users`, `run_job_candidates`) | ⚠️ Pending | Kept for compatibility during migration |
+| Full data migration off Python-only paths | ⚠️ In progress | Rust is primary, scripts still exist for pipeline/tooling |
 
 ---
 
 ## 7. REST API Surface
 
-Base URL: `http://127.0.0.1:8787`  
+Primary Base URL: `http://127.0.0.1:8788`  
 Contract: `file:openapi/backend-api.openapi.yaml`
 
 ### Implemented Endpoints
@@ -238,25 +234,30 @@ Contract: `file:openapi/backend-api.openapi.yaml`
 |---|---|
 | Health | `GET /health` |
 | Projects | `GET/POST /api/projects`, `GET /api/projects/:slug` |
+| Bootstrap | `GET /api/projects/:slug/bootstrap-prompt`, `POST /api/projects/:slug/bootstrap-import` (`merge`/`replace` + `dry_run`) |
 | Storage | `GET /api/projects/:slug/storage`, `PUT .../local`, `PUT .../s3` |
-| Secrets | `GET/POST /api/projects/:slug/secrets`, `DELETE .../secrets/:provider/:name` |
-| Runs | `POST /api/projects/:slug/runs/ingest` |
-| Export | `POST /api/projects/:slug/export`, `POST .../sync-s3` |
-| Chat | `POST/GET .../chat/sessions`, `POST/GET .../chat/sessions/:id/messages` |
-| Agent | `POST/GET .../agent/instructions`, `GET/POST .../instructions/:id`, `POST .../confirm`, `POST .../cancel`, `GET .../events` |
+| Runs | `GET /api/projects/:slug/runs`, `GET .../runs/:runId`, `GET .../runs/:runId/jobs` |
+| Assets | `GET /api/projects/:slug/assets`, `GET .../assets/:assetId`, asset link CRUD |
+| Analytics | `GET /api/projects/:slug/quality-reports`, `GET .../cost-events` |
+| Exports | `GET /api/projects/:slug/exports`, `GET .../exports/:exportId` |
+| Prompt Templates | Full CRUD |
+| Provider Accounts | Full CRUD |
+| Style Guides | Full CRUD |
+| Characters | Full CRUD |
+| Reference Sets | Set CRUD + item CRUD |
+| Chat | Session CRUD-lite + message create/list |
+| Agent | Instruction create/list/detail/events/confirm/cancel |
 | Voice | `POST .../voice/stt`, `POST .../voice/tts`, `GET .../voice/requests/:id` |
+| Secrets | `GET/POST .../secrets`, `DELETE .../secrets/:provider/:name` |
 
 ### Missing / Planned Endpoints
 
 | Group | Missing |
 |---|---|
-| Projects | `GET /api/projects/:slug/chat/sessions/:sessionId` (single session detail) |
-| Runs | `GET /api/projects/:slug/runs`, `GET .../runs/:runId`, `GET .../runs/:runId/jobs` |
-| Assets | `GET /api/projects/:slug/assets`, `GET .../assets/:assetId` |
-| Quality | `GET /api/projects/:slug/quality-reports` |
-| Cost | `GET /api/projects/:slug/cost-events` |
-| Characters | Full CRUD for `characters`, `style_guides`, `reference_sets` |
-| Auth | `POST /auth/login`, `POST /auth/token` (Phase 2) |
+| Auth | `POST /auth/login`, `POST /auth/token` |
+| Pipeline execution APIs | Run trigger/ingest parity from script pipeline into Rust API |
+| Export mutation APIs | Rust-side create export / sync-s3 parity with legacy Python flow |
+| Worker migration | Move instruction worker runtime from Python script to Rust service/module |
 
 ---
 
@@ -326,44 +327,36 @@ Every instruction dispatched to an external agent API must include:
 
 #### 10.1 DB Schema Migration to Target Spec
 
-The current DB schema partially matches the target defined in `file:docs/TECH_SPEC.md`. The following migrations are needed:
+Most target schema items are now present in Rust. Current DB priorities are:
 
-1. **Rename `users` → `app_users`**, add `email` and `is_active` columns
-2. **Extract `project_storage` table** — normalize storage policy out of `projects` table
-3. **Add `provider_accounts` table** — per-project provider config (OpenAI, rembg, etc.)
-4. **Add `style_guides` table** — style lock definitions per project
-5. **Add `characters` table** — stable character identity profiles
-6. **Add `reference_sets` + `reference_items` tables** — reusable reference packs
-7. **Add `asset_links` table** — derived-from graph between assets
-8. **Rename `run_job_candidates` → `run_candidates`**, add ranking columns (`rank_hard_failures`, `rank_soft_warnings`, `rank_avg_chroma_exceed`)
-9. **Add `quality_reports` table** — normalized QA/guard outcomes (currently only in run log JSON)
-10. **Add `prompt_templates` table** — versioned prompt templates
-11. **Add `cost_events` table** — per-provider cost tracking per run
-12. **Add `audit_events` table** — full audit trail for all mutations
-
-All migrations must be additive and tracked in `schema_migrations`.
+1. Add missing `audit_events`
+2. Plan compatibility cleanup for legacy tables (`users`, `run_job_candidates`)
+3. Keep migrations additive and forward-safe while Python compatibility paths still exist
 
 #### 10.2 Missing API Endpoints
 
-1. `GET /api/projects/:slug/runs` — list runs for a project
-2. `GET /api/projects/:slug/runs/:runId` — run detail with jobs
-3. `GET /api/projects/:slug/runs/:runId/jobs` — job list with candidates
-4. `GET /api/projects/:slug/assets` — asset registry
-5. `GET /api/projects/:slug/quality-reports` — QA report history
-6. `GET /api/projects/:slug/cost-events` — cost tracking
-7. Full CRUD for `characters`, `style_guides`, `reference_sets`
+Most metadata CRUD/read endpoints are implemented in Rust. Remaining API priorities:
+
+1. Auth/token endpoints (`/auth/*`)
+2. Pipeline execution mutation parity (trigger/ingest)
+3. Export mutation parity (`create export`, `sync-s3`)
+4. Preview-first UX support expansion around bootstrap import flows
 
 #### 10.3 Cost Tracking
 
-- Capture OpenAI API cost per run/job/candidate (tokens, image units)
-- Write `cost_events` rows during run ingestion
-- Expose via `GET /api/projects/:slug/cost-events`
+Cost event read API exists. Remaining work:
+
+1. Ensure all generation paths emit normalized `cost_events`
+2. Add richer provider/model attribution fields where missing
+3. Add dashboard-facing aggregation endpoints when frontend needs stabilize
 
 #### 10.4 Quality Reports Normalization
 
-- Currently QA results live only in run log JSON
-- Migrate to `quality_reports` table during run ingestion
-- Link to `run_candidates` for per-candidate scoring
+Quality report table and read API exist. Remaining work:
+
+1. Backfill historical run logs where practical
+2. Standardize candidate linkage for all ingest paths
+3. Expand report detail shape for frontend QA drill-down views
 
 ---
 
@@ -374,7 +367,7 @@ No GUI exists today. The backend-first approach is intentional, but a GUI is the
 #### Proposed Frontend Stack
 
 - **Framework:** React (or SvelteKit for lighter footprint)
-- **API:** Consumes the existing REST API at `http://127.0.0.1:8787`
+- **API:** Consumes the Rust REST API at `http://127.0.0.1:8788`
 - **Hosting:** Local dev server (same machine as backend)
 
 #### Required Views

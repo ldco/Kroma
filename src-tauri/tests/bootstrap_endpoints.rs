@@ -122,9 +122,22 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
     .await;
     assert_eq!(imported["ok"], json!(true));
     assert_eq!(imported["bootstrap_import"]["mode"], json!("replace"));
+    assert_eq!(imported["bootstrap_import"]["dry_run"], json!(false));
     assert_eq!(
         imported["bootstrap_import"]["applied"]["provider_accounts"],
         json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["provider_accounts"]["updated"],
+        json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["provider_accounts"]["deleted"],
+        json!(0)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["style_guides"]["replaced"],
+        json!(true)
     );
     assert_eq!(
         imported["bootstrap_import"]["project"]["name"],
@@ -430,6 +443,19 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
         templates["prompt_templates"][0]["name"],
         json!("Original Template")
     );
+
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["provider_accounts"]["provided"],
+        json!(false)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["provider_accounts"]["deleted"],
+        json!(0)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["style_guides"]["replaced"],
+        json!(true)
+    );
 }
 
 #[tokio::test]
@@ -484,6 +510,18 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
     .await;
     assert_eq!(preview["bootstrap_import"]["dry_run"], json!(true));
     assert_eq!(preview["bootstrap_import"]["mode"], json!("replace"));
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["style_guides"]["created"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["style_guides"]["deleted"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["style_guides"]["replaced"],
+        json!(true)
+    );
     assert_eq!(
         preview["bootstrap_import"]["settings"]["style_guides"][0]["name"],
         json!("Preview Style")

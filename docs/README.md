@@ -4,6 +4,12 @@ This folder contains repository documentation for architecture, specs, audits, a
 
 Key docs:
 - `DESKTOP_UI_PLAYBOOK.md` - practical desktop UX flow and style-consistency strategy without Codex
+- `Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` - source of truth for current architecture, backend state, and roadmap
+- `MIGRATION_STATUS.md` - exact Rust vs scripts vs legacy migration status by subsystem
+
+Quick status note:
+- Rust backend (`src-tauri`) is the primary API/runtime for metadata and contract-tested endpoints.
+- `scripts/` still exists for pipeline orchestration/tooling and compatibility paths that are not yet fully migrated.
 
 What belongs in `docs/`:
 - technical specs and architecture decisions

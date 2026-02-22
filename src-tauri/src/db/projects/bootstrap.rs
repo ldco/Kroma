@@ -46,12 +46,41 @@ pub struct BootstrapAppliedSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct BootstrapProjectChangeSummary {
+    pub provided: bool,
+    pub updated: bool,
+    pub name_changed: bool,
+    pub description_changed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BootstrapSectionChangeSummary {
+    pub provided: bool,
+    pub replaced: bool,
+    pub before_count: usize,
+    pub after_count: usize,
+    pub created: usize,
+    pub updated: usize,
+    pub deleted: usize,
+    pub unchanged: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BootstrapImportChangeSummary {
+    pub project: BootstrapProjectChangeSummary,
+    pub provider_accounts: BootstrapSectionChangeSummary,
+    pub style_guides: BootstrapSectionChangeSummary,
+    pub prompt_templates: BootstrapSectionChangeSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProjectBootstrapImportResult {
     pub schema_version: String,
     pub mode: String,
     pub dry_run: bool,
     pub project_updated: bool,
     pub applied: BootstrapAppliedSummary,
+    pub changes: BootstrapImportChangeSummary,
     pub project: ProjectBootstrapProject,
     pub settings: ProjectBootstrapSettings,
 }
@@ -225,6 +254,7 @@ impl ProjectsStore {
         let mode = parse_bootstrap_mode(input.mode.as_deref().or(mode_from_payload.as_deref()))?;
         let dry_run = input.dry_run.unwrap_or(false);
         let settings = normalize_bootstrap_settings(settings_input)?;
+        let before_snapshot = self.load_bootstrap_snapshot(slug)?;
         let applied = BootstrapAppliedSummary {
             provider_accounts: settings.provider_accounts.len(),
             style_guides: settings.style_guides.len(),
@@ -232,14 +262,22 @@ impl ProjectsStore {
         };
 
         if dry_run {
-            let snapshot = self.load_bootstrap_snapshot(slug)?;
-            let preview = preview_snapshot(snapshot, &settings, mode);
+            let preview = preview_snapshot(before_snapshot.clone(), &settings, mode);
+            let changes = compute_bootstrap_import_changes(
+                &before_snapshot,
+                &preview.project,
+                &preview.settings,
+                &settings,
+                mode,
+                preview.project_updated,
+            );
             return Ok(ProjectBootstrapImportResult {
                 schema_version: String::from(BOOTSTRAP_SCHEMA_VERSION),
                 mode: String::from(mode.as_str()),
                 dry_run: true,
                 project_updated: preview.project_updated,
                 applied,
+                changes,
                 project: preview.project,
                 settings: preview.settings,
             });
@@ -399,12 +437,21 @@ impl ProjectsStore {
         })?;
 
         let snapshot = self.load_bootstrap_snapshot(slug)?;
+        let changes = compute_bootstrap_import_changes(
+            &before_snapshot,
+            &snapshot.project,
+            &snapshot.settings,
+            &settings,
+            mode,
+            project_updated,
+        );
         Ok(ProjectBootstrapImportResult {
             schema_version: String::from(BOOTSTRAP_SCHEMA_VERSION),
             mode: String::from(mode.as_str()),
             dry_run: false,
             project_updated,
             applied,
+            changes,
             project: snapshot.project,
             settings: snapshot.settings,
         })
@@ -647,6 +694,179 @@ fn normalize_bootstrap_settings(
         style_guides: style_guides.into_values().collect(),
         prompt_templates: prompt_templates.into_values().collect(),
     })
+}
+
+fn compute_bootstrap_import_changes(
+    before: &BootstrapSnapshot,
+    after_project: &ProjectBootstrapProject,
+    after_settings: &ProjectBootstrapSettings,
+    normalized: &NormalizedSettings,
+    mode: BootstrapImportMode,
+    project_updated: bool,
+) -> BootstrapImportChangeSummary {
+    BootstrapImportChangeSummary {
+        project: BootstrapProjectChangeSummary {
+            provided: normalized.project.is_some(),
+            updated: project_updated,
+            name_changed: before.project.name != after_project.name,
+            description_changed: before.project.description != after_project.description,
+        },
+        provider_accounts: summarize_provider_account_changes(
+            before.settings.provider_accounts.as_slice(),
+            after_settings.provider_accounts.as_slice(),
+            normalized.has_provider_accounts_section,
+            matches!(mode, BootstrapImportMode::Replace)
+                && normalized.has_provider_accounts_section,
+        ),
+        style_guides: summarize_style_guide_changes(
+            before.settings.style_guides.as_slice(),
+            after_settings.style_guides.as_slice(),
+            normalized.has_style_guides_section,
+            matches!(mode, BootstrapImportMode::Replace) && normalized.has_style_guides_section,
+        ),
+        prompt_templates: summarize_prompt_template_changes(
+            before.settings.prompt_templates.as_slice(),
+            after_settings.prompt_templates.as_slice(),
+            normalized.has_prompt_templates_section,
+            matches!(mode, BootstrapImportMode::Replace) && normalized.has_prompt_templates_section,
+        ),
+    }
+}
+
+fn summarize_provider_account_changes(
+    before: &[ProviderAccountSummary],
+    after: &[ProviderAccountSummary],
+    provided: bool,
+    replaced: bool,
+) -> BootstrapSectionChangeSummary {
+    let before_map: BTreeMap<&str, &ProviderAccountSummary> = before
+        .iter()
+        .map(|item| (item.provider_code.as_str(), item))
+        .collect();
+    let after_map: BTreeMap<&str, &ProviderAccountSummary> = after
+        .iter()
+        .map(|item| (item.provider_code.as_str(), item))
+        .collect();
+    summarize_section_changes(
+        before_map,
+        after_map,
+        provided,
+        replaced,
+        provider_accounts_equal,
+    )
+}
+
+fn summarize_style_guide_changes(
+    before: &[StyleGuideSummary],
+    after: &[StyleGuideSummary],
+    provided: bool,
+    replaced: bool,
+) -> BootstrapSectionChangeSummary {
+    let before_map: BTreeMap<String, &StyleGuideSummary> = before
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    let after_map: BTreeMap<String, &StyleGuideSummary> = after
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    summarize_section_changes(
+        before_map,
+        after_map,
+        provided,
+        replaced,
+        style_guides_equal,
+    )
+}
+
+fn summarize_prompt_template_changes(
+    before: &[PromptTemplateSummary],
+    after: &[PromptTemplateSummary],
+    provided: bool,
+    replaced: bool,
+) -> BootstrapSectionChangeSummary {
+    let before_map: BTreeMap<String, &PromptTemplateSummary> = before
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    let after_map: BTreeMap<String, &PromptTemplateSummary> = after
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    summarize_section_changes(
+        before_map,
+        after_map,
+        provided,
+        replaced,
+        prompt_templates_equal,
+    )
+}
+
+fn summarize_section_changes<K, T, F>(
+    before_map: BTreeMap<K, &T>,
+    after_map: BTreeMap<K, &T>,
+    provided: bool,
+    replaced: bool,
+    equals: F,
+) -> BootstrapSectionChangeSummary
+where
+    K: Ord + Clone,
+    F: Fn(&T, &T) -> bool,
+{
+    let before_count = before_map.len();
+    let after_count = after_map.len();
+
+    let mut created = 0usize;
+    let mut updated = 0usize;
+    let mut unchanged = 0usize;
+
+    for (key, after_item) in &after_map {
+        match before_map.get(key) {
+            None => created += 1,
+            Some(before_item) => {
+                if equals(before_item, after_item) {
+                    unchanged += 1;
+                } else {
+                    updated += 1;
+                }
+            }
+        }
+    }
+
+    let mut deleted = 0usize;
+    for key in before_map.keys() {
+        if !after_map.contains_key(key) {
+            deleted += 1;
+        }
+    }
+
+    BootstrapSectionChangeSummary {
+        provided,
+        replaced,
+        before_count,
+        after_count,
+        created,
+        updated,
+        deleted,
+        unchanged,
+    }
+}
+
+fn provider_accounts_equal(left: &ProviderAccountSummary, right: &ProviderAccountSummary) -> bool {
+    left.provider_code == right.provider_code
+        && left.display_name == right.display_name
+        && left.account_ref == right.account_ref
+        && left.base_url == right.base_url
+        && left.enabled == right.enabled
+        && left.config_json == right.config_json
+}
+
+fn style_guides_equal(left: &StyleGuideSummary, right: &StyleGuideSummary) -> bool {
+    left.name == right.name && left.instructions == right.instructions && left.notes == right.notes
+}
+
+fn prompt_templates_equal(left: &PromptTemplateSummary, right: &PromptTemplateSummary) -> bool {
+    left.name == right.name && left.template_text == right.template_text
 }
 
 fn preview_snapshot(

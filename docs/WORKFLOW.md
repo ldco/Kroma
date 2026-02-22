@@ -12,26 +12,26 @@ See `docs/BACKEND_ARCHITECTURE_FREEZE.md` for the backend-first gate and fronten
 
 ## Backend Bootstrap
 
-1. Initialize DB and default user
+Recommended (Rust primary path):
+
+1. Start Rust backend API
+- `npm run backend:rust`
+
+2. Create project record
+- `curl -s -X POST http://127.0.0.1:8788/api/projects -H 'Content-Type: application/json' -d '{"name":"my_project","slug":"my_project"}'`
+
+3. Configure local storage
+- `curl -s -X PUT http://127.0.0.1:8788/api/projects/my_project/storage/local -H 'Content-Type: application/json' -d '{"project_root":"/data/iat/my_project"}'`
+
+4. Optional S3 storage config
+- `curl -s -X PUT http://127.0.0.1:8788/api/projects/my_project/storage/s3 -H 'Content-Type: application/json' -d '{"enabled":true,"bucket":"my-art-bucket","prefix":"iat-prod","region":"us-east-1"}'`
+
+Transitional/legacy scripts (still available):
+
 - `npm run backend:init`
-
-2. Create project record once
-- `python3 scripts/backend.py create-project --name "my_project" --slug my_project`
-
-2.1 Configure project local storage (required unless you always pass `--project-root`)
-- `python3 scripts/backend.py set-project-storage-local --project-slug my_project --project-root /data/iat/my_project`
-
-2.2 Configure project S3 storage (optional)
-- `python3 scripts/backend.py set-project-storage-s3 --project-slug my_project --enabled true --bucket my-art-bucket --prefix iat-prod --region us-east-1`
-
-3. Export only this project when needed
-- `python3 scripts/backend.py export-project --project-slug my_project --output var/exports/my_project.tar.gz`
-
-4. Start backend API for future GUI integration
-- `npm run backend:api`
-
-5. Run agent instruction worker (queue execution)
+- `npm run backend:api` (legacy Python API, port `8787`)
 - `npm run backend:worker`
+- direct `python3 scripts/backend.py ...` commands
 
 ## Staged Process
 

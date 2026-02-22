@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![License](https://img.shields.io/badge/license-GPLv3-green)](./LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/ldco/Kroma)
 [![Build Status](https://img.shields.io/badge/build-%5BINSERT_STATUS%5D-lightgrey)](https://example.com/build-status)
 [![Language](https://img.shields.io/badge/language-Rust%20%7C%20Node.js%20%7C%20Python-informational)](https://github.com/ldco/Kroma)
@@ -34,6 +34,24 @@ Why it exists:
 - CLI workflows for dry run, paid run, upscale, color correction, background removal, and QA.
 - Project-scoped storage and export/sync primitives.
 - Integration tests across API domains (`src-tauri/tests/*`).
+
+## Current Backend State (2026-02-22)
+
+- Primary backend is Rust (`src-tauri`), started with `npm run backend:rust` on `127.0.0.1:8788`.
+- Rust API contract currently mounts 70 routes and is covered by contract + endpoint tests.
+- Bootstrap prompt exchange is implemented:
+  - `GET /api/projects/{slug}/bootstrap-prompt`
+  - `POST /api/projects/{slug}/bootstrap-import` (`merge`, `replace`, `dry_run`)
+
+### Why `scripts/` still exists
+
+`scripts/` is still required because migration is partial, not complete:
+
+1. The image generation/post-process pipeline is still script-driven (`scripts/image-lab.mjs`).
+2. Local tool wrappers and setup flows still live in Python/Node scripts.
+3. Some legacy compatibility paths (`backend.py`, `backend_api.py`, worker scripts) are retained while parity migration continues.
+
+So: backend data/API is largely migrated to Rust, but runtime pipeline orchestration is not fully migrated yet.
 
 ## 🚀 Quick Start
 
@@ -251,5 +269,5 @@ curl -s http://127.0.0.1:8790/health
 
 ## License & Contact
 
-- License: `MIT` (see `LICENSE`)
+- License: `GPLv3` (see `LICENSE`)
 - Contact: open an issue at `https://github.com/ldco/Kroma/issues`
