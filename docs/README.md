@@ -2,6 +2,9 @@
 
 This folder contains repository documentation for architecture, specs, audits, and migration plans.
 
+Key docs:
+- `DESKTOP_UI_PLAYBOOK.md` - practical desktop UX flow and style-consistency strategy without Codex
+
 What belongs in `docs/`:
 - technical specs and architecture decisions
 - schema audits and migration plans

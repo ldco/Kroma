@@ -8,6 +8,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 mod analytics_exports;
+mod bootstrap;
 mod chat_instructions;
 mod prompt_templates;
 mod provider_style_character;
@@ -16,6 +17,10 @@ mod runs_assets;
 mod voice_secrets;
 
 pub use analytics_exports::{CostEventSummary, ProjectExportSummary, QualityReportSummary};
+pub use bootstrap::{
+    ImportProjectBootstrapInput, ProjectBootstrapExport, ProjectBootstrapImportResult,
+    ProjectBootstrapProject, ProjectBootstrapSettings,
+};
 pub use chat_instructions::{
     AgentInstructionActionInput, AgentInstructionEventSummary, AgentInstructionSummary,
     ChatMessageSummary, ChatSessionSummary, CreateAgentInstructionInput, CreateChatMessageInput,

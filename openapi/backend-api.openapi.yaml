@@ -42,6 +42,74 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+  /api/projects/{slug}/bootstrap-prompt:
+    get:
+      summary: Export project bootstrap prompt for AI configuration
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Project not found }
+  /api/projects/{slug}/bootstrap-import:
+    post:
+      summary: Import AI-generated bootstrap settings into a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [merge, replace]
+                settings:
+                  type: object
+                  properties:
+                    project:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        description: { type: string }
+                    provider_accounts:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          provider_code: { type: string }
+                          display_name: { type: string }
+                          account_ref: { type: string }
+                          base_url: { type: string }
+                          enabled: { type: boolean }
+                          config_json: { type: object }
+                    style_guides:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name: { type: string }
+                          instructions: { type: string }
+                          notes: { type: string }
+                    prompt_templates:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name: { type: string }
+                          template_text: { type: string }
+                ai_response_text: { type: string }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid payload }
+        "404": { description: Project not found }
   /api/projects/{slug}/storage:
     get:
       summary: Get project storage config

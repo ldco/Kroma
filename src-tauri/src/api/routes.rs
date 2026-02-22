@@ -132,6 +132,8 @@ const CONTRACT_ROUTES: &[(HttpMethod, &str)] = &[
     (HttpMethod::Get, "/api/projects"),
     (HttpMethod::Post, "/api/projects"),
     (HttpMethod::Get, "/api/projects/{slug}"),
+    (HttpMethod::Get, "/api/projects/{slug}/bootstrap-prompt"),
+    (HttpMethod::Post, "/api/projects/{slug}/bootstrap-import"),
     (HttpMethod::Get, "/api/projects/{slug}/storage"),
     (HttpMethod::Put, "/api/projects/{slug}/storage/local"),
     (HttpMethod::Put, "/api/projects/{slug}/storage/s3"),
@@ -294,7 +296,7 @@ mod tests {
 
     #[test]
     fn contract_route_count_is_stable() {
-        assert_eq!(CONTRACT_ROUTES.len(), 68);
+        assert_eq!(CONTRACT_ROUTES.len(), 70);
     }
 
     #[test]

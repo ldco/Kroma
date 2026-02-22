@@ -85,6 +85,12 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Get, "/api/projects") => get(crate::api::projects::list_projects_handler),
         (HttpMethod::Post, "/api/projects") => post(crate::api::projects::upsert_project_handler),
         (HttpMethod::Get, "/api/projects/{slug}") => get(crate::api::projects::get_project_handler),
+        (HttpMethod::Get, "/api/projects/{slug}/bootstrap-prompt") => {
+            get(crate::api::bootstrap::get_bootstrap_prompt_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/bootstrap-import") => {
+            post(crate::api::bootstrap::import_bootstrap_settings_handler)
+        }
         (HttpMethod::Get, "/api/projects/{slug}/storage") => {
             get(crate::api::projects::get_project_storage_handler)
         }

@@ -1,6 +1,7 @@
 pub mod agent_instructions;
 pub mod analytics;
 pub mod asset_links;
+pub mod bootstrap;
 pub mod characters;
 pub mod chat;
 pub mod error;
