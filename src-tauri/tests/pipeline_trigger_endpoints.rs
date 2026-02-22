@@ -255,7 +255,10 @@ async fn pipeline_trigger_rejects_empty_scene_refs_array() {
     )
     .await;
 
-    assert_eq!(response["error"], json!("Field 'scene_refs' must not be empty"));
+    assert_eq!(
+        response["error"],
+        json!("Field 'scene_refs' must not be empty")
+    );
 }
 
 #[tokio::test]
@@ -278,7 +281,10 @@ async fn pipeline_trigger_rejects_empty_style_refs_array() {
     )
     .await;
 
-    assert_eq!(response["error"], json!("Field 'style_refs' must not be empty"));
+    assert_eq!(
+        response["error"],
+        json!("Field 'style_refs' must not be empty")
+    );
 }
 
 #[tokio::test]

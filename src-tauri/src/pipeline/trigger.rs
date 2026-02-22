@@ -179,7 +179,10 @@ fn validate_stage_parameter_usage(
     weather: Option<TriggerWeather>,
 ) -> Result<(), PipelineTriggerError> {
     if time.is_some()
-        && !matches!(stage, Some(TriggerStage::Time) | Some(TriggerStage::Weather))
+        && !matches!(
+            stage,
+            Some(TriggerStage::Time) | Some(TriggerStage::Weather)
+        )
     {
         return Err(PipelineTriggerError::InvalidRequest(String::from(
             "Field 'time' requires stage 'time' or 'weather'",
