@@ -87,6 +87,7 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Put, "/api/projects/{slug}/storage/local") => StatusCode::BAD_REQUEST,
         (HttpMethod::Put, "/api/projects/{slug}/storage/s3") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/runs") => StatusCode::NOT_FOUND,
+        (HttpMethod::Post, "/api/projects/{slug}/runs/trigger") => StatusCode::BAD_REQUEST,
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}/jobs") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/assets") => StatusCode::NOT_FOUND,
@@ -194,11 +195,6 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
             StatusCode::NOT_FOUND
         }
         (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/cancel") => {
-            StatusCode::NOT_FOUND
-        }
-        (HttpMethod::Post, "/api/projects/{slug}/voice/stt") => StatusCode::NOT_FOUND,
-        (HttpMethod::Post, "/api/projects/{slug}/voice/tts") => StatusCode::BAD_REQUEST,
-        (HttpMethod::Get, "/api/projects/{slug}/voice/requests/{requestId}") => {
             StatusCode::NOT_FOUND
         }
         (HttpMethod::Get, "/api/projects/{slug}/secrets") => StatusCode::NOT_FOUND,

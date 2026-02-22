@@ -2,7 +2,7 @@
 
 Date: 2026-02-22
 Branch: `master`
-HEAD / upstream (`origin/master`): `868b71d`
+HEAD / upstream (`origin/master`): `12981a3`
 Worktree: dirty (local uncommitted changes)
 
 ## Current Status
@@ -18,45 +18,71 @@ Worktree: dirty (local uncommitted changes)
    - provider accounts
    - style guides
    - `characters` (committed on `master`)
-   - `reference_sets` + nested items (local, uncommitted)
-   - `secrets` metadata only (`provider_code`, `secret_name`, `has_value`; no secret values) (local, uncommitted)
+   - `reference_sets` + nested items (committed on `master`)
+   - `secrets` metadata only (`provider_code`, `secret_name`, `has_value`; no secret values) (committed on `master`)
    - prompt templates
 4. Product direction clarified: `scripts/` is transitional only; target architecture is a single Rust-owned application (API + runtime/orchestration + workers).
+5. Next phase has started locally: Rust pipeline runtime/trigger boundary exists and is now used by an initial Rust-owned HTTP trigger endpoint (`POST /api/projects/{slug}/runs/trigger`) with script-backed fallback execution.
+6. Product-scope cleanup (local, uncommitted) removed voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`); active pipeline/runtime script dependencies remain.
+7. A new progress tracker (`docs/ROADMAP.md`, local/untracked) now complements the full spec doc and should be kept in sync with major Phase 1 milestones.
 
 ## What Landed (Latest Relevant Backend Work)
 
-Latest commit on `master`: `868b71d`  
-Commit message: `feat(bootstrap): support characters in prompt export/import`
+Latest commit on `master`: `12981a3`  
+Commit message: `feat(bootstrap): add reference sets and secrets metadata support`
 
 ### Implemented
 
 1. `src-tauri/src/db/projects/bootstrap.rs`
-   - Added `characters` to bootstrap export/import scope.
-   - Added normalization/parsing for character inputs.
-   - Added merge/replace application logic.
-   - Added `dry_run` preview + diff/change-summary support.
-   - Updated bootstrap prompt template/expected schema to include `characters`.
+   - Added bootstrap export/import/preview/diff support for `reference_sets` + nested items.
+   - Added bootstrap export/import (metadata-only, merge-only) support for `secrets`.
+   - Added safety validation requiring explicit `reference_sets[].items` arrays (use `[]` for empty set).
+   - Preserves existing secret values on metadata import.
 2. `src-tauri/tests/bootstrap_endpoints.rs`
-   - Added/extended integration coverage for `characters` round-trip, replace safety, and dry-run no-write behavior.
+   - Extended round-trip / replace-scope / dry-run coverage for `reference_sets` and secrets metadata.
+   - Added validation coverage for missing `reference_sets[].items`.
 3. `openapi/backend-api.openapi.yaml`
-   - Added `characters` request schema coverage for bootstrap import.
+   - Added bootstrap-import request schema for `reference_sets` and `secrets`.
+   - Documented `reference_sets` object requires `name` and `items`.
+4. `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md`
+   - Clarified `scripts/` are transitional and added explicit Phase 1 runtime consolidation priority.
 
 ## Local Work In Progress (Uncommitted)
 
-1. Bootstrap support for `reference_sets` / `reference_set_items`
-   - export/import/preview/diff/change-summary support added
-   - replace-mode section semantics implemented
-   - integration tests added/extended
-   - OpenAPI bootstrap-import request schema updated
-2. Bootstrap support for `secrets` metadata only
-   - export includes metadata only (`provider_code`, `secret_name`, `has_value`)
-   - import is metadata-only and merge-only for safety
-   - no secret values exported or imported
-   - existing secret values are preserved
-   - integration tests added/extended
-3. Project spec roadmap wording updated to make Rust runtime consolidation explicit as Phase 1 priority
-   - `scripts/` documented as transitional, not end state
-   - new Phase 1 runtime consolidation subsection added
+1. Phase 1 runtime consolidation kickoff (`src-tauri/src/pipeline/runtime.rs`, `src-tauri/src/pipeline/trigger.rs`, `src-tauri/src/pipeline/mod.rs`)
+   - Added typed Rust pipeline orchestration interface (`PipelineOrchestrator`)
+   - Added command execution adapter boundary (`PipelineCommandRunner`)
+   - Added temporary script-backed orchestrator (`ScriptPipelineOrchestrator`) targeting `scripts/image-lab.mjs`
+   - Added Rust trigger service (`PipelineTriggerService`) with run-mode spend confirmation enforcement and CLI flag injection
+   - Added unit tests for command building, slug validation, success/error execution paths, and trigger semantics
+2. Initial Rust-owned trigger endpoint (still script-backed under the Rust boundary)
+   - `POST /api/projects/{slug}/runs/trigger` added to route catalog + router + OpenAPI
+   - handler implemented in `src-tauri/src/api/runs_assets.rs`
+   - Rust-side validation for `mode` (`dry`/`run`)
+   - project existence check before invoking fallback orchestrator
+   - run-mode spend confirmation enforcement via `PipelineTriggerService`
+   - command failure mapping to API `400` with summarized message
+   - typed request fields for trigger input (`project_root`, `input`, `scene_refs`, `style_refs`, `stage`, `time`, `weather`, `candidates`)
+   - no raw CLI arg pass-through in Rust API/service/runtime (`extra_args` removed)
+   - CLI flag construction is isolated to the runtime orchestrator implementation
+   - exact one-of `input` / `scene_refs` invariant enforced in Rust (script parity)
+3. `src-tauri/src/api/server.rs`
+   - `AppState` owns a `PipelineTriggerService` initialized with the script-backed orchestrator (temporary fallback implementation)
+4. Added endpoint tests for the new trigger endpoint:
+   - validation + missing-project + missing confirmation paths
+   - success path using injected fake orchestrator/service (no `node` dependency)
+   - typed-field translation + validation-order coverage
+   - exact one-of input-source validation (`input` xor `scene_refs`) coverage
+   - conflicting typed inputs (`input` vs `scene_refs`) and `candidates` range validation coverage
+5. Scope cleanup (local, uncommitted):
+   - Removed Rust/OpenAPI/test/script voice request feature paths (`/voice/*`)
+   - Split `src-tauri/src/db/projects/voice_secrets.rs` into `src-tauri/src/db/projects/secrets.rs` and removed voice DB code while preserving secrets
+   - Deleted legacy Python HTTP backend entrypoint `scripts/backend_api.py`
+   - Removed voice schema remnants from `scripts/backend.py` (`voice_requests`, `voice_asset_id` schema/index bits)
+   - Updated README/spec/docs/handoff references to match removals
+6. Roadmap/progress tracking docs (local, uncommitted):
+   - Added `docs/ROADMAP.md` as the day-to-day status board
+   - Kept `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` as the fuller architecture/product reference
 
 ## Code Analysis (This Pass)
 
@@ -65,6 +91,11 @@ Scope reviewed:
 2. Bootstrap integration tests in `src-tauri/tests/bootstrap_endpoints.rs`
 3. Bootstrap import request schema docs in `openapi/backend-api.openapi.yaml`
 4. Project spec + handoff docs for roadmap consistency
+5. Local runtime-consolidation WIP (`runs/trigger`, pipeline runtime/trigger modules)
+6. Voice/legacy-scope cleanup across Rust API/DB/OpenAPI/tests/scripts/docs
+7. New progress tracker doc (`docs/ROADMAP.md`) for milestone/status handoff alignment
+8. Trigger contract refactor removing raw `extra_args` compatibility path from Rust layers
+9. Trigger validation tightening started: Rust now mirrors script one-of input-source requirement
 
 Issues discovered:
 1. Bug (fixed): `reference_sets` import accepted entries without an `items` field.
@@ -80,6 +111,10 @@ Remaining risks / TODO:
    - This is currently documented, but payloads do not yet include stable item IDs for fine-grained merge semantics.
 2. `load_reference_sets()` uses per-set item queries (N+1 query pattern) during bootstrap export/snapshot loading.
    - Likely acceptable now, but may need optimization for large projects.
+3. `scripts/backend.py` still exists and remains an active dependency of `scripts/image-lab.mjs`.
+   - Do not delete it until a Rust replacement path is wired for the needed pipeline operations.
+4. `runs/trigger` remains script-backed at execution time.
+   - HTTP/API and service contracts are now typed; runtime internals still need script orchestration replacement.
 
 ## Validation Status
 
@@ -99,12 +134,29 @@ Local validation run for the uncommitted bootstrap extensions:
 
 Result: passing.
 
+Local validation run for next-phase runtime consolidation kickoff:
+1. `cargo fmt`
+2. `cargo test pipeline::runtime --lib`
+3. `cargo test pipeline::trigger --lib`
+4. `cargo test --test http_contract_surface`
+5. `cargo test --test pipeline_trigger_endpoints`
+6. `cargo test --test contract_parity --test http_contract_surface`
+
+Result: passing.
+
+Local validation run for voice/legacy-scope cleanup:
+1. `cargo fmt`
+2. `cargo test --test bootstrap_endpoints --test contract_parity --test http_contract_surface --test pipeline_trigger_endpoints`
+
+Result: passing.
+
 ## Next Priority Work
 
-1. Commit the local bootstrap extensions (`reference_sets` + secrets metadata) as a focused backend commit.
-2. Decide whether `chat` / `agent instructions` / `voice` belong in bootstrap scope and define rules before implementation.
-3. Start Phase 1 runtime consolidation (Rust app unification), not just CRUD/API completion:
+1. Continue tightening typed trigger validation/rules for supported combinations (one-of input-source invariant is done; next: mode-specific combinations and clearer invariants).
+2. Decide whether `chat` / `agent instructions` belong in bootstrap scope and define rules before implementation.
+3. Continue Phase 1 runtime consolidation (Rust app unification):
    - Rust pipeline orchestration replacement for `scripts/image-lab.mjs`
+   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary
    - Rust worker/dispatcher replacement for script workers
    - typed Rust tool adapters for external tools/APIs
 4. Add desktop UI bootstrap flow:
@@ -113,11 +165,11 @@ Result: passing.
    - `dry_run` preview/diff confirmation
    - explicit merge vs replace UX
 5. Improve OpenAPI response docs for bootstrap endpoints (responses currently less documented than request schema).
+6. Keep `docs/ROADMAP.md` and `NEXT_CHAT_HANDOFF.md` aligned when Phase 1 milestones or priorities shift.
 
 ## Suggested Starting Point For Next Chat
 
-1. Commit local bootstrap additions (`reference_sets` + secrets metadata) after reviewing diff.
-2. Begin Rust runtime consolidation with a narrow first slice:
-   - define Rust pipeline orchestration service interface + command execution adapters
-   - wire a Rust-owned run trigger path (initially parity wrapper if needed)
-3. Keep `scripts/` callable only as temporary fallback behind explicit migration boundaries.
+1. Tighten remaining `runs/trigger` typed validation rules (the `input` xor `scene_refs` invariant is done; next define mode/stage-specific combinations).
+2. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
+3. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after any milestone-level change.
+4. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.
