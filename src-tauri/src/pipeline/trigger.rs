@@ -142,6 +142,8 @@ impl PipelineTriggerService {
                     time: time.map(TriggerTime::to_pipeline_time),
                     weather: weather.map(TriggerWeather::to_pipeline_weather),
                     candidates,
+                    backend_db_ingest: None,
+                    storage_sync_s3: None,
                 },
             })
             .map_err(PipelineTriggerError::Runtime)

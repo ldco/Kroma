@@ -4,8 +4,7 @@ use thiserror::Error;
 
 use crate::pipeline::backend_ops::{
     BackendCommandResult, BackendIngestRunRequest, BackendIngestRunResponse, BackendOpsError,
-    BackendSyncProjectS3Request, BackendSyncProjectS3Response, PipelineBackendOps,
-    SharedPipelineBackendOps,
+    BackendSyncProjectS3Request, BackendSyncProjectS3Response, SharedPipelineBackendOps,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +110,7 @@ pub enum PipelinePostRunError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::backend_ops::PipelineBackendOps;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
 

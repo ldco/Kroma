@@ -82,6 +82,8 @@ Status:
 - Rust-owned `POST /api/projects/{slug}/runs/trigger` endpoint added
 - Trigger request contract is typed end-to-end (no raw `extra_args` passthrough)
 - Script parity validation enforced for input source (`input` xor `scene_refs`)
+- Typed script-backed backend ops boundary added for pipeline post-run operations (`pipeline::backend_ops`)
+- Typed post-run service added for backend ingest / S3 sync orchestration (`pipeline::post_run`)
 
 ### Scope Cleanup / Legacy Removal (Pushed)
 
@@ -91,7 +93,7 @@ Status:
 - Removed voice schema remnants from `scripts/backend.py`
 - Updated contract smoke scripts, README, and spec docs to match current scope
 
-## In Progress (Local WIP)
+## In Progress
 
 ### Phase 1 Runtime Consolidation Into Rust (Started)
 
@@ -101,6 +103,10 @@ Status:
   - `PipelineOrchestrator` trait
   - `PipelineCommandRunner` trait
   - `ScriptPipelineOrchestrator` (temporary fallback adapter to `scripts/image-lab.mjs`)
+  - `RustPostRunPipelineOrchestrator` wrapper now owns backend ingest for typed HTTP trigger path
+    - disables script-side backend ingest (`--backend-db-ingest false`) to avoid duplicate ingestion
+    - keeps script-side S3 sync disabled (`--storage-sync-s3 false`) until Rust path owns sync policy/options
+    - current run-log handoff uses script stdout `Run log:` line parsing (transitional, brittle)
 
 #### 2. Rust Pipeline Trigger Service (WIP)
 
@@ -135,6 +141,10 @@ Status:
   - typed request compiles into typed runtime request, then CLI flags inside runtime orchestrator
   - validation runs before project lookup
   - exact one-of validation for `input` / `scene_refs` enforced in Rust and covered by tests
+- Runtime wrapper tests
+  - verifies script backend-ingest disable flags are injected
+  - verifies Rust post-run ingest executes on successful script run output
+  - verifies missing `Run log:` stdout line degrades to warning (best-effort ingest)
 
 ## Next Work (Priority Queue)
 
@@ -150,6 +160,8 @@ Status:
 3. Keep script runtime behind explicit Rust interfaces only
    - no new direct script calls from handlers/routes
 4. Continue replacing script-backed orchestration behavior inside the runtime boundary (without widening the HTTP contract)
+   - current default runtime path now routes backend ingest through Rust `pipeline::post_run` + `pipeline::backend_ops`
+   - next: replace stdout `Run log:` parsing with structured handoff (script JSON or full Rust orchestration)
 
 ### Near-Term Backend / Bootstrap Work
 
@@ -160,7 +172,7 @@ Status:
    - Pushed: response bodies for `/bootstrap-prompt` and `/bootstrap-import` are now documented
    - next: expand nested field schemas/examples if SDK/client generation needs stronger typing
 3. Consider optimizing bootstrap `reference_sets` export loading (`N+1` query risk for large projects)
-   - Done locally: batched `reference_set_items` query replaces per-set item queries in bootstrap export loading
+   - Pushed: batched `reference_set_items` query replaces per-set item queries in bootstrap export loading
    - next: profile with larger seed data before spending time on further query tuning
 
 ### Phase 1 Remaining (Larger Milestones)

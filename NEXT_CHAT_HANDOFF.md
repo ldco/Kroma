@@ -173,11 +173,32 @@ Local validation run for next-phase `pipeline::backend_ops` boundary kickoff:
 
 Result: passing.
 
+Local validation run for runtime post-run ingest wiring (Rust-owned wrapper around script fallback):
+1. `cargo fmt`
+2. `cargo test pipeline::runtime --lib`
+3. `cargo test pipeline::trigger --lib`
+4. `cargo test pipeline::post_run --lib`
+5. `cargo test --test pipeline_trigger_endpoints`
+6. `cargo test --test contract_parity --test http_contract_surface`
+
+Result: passing.
+
+## Runtime Consolidation Update (Newest)
+
+1. `pipeline::backend_ops` and `pipeline::post_run` are now wired into the default Rust pipeline runtime path for typed `runs/trigger`.
+2. The default runtime now wraps `ScriptPipelineOrchestrator` with a Rust post-run wrapper:
+   - disables script-side backend ingest (`--backend-db-ingest false`) to avoid duplicate ingest
+   - keeps script-side S3 sync disabled (`--storage-sync-s3 false`) until Rust owns sync policy/options
+   - runs Rust `PipelinePostRunService` ingest after successful script execution (best-effort; warning on failure)
+3. Current transitional risk:
+   - Rust post-run wrapper extracts `run_log_path` from the script stdout line `Run log: ...`
+   - this is intentionally temporary and should be replaced by structured handoff (JSON stdout/metadata) or full Rust orchestration ownership
+
 ## Next Priority Work
 
 1. Continue Phase 1 runtime consolidation (Rust app unification):
    - Rust pipeline orchestration replacement for `scripts/image-lab.mjs`
-   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary (in progress: `pipeline::backend_ops` typed script-backed boundary for ingest/sync)
+   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary (in progress: `pipeline::backend_ops` + `pipeline::post_run`; backend ingest now routed through Rust wrapper on typed trigger path)
    - Rust worker/dispatcher replacement for script workers
    - typed Rust tool adapters for external tools/APIs
 2. Decide whether `chat` / `agent instructions` belong in bootstrap scope and define rules before implementation.
@@ -192,7 +213,8 @@ Result: passing.
 ## Suggested Starting Point For Next Chat
 
 1. Wire `pipeline::backend_ops` into the Rust runtime/orchestration path as the boundary for backend ingest + S3 sync post-run operations (still script-backed initially).
-2. Add typed JSON response parsing/structs for `backend.py ingest-run` and `sync-project-s3` payloads if the Rust path needs structured handling beyond raw stdout.
-3. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
+   - Status: done for backend ingest on the default typed trigger path (best-effort Rust post-run wrapper)
+2. Replace stdout `Run log:` parsing with structured handoff from the script runtime (JSON metadata output), or move run-log creation + post-run orchestration fully into Rust.
+3. Extend Rust-owned post-run path to S3 sync once typed trigger/runtime policy/options are defined (keep sync disabled in script while migrating).
 4. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after milestone-level changes.
 5. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.

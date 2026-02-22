@@ -4,6 +4,11 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
+use crate::pipeline::backend_ops::default_script_backend_ops;
+use crate::pipeline::post_run::{
+    PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineRunMode {
     Dry,
@@ -81,6 +86,8 @@ pub struct PipelineRunOptions {
     pub time: Option<PipelineTimeFilter>,
     pub weather: Option<PipelineWeatherFilter>,
     pub candidates: Option<u8>,
+    pub backend_db_ingest: Option<bool>,
+    pub storage_sync_s3: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,6 +255,93 @@ fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOpt
         args.push(String::from("--candidates"));
         args.push(candidates.to_string());
     }
+
+    if let Some(enabled) = options.backend_db_ingest {
+        args.push(String::from("--backend-db-ingest"));
+        args.push(enabled.to_string());
+    }
+
+    if let Some(enabled) = options.storage_sync_s3 {
+        args.push(String::from("--storage-sync-s3"));
+        args.push(enabled.to_string());
+    }
+}
+
+#[derive(Clone)]
+pub struct RustPostRunPipelineOrchestrator {
+    inner: SharedPipelineOrchestrator,
+    post_run: PipelinePostRunService,
+}
+
+impl RustPostRunPipelineOrchestrator {
+    pub fn new(inner: SharedPipelineOrchestrator, post_run: PipelinePostRunService) -> Self {
+        Self { inner, post_run }
+    }
+
+    fn build_script_request(&self, request: &PipelineRunRequest) -> PipelineRunRequest {
+        let mut script_request = request.clone();
+        // Rust owns backend ingest for the typed HTTP trigger path; prevent duplicate script ingest.
+        script_request.options.backend_db_ingest = Some(false);
+        // Keep S3 sync disabled until the Rust path owns sync policy/options end-to-end.
+        script_request.options.storage_sync_s3 = Some(false);
+        script_request
+    }
+}
+
+impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
+    fn execute(
+        &self,
+        request: &PipelineRunRequest,
+    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
+        let mut result = self.inner.execute(&self.build_script_request(request))?;
+
+        let Some(run_log_path) = extract_run_log_path_from_stdout(result.stdout.as_str()) else {
+            append_stderr_line(
+                &mut result.stderr,
+                "Rust post-run ingest skipped: missing 'Run log:' line in pipeline stdout",
+            );
+            return Ok(result);
+        };
+
+        let finalize = self.post_run.finalize_run(PostRunFinalizeParams {
+            ingest: PostRunIngestParams {
+                run_log_path,
+                project_slug: request.project_slug.clone(),
+                project_name: request.project_slug.clone(),
+                create_project_if_missing: true,
+                compute_hashes: false,
+            },
+            sync_s3: None,
+        });
+
+        if let Err(error) = finalize {
+            append_stderr_line(
+                &mut result.stderr,
+                format!("Rust post-run ingest skipped: {error}"),
+            );
+        }
+
+        Ok(result)
+    }
+}
+
+fn extract_run_log_path_from_stdout(stdout: &str) -> Option<PathBuf> {
+    stdout.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let value = trimmed.strip_prefix("Run log:")?.trim();
+        if value.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(value))
+        }
+    })
+}
+
+fn append_stderr_line(stderr: &mut String, line: impl AsRef<str>) {
+    if !stderr.trim().is_empty() {
+        stderr.push('\n');
+    }
+    stderr.push_str(line.as_ref());
 }
 
 impl<R> PipelineOrchestrator for ScriptPipelineOrchestrator<R>
@@ -322,9 +416,21 @@ pub fn default_script_pipeline_orchestrator() -> ScriptPipelineOrchestrator<StdP
     )
 }
 
+pub fn default_pipeline_orchestrator_with_rust_post_run() -> RustPostRunPipelineOrchestrator {
+    let inner: SharedPipelineOrchestrator = Arc::new(default_script_pipeline_orchestrator());
+    let backend_ops = Arc::new(default_script_backend_ops());
+    let post_run = PipelinePostRunService::new(backend_ops);
+    RustPostRunPipelineOrchestrator::new(inner, post_run)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::backend_ops::{
+        BackendCommandResult, BackendIngestRunRequest, BackendOpsError,
+        BackendSyncProjectS3Request, PipelineBackendOps,
+    };
+    use serde_json::json;
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Default)]
@@ -483,5 +589,193 @@ mod tests {
             .expect("command should build");
 
         assert!(cmd.args.iter().any(|arg| arg == "--confirm-spend"));
+    }
+
+    #[test]
+    fn build_command_includes_internal_backend_flags_when_set() {
+        let orchestrator = test_orchestrator(FakeRunner::default());
+        let cmd = orchestrator
+            .build_command(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Run,
+                confirm_spend: true,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    backend_db_ingest: Some(false),
+                    storage_sync_s3: Some(false),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("command should build");
+
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--backend-db-ingest", "false"]));
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--storage-sync-s3", "false"]));
+    }
+
+    #[derive(Default)]
+    struct FakePostRunBackendOps {
+        seen_ingest: Mutex<Vec<BackendIngestRunRequest>>,
+    }
+
+    impl PipelineBackendOps for FakePostRunBackendOps {
+        fn ingest_run(
+            &self,
+            request: &BackendIngestRunRequest,
+        ) -> Result<BackendCommandResult, BackendOpsError> {
+            self.seen_ingest
+                .lock()
+                .expect("fake post-run ingest mutex poisoned")
+                .push(request.clone());
+            Ok(BackendCommandResult {
+                stdout: String::from(
+                    "{\"ok\":true,\"project_slug\":\"demo\",\"run_id\":\"r1\",\"run_log_path\":\"var/projects/demo/runs/run_1.json\",\"jobs\":1,\"candidates\":1,\"assets_upserted\":1,\"quality_reports_written\":1,\"cost_events_written\":0,\"status\":\"ok\"}",
+                ),
+                stderr: String::new(),
+                json: Some(json!({
+                    "ok": true,
+                    "project_slug": "demo",
+                    "run_id": "r1",
+                    "run_log_path": "var/projects/demo/runs/run_1.json",
+                    "jobs": 1,
+                    "candidates": 1,
+                    "assets_upserted": 1,
+                    "quality_reports_written": 1,
+                    "cost_events_written": 0,
+                    "status": "ok"
+                })),
+            })
+        }
+
+        fn sync_project_s3(
+            &self,
+            _request: &BackendSyncProjectS3Request,
+        ) -> Result<BackendCommandResult, BackendOpsError> {
+            panic!("sync_project_s3 should not be called by wrapper yet");
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeInnerOrchestrator {
+        seen: Mutex<Vec<PipelineRunRequest>>,
+        next: Mutex<Option<Result<PipelineRunResult, PipelineRuntimeError>>>,
+    }
+
+    impl FakeInnerOrchestrator {
+        fn with_success_stdout(stdout: &str) -> Self {
+            Self {
+                seen: Mutex::new(Vec::new()),
+                next: Mutex::new(Some(Ok(PipelineRunResult {
+                    status_code: 0,
+                    stdout: String::from(stdout),
+                    stderr: String::new(),
+                }))),
+            }
+        }
+    }
+
+    impl PipelineOrchestrator for FakeInnerOrchestrator {
+        fn execute(
+            &self,
+            request: &PipelineRunRequest,
+        ) -> Result<PipelineRunResult, PipelineRuntimeError> {
+            self.seen
+                .lock()
+                .expect("fake inner orchestrator mutex poisoned")
+                .push(request.clone());
+            self.next
+                .lock()
+                .expect("fake inner orchestrator next mutex poisoned")
+                .take()
+                .unwrap_or_else(|| {
+                    Ok(PipelineRunResult {
+                        status_code: 0,
+                        stdout: String::new(),
+                        stderr: String::new(),
+                    })
+                })
+        }
+    }
+
+    #[test]
+    fn rust_post_run_wrapper_disables_script_ingest_and_runs_backend_ingest() {
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout(
+            "Run log: var/projects/demo/runs/run_1.json\nProject: demo",
+        ));
+        let backend_ops = Arc::new(FakePostRunBackendOps::default());
+        let post_run = PipelinePostRunService::new(backend_ops.clone());
+        let wrapper = RustPostRunPipelineOrchestrator::new(inner.clone(), post_run);
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Run,
+                confirm_spend: true,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("wrapper execution should succeed");
+
+        assert_eq!(result.status_code, 0);
+        assert!(result.stderr.is_empty());
+
+        let seen_request = inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .first()
+            .cloned()
+            .expect("inner request should be recorded");
+        assert_eq!(seen_request.options.backend_db_ingest, Some(false));
+        assert_eq!(seen_request.options.storage_sync_s3, Some(false));
+
+        let seen_ingest = backend_ops
+            .seen_ingest
+            .lock()
+            .expect("fake post-run ingest mutex poisoned");
+        assert_eq!(seen_ingest.len(), 1);
+        assert_eq!(
+            seen_ingest[0].run_log_path,
+            PathBuf::from("var/projects/demo/runs/run_1.json")
+        );
+    }
+
+    #[test]
+    fn rust_post_run_wrapper_warns_when_run_log_line_is_missing() {
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("Project: demo"));
+        let backend_ops = Arc::new(FakePostRunBackendOps::default());
+        let post_run = PipelinePostRunService::new(backend_ops.clone());
+        let wrapper = RustPostRunPipelineOrchestrator::new(inner, post_run);
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("wrapper execution should stay successful");
+
+        assert!(result
+            .stderr
+            .contains("Rust post-run ingest skipped: missing 'Run log:' line"));
+        assert_eq!(
+            backend_ops
+                .seen_ingest
+                .lock()
+                .expect("fake post-run ingest mutex poisoned")
+                .len(),
+            0
+        );
     }
 }

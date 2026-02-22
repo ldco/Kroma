@@ -16,7 +16,9 @@ use crate::api::response::{failure, ApiJson};
 use crate::api::routes::{route_catalog, RouteDefinition};
 use crate::contract::HttpMethod;
 use crate::db::projects::ProjectsStore;
-use crate::pipeline::runtime::{default_script_pipeline_orchestrator, SharedPipelineOrchestrator};
+use crate::pipeline::runtime::{
+    default_pipeline_orchestrator_with_rust_post_run, SharedPipelineOrchestrator,
+};
 use crate::pipeline::trigger::PipelineTriggerService;
 
 #[derive(Clone)]
@@ -32,7 +34,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(route_count: usize, projects_store: Arc<ProjectsStore>) -> Self {
         let orchestrator: SharedPipelineOrchestrator =
-            Arc::new(default_script_pipeline_orchestrator());
+            Arc::new(default_pipeline_orchestrator_with_rust_post_run());
         Self::new_with_pipeline_trigger(
             route_count,
             projects_store,
