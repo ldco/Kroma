@@ -30,17 +30,6 @@ INSTR_ID="$(curl -fsS -X POST "${BASE_URL}/api/projects/${PROJECT_SLUG}/agent/in
 echo "[contract-smoke] events"
 curl -fsS "${BASE_URL}/api/projects/${PROJECT_SLUG}/agent/instructions/${INSTR_ID}/events" >/tmp/iat_contract_events.json
 
-echo "[contract-smoke] voice stt + tts"
-STT_REQ_ID="$(curl -fsS -X POST "${BASE_URL}/api/projects/${PROJECT_SLUG}/voice/stt" \
-  -H "Content-Type: application/json" \
-  -d "{\"session_id\":\"${SESSION_ID}\",\"provider_code\":\"mock_stt\",\"transcript_text\":\"hello\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["request"]["id"])')"
-curl -fsS "${BASE_URL}/api/projects/${PROJECT_SLUG}/voice/requests/${STT_REQ_ID}" >/tmp/iat_contract_voice_stt.json
-
-TTS_REQ_ID="$(curl -fsS -X POST "${BASE_URL}/api/projects/${PROJECT_SLUG}/voice/tts" \
-  -H "Content-Type: application/json" \
-  -d "{\"session_id\":\"${SESSION_ID}\",\"provider_code\":\"mock_tts\",\"text\":\"ok\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["request"]["id"])')"
-curl -fsS "${BASE_URL}/api/projects/${PROJECT_SLUG}/voice/requests/${TTS_REQ_ID}" >/tmp/iat_contract_voice_tts.json
-
 echo "[contract-smoke] secrets"
 curl -fsS -X POST "${BASE_URL}/api/projects/${PROJECT_SLUG}/secrets" \
   -H "Content-Type: application/json" \

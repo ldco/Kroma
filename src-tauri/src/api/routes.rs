@@ -18,7 +18,6 @@ pub enum RouteDomain {
     ReferenceSets,
     Chat,
     Instructions,
-    Voice,
     Secrets,
 }
 
@@ -62,9 +61,6 @@ impl RouteDomain {
         }
         if path.contains("/agent/instructions") {
             return Self::Instructions;
-        }
-        if path.contains("/voice/") {
-            return Self::Voice;
         }
         if path.contains("/secrets") {
             return Self::Secrets;
@@ -138,6 +134,7 @@ const CONTRACT_ROUTES: &[(HttpMethod, &str)] = &[
     (HttpMethod::Put, "/api/projects/{slug}/storage/local"),
     (HttpMethod::Put, "/api/projects/{slug}/storage/s3"),
     (HttpMethod::Get, "/api/projects/{slug}/runs"),
+    (HttpMethod::Post, "/api/projects/{slug}/runs/trigger"),
     (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}"),
     (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}/jobs"),
     (HttpMethod::Get, "/api/projects/{slug}/assets"),
@@ -276,12 +273,6 @@ const CONTRACT_ROUTES: &[(HttpMethod, &str)] = &[
         HttpMethod::Post,
         "/api/projects/{slug}/agent/instructions/{instructionId}/cancel",
     ),
-    (HttpMethod::Post, "/api/projects/{slug}/voice/stt"),
-    (HttpMethod::Post, "/api/projects/{slug}/voice/tts"),
-    (
-        HttpMethod::Get,
-        "/api/projects/{slug}/voice/requests/{requestId}",
-    ),
     (HttpMethod::Get, "/api/projects/{slug}/secrets"),
     (HttpMethod::Post, "/api/projects/{slug}/secrets"),
     (
@@ -296,7 +287,7 @@ mod tests {
 
     #[test]
     fn contract_route_count_is_stable() {
-        assert_eq!(CONTRACT_ROUTES.len(), 70);
+        assert_eq!(CONTRACT_ROUTES.len(), 68);
     }
 
     #[test]

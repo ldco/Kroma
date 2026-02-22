@@ -14,7 +14,7 @@ mod prompt_templates;
 mod provider_style_character;
 mod reference_sets;
 mod runs_assets;
-mod voice_secrets;
+mod secrets;
 
 pub use analytics_exports::{CostEventSummary, ProjectExportSummary, QualityReportSummary};
 pub use bootstrap::{
@@ -39,9 +39,7 @@ pub use reference_sets::{
     ReferenceSetSummary, UpdateReferenceSetInput, UpdateReferenceSetItemInput,
 };
 pub use runs_assets::{AssetSummary, RunCandidateSummary, RunJobSummary, RunSummary};
-pub use voice_secrets::{
-    CreateVoiceSttInput, CreateVoiceTtsInput, SecretSummary, UpsertSecretInput, VoiceRequestSummary,
-};
+pub use secrets::{SecretSummary, UpsertSecretInput};
 
 const DEFAULT_PROJECTS_BASE_DIR: &str = "var/projects";
 const DEFAULT_S3_PREFIX: &str = "iat-projects";
@@ -933,7 +931,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     prompt_templates::ensure_prompt_template_tables(conn)?;
     provider_style_character::ensure_provider_style_character_tables(conn)?;
     reference_sets::ensure_reference_set_tables(conn)?;
-    voice_secrets::ensure_voice_and_secret_tables(conn)?;
+    secrets::ensure_secret_tables(conn)?;
 
     ensure_column(conn, "projects", "owner_user_id", "TEXT")?;
     ensure_column(
@@ -1048,7 +1046,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     prompt_templates::ensure_prompt_template_columns(conn)?;
     provider_style_character::ensure_provider_style_character_columns(conn)?;
     reference_sets::ensure_reference_set_columns(conn)?;
-    voice_secrets::ensure_voice_and_secret_columns(conn)?;
+    secrets::ensure_secret_columns(conn)?;
     Ok(())
 }
 

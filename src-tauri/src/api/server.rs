@@ -16,6 +16,8 @@ use crate::api::response::{failure, ApiJson};
 use crate::api::routes::{route_catalog, RouteDefinition};
 use crate::contract::HttpMethod;
 use crate::db::projects::ProjectsStore;
+use crate::pipeline::runtime::{default_script_pipeline_orchestrator, SharedPipelineOrchestrator};
+use crate::pipeline::trigger::PipelineTriggerService;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,16 +26,32 @@ pub struct AppState {
     pub started_unix_ms: u128,
     pub route_count: usize,
     pub projects_store: Arc<ProjectsStore>,
+    pub pipeline_trigger: PipelineTriggerService,
 }
 
 impl AppState {
     pub fn new(route_count: usize, projects_store: Arc<ProjectsStore>) -> Self {
+        let orchestrator: SharedPipelineOrchestrator =
+            Arc::new(default_script_pipeline_orchestrator());
+        Self::new_with_pipeline_trigger(
+            route_count,
+            projects_store,
+            PipelineTriggerService::new(orchestrator),
+        )
+    }
+
+    pub fn new_with_pipeline_trigger(
+        route_count: usize,
+        projects_store: Arc<ProjectsStore>,
+        pipeline_trigger: PipelineTriggerService,
+    ) -> Self {
         Self {
             service_name: "kroma-backend-core",
             service_version: env!("CARGO_PKG_VERSION"),
             started_unix_ms: now_unix_ms(),
             route_count,
             projects_store,
+            pipeline_trigger,
         }
     }
 }
@@ -51,6 +69,16 @@ pub fn build_router() -> Router {
 pub fn build_router_with_projects_store(projects_store: Arc<ProjectsStore>) -> Router {
     let catalog = route_catalog();
     let state = AppState::new(catalog.len(), projects_store);
+    build_router_with_catalog(catalog, state)
+}
+
+pub fn build_router_with_projects_store_and_pipeline_trigger(
+    projects_store: Arc<ProjectsStore>,
+    pipeline_trigger: PipelineTriggerService,
+) -> Router {
+    let catalog = route_catalog();
+    let state =
+        AppState::new_with_pipeline_trigger(catalog.len(), projects_store, pipeline_trigger);
     build_router_with_catalog(catalog, state)
 }
 
@@ -102,6 +130,9 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         }
         (HttpMethod::Get, "/api/projects/{slug}/runs") => {
             get(crate::api::runs_assets::list_runs_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/runs/trigger") => {
+            post(crate::api::runs_assets::trigger_run_handler)
         }
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}") => {
             get(crate::api::runs_assets::get_run_detail_handler)
@@ -267,15 +298,6 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         }
         (HttpMethod::Post, "/api/projects/{slug}/agent/instructions/{instructionId}/cancel") => {
             post(crate::api::agent_instructions::cancel_agent_instruction_handler)
-        }
-        (HttpMethod::Post, "/api/projects/{slug}/voice/stt") => {
-            post(crate::api::voice::voice_stt_handler)
-        }
-        (HttpMethod::Post, "/api/projects/{slug}/voice/tts") => {
-            post(crate::api::voice::voice_tts_handler)
-        }
-        (HttpMethod::Get, "/api/projects/{slug}/voice/requests/{requestId}") => {
-            get(crate::api::voice::get_voice_request_handler)
         }
         (HttpMethod::Get, "/api/projects/{slug}/secrets") => {
             get(crate::api::secrets::list_secrets_handler)

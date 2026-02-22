@@ -26,7 +26,7 @@ It is **not** a GUI app today. It is a **backend-first, CLI-driven system** that
 
 1. Rust backend (`src-tauri`) is the primary API/backend implementation.
 2. Metadata/database APIs are mostly migrated to Rust and contract-tested.
-3. `scripts/` is still required today for the image pipeline, local tool wrappers, and compatibility utilities.
+3. `scripts/` is still required today for the image pipeline, local tool wrappers, and migration utilities.
 4. Migration is partial: backend metadata APIs are far ahead of pipeline/runtime migration.
 5. Target architecture remains a single Rust-owned application; `scripts/` are a temporary migration layer and should shrink over time.
 
@@ -40,7 +40,7 @@ graph TD
     DB["SQLite Database\nvar/backend/app.db"]
     CLI["CLI Pipeline\nscripts/image-lab.mjs (Node.js)"]
     Worker["Agent Worker (Transitional)\nscripts/agent_worker.py"]
-    LegacyPy["Legacy Python Backend (Compatibility)\nscripts/backend.py + backend_api.py"]
+    PyTools["Python Script Utilities (Migration)\nscripts/backend.py"]
     OpenAI["OpenAI API\ngpt-image-1"]
     ESRGAN["Real-ESRGAN\n(local upscaler)"]
     Rembg["rembg\n(local BG removal)"]
@@ -58,7 +58,7 @@ graph TD
     CLI --> DB
 
     Worker --> DB
-    LegacyPy --> DB
+    PyTools --> DB
 ```
 
 ### Layer Breakdown (Current)
@@ -69,7 +69,7 @@ This is the main backend surface now (`npm run backend:rust`, default `127.0.0.1
 - Contract-first HTTP surface (`openapi/backend-api.openapi.yaml`)
 - Route parity checks + endpoint integration tests
 - SQLite schema ownership and migrations at runtime
-- Project/storage/asset/runs/chat/instruction/voice/secrets APIs
+- Project/storage/asset/runs/chat/instruction/secrets APIs
 - Bootstrap prompt export/import (`/bootstrap-prompt`, `/bootstrap-import`)
 
 #### Layer 2 — CLI Pipeline (`scripts/image-lab.mjs`) — Transitional (to be migrated into Rust)
@@ -85,7 +85,7 @@ The generation and post-process pipeline is still script-based.
 
 It currently contains:
 - Active pipeline/runtime scripts (`image-lab.mjs`, tool wrappers)
-- Legacy compatibility surfaces (`backend.py`, `backend_api.py`)
+- Python backend utility scripts (`backend.py`) pending Rust replacement
 - Worker/dispatch utilities (`agent_worker.py`, `agent_dispatch.py`)
 - Migration/ops helpers (`db_migrate.py`, `contract_smoke.py`, setup scripts)
 
@@ -95,7 +95,7 @@ Short answer: **partial migration**.
 
 1. Rust now owns most backend data/API functionality.
 2. Generation orchestration + local media toolchain is still Node/Python script-driven.
-3. Some legacy Python commands are retained for compatibility while migration continues.
+3. Some Python commands are still present while runtime modules are being moved into Rust.
 
 This is a transition state, not the intended product architecture.
 
@@ -122,7 +122,6 @@ app/
 ├── scripts/                   # Transitional + pipeline runtime scripts
 │   ├── image-lab.mjs
 │   ├── backend.py
-│   ├── backend_api.py
 │   ├── agent_worker.py
 │   ├── agent_dispatch.py
 │   ├── db_migrate.py
@@ -200,12 +199,12 @@ Tables are created/normalized on startup by the Rust backend.
 
 | Table | Status | Notes |
 |---|---|---|
-| `users` | ✅ Present | Legacy compatibility |
+| `users` | ✅ Present | Migration holdover (planned removal) |
 | `app_users` | ✅ Present | New canonical user table |
 | `projects` | ✅ Present | Project metadata |
 | `project_storage` | ✅ Present | Local + S3 storage policy |
 | `runs` / `run_jobs` | ✅ Present | Run/job tracking |
-| `run_job_candidates` | ✅ Present | Legacy compatibility |
+| `run_job_candidates` | ✅ Present | Migration holdover (planned removal) |
 | `run_candidates` | ✅ Present | Ranked candidate model |
 | `assets` | ✅ Present | Asset registry |
 | `asset_links` | ✅ Present | Derived/reference relationships |
@@ -219,7 +218,6 @@ Tables are created/normalized on startup by the Rust backend.
 | `project_exports` | ✅ Present | Export metadata |
 | `chat_sessions` / `chat_messages` | ✅ Present | Chat history |
 | `agent_instructions` / `agent_instruction_events` | ✅ Present | Instruction lifecycle |
-| `voice_requests` | ✅ Present | STT/TTS request tracking |
 | `project_secrets` | ✅ Present | Project secret storage |
 
 ### Remaining Gaps / Cleanup
@@ -227,7 +225,7 @@ Tables are created/normalized on startup by the Rust backend.
 | Item | Status | Notes |
 |---|---|---|
 | `audit_events` table | ❌ Missing | Still pending |
-| Legacy table cleanup (`users`, `run_job_candidates`) | ⚠️ Pending | Kept for compatibility during migration |
+| Table cleanup (`users`, `run_job_candidates`) | ⚠️ Pending | Migration holdovers scheduled for removal |
 | Full data migration off Python-only paths | ⚠️ In progress | Rust is primary, scripts still exist for pipeline/tooling |
 
 ---
@@ -256,7 +254,6 @@ Contract: `file:openapi/backend-api.openapi.yaml`
 | Reference Sets | Set CRUD + item CRUD |
 | Chat | Session CRUD-lite + message create/list |
 | Agent | Instruction create/list/detail/events/confirm/cancel |
-| Voice | `POST .../voice/stt`, `POST .../voice/tts`, `GET .../voice/requests/:id` |
 | Secrets | `GET/POST .../secrets`, `DELETE .../secrets/:provider/:name` |
 
 ### Missing / Planned Endpoints
@@ -265,7 +262,7 @@ Contract: `file:openapi/backend-api.openapi.yaml`
 |---|---|
 | Auth | `POST /auth/login`, `POST /auth/token` |
 | Pipeline execution APIs | Run trigger/ingest parity from script pipeline into Rust API |
-| Export mutation APIs | Rust-side create export / sync-s3 parity with legacy Python flow |
+| Export mutation APIs | Rust-side create export / sync-s3 path completion |
 | Worker migration | Move instruction worker runtime from Python script to Rust service/module |
 
 ---
@@ -354,8 +351,8 @@ Priority work:
 Most target schema items are now present in Rust. Current DB priorities are:
 
 1. Add missing `audit_events`
-2. Plan compatibility cleanup for legacy tables (`users`, `run_job_candidates`)
-3. Keep migrations additive and forward-safe while Python compatibility paths still exist
+2. Remove migration-holdover tables (`users`, `run_job_candidates`) once Rust-owned replacements are fully authoritative
+3. Keep migrations additive and forward-safe while script runtime paths are still being replaced
 
 #### 10.2 Missing API Endpoints
 
@@ -576,7 +573,6 @@ body { background: #f5f5f5; color: #222; height: 100vh; display: flex; flex-dire
     </div>
     <div class="input-bar">
       <textarea placeholder="Ask Kroma to run a pipeline, check quality, manage assets..." data-element-id="chat-input"></textarea>
-      <button class="mic-btn" data-element-id="btn-voice">🎤</button>
       <button class="send-btn" data-element-id="btn-send">Send</button>
     </div>
   </div>
@@ -598,20 +594,6 @@ Currently the system runs in single-user mode with a hardcoded `local` user. Aut
 3. Add `POST /auth/token` endpoint (generate token for local user)
 4. Add token rotation and expiry
 5. Keep single-user bootstrap path (`--with-default-user`) working without auth for local dev
-
----
-
-### Phase 2 — Voice Pipeline (STT/TTS)
-
-The DB schema and API endpoints for voice are already implemented. The actual STT/TTS processing is not yet wired.
-
-#### Required Work
-
-1. Implement `POST /api/projects/:slug/voice/stt` — accept audio file, call STT provider (OpenAI Whisper or local), return transcript
-2. Implement `POST /api/projects/:slug/voice/tts` — accept text, call TTS provider (OpenAI TTS), return audio asset
-3. Wire voice assets to `assets` table with `kind = 'voice'`
-4. Link voice requests to chat messages (`voice_asset_id` on `chat_messages`)
-5. Support streaming TTS for low-latency playback
 
 ---
 

@@ -15,7 +15,6 @@
     "backend:migrate": "python3 scripts/db_migrate.py",
     "backend:user:local": "python3 scripts/backend.py ensure-user --username local --display-name \"Local User\"",
     "backend:project:list": "python3 scripts/backend.py list-projects",
-    "backend:api": "python3 scripts/backend_api.py --host 127.0.0.1 --port 8787 --with-default-user",
     "backend:rust": "cd src-tauri && cargo run",
     "backend:rust:test": "cd src-tauri && cargo test",
     "backend:worker": "python3 scripts/agent_worker.py",

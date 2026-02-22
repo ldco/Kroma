@@ -1395,11 +1395,9 @@ def init_schema(conn: sqlite3.Connection) -> None:
           role TEXT NOT NULL,
           content_text TEXT NOT NULL,
           content_json TEXT NOT NULL DEFAULT '{}',
-          voice_asset_id TEXT,
           token_usage_json TEXT NOT NULL DEFAULT '{}',
           created_at TEXT NOT NULL,
-          FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
-          FOREIGN KEY(voice_asset_id) REFERENCES assets(id) ON DELETE SET NULL
+          FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS agent_instructions (
@@ -1433,26 +1431,6 @@ def init_schema(conn: sqlite3.Connection) -> None:
           FOREIGN KEY(instruction_id) REFERENCES agent_instructions(id) ON DELETE CASCADE
         );
 
-        CREATE TABLE IF NOT EXISTS voice_requests (
-          id TEXT PRIMARY KEY,
-          project_id TEXT NOT NULL,
-          session_id TEXT,
-          message_id TEXT,
-          direction TEXT NOT NULL,
-          provider_code TEXT NOT NULL,
-          input_asset_id TEXT,
-          output_asset_id TEXT,
-          status TEXT NOT NULL,
-          latency_ms INTEGER,
-          meta_json TEXT NOT NULL DEFAULT '{}',
-          created_at TEXT NOT NULL,
-          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-          FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE SET NULL,
-          FOREIGN KEY(message_id) REFERENCES chat_messages(id) ON DELETE SET NULL,
-          FOREIGN KEY(input_asset_id) REFERENCES assets(id) ON DELETE SET NULL,
-          FOREIGN KEY(output_asset_id) REFERENCES assets(id) ON DELETE SET NULL
-        );
-
         CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_id);
         CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id);
         CREATE INDEX IF NOT EXISTS idx_jobs_run ON run_jobs(run_id);
@@ -1463,8 +1441,6 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_agent_instructions_project ON agent_instructions(project_id, status, priority, created_at);
         CREATE INDEX IF NOT EXISTS idx_agent_instruction_events_instr ON agent_instruction_events(instruction_id, created_at);
-        CREATE INDEX IF NOT EXISTS idx_voice_requests_project ON voice_requests(project_id, status, created_at);
-
         CREATE TABLE IF NOT EXISTS project_storage (
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL,

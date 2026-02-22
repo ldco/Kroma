@@ -38,7 +38,7 @@ Why it exists:
 ## Current Backend State (2026-02-22)
 
 - Primary backend is Rust (`src-tauri`), started with `npm run backend:rust` on `127.0.0.1:8788`.
-- Rust API contract currently mounts 70 routes and is covered by contract + endpoint tests.
+- Rust API contract currently mounts 68 routes and is covered by contract + endpoint tests.
 - Bootstrap prompt exchange is implemented:
   - `GET /api/projects/{slug}/bootstrap-prompt`
   - `POST /api/projects/{slug}/bootstrap-import` (`merge`, `replace`, `dry_run`)
@@ -49,7 +49,7 @@ Why it exists:
 
 1. The image generation/post-process pipeline is still script-driven (`scripts/image-lab.mjs`).
 2. Local tool wrappers and setup flows still live in Python/Node scripts.
-3. Some legacy compatibility paths (`backend.py`, `backend_api.py`, worker scripts) are retained while parity migration continues.
+3. Some migration paths (`backend.py`, worker scripts) are retained while parity migration continues.
 
 So: backend data/API is largely migrated to Rust, but runtime pipeline orchestration is not fully migrated yet.
 
@@ -197,7 +197,6 @@ app/
 ├─ scripts/
 │  ├─ image-lab.mjs
 │  ├─ backend.py
-│  ├─ backend_api.py
 │  ├─ contract_smoke.py
 │  └─ setup_tools.py
 ├─ src-tauri/

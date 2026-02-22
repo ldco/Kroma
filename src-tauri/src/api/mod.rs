@@ -17,4 +17,3 @@ pub mod runs_assets;
 pub mod secrets;
 pub mod server;
 pub mod style_guides;
-pub mod voice;

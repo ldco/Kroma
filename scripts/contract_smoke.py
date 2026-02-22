@@ -83,25 +83,6 @@ def main():
     print("[contract-smoke] events")
     request_json(base_url, "GET", f"/api/projects/{slug}/agent/instructions/{instr_id}/events")
 
-    print("[contract-smoke] voice stt + tts")
-    stt = request_json(
-        base_url,
-        "POST",
-        f"/api/projects/{slug}/voice/stt",
-        {"session_id": session_id, "provider_code": "mock_stt", "transcript_text": "hello"},
-    )
-    stt_id = stt["request"]["id"]
-    request_json(base_url, "GET", f"/api/projects/{slug}/voice/requests/{stt_id}")
-
-    tts = request_json(
-        base_url,
-        "POST",
-        f"/api/projects/{slug}/voice/tts",
-        {"session_id": session_id, "provider_code": "mock_tts", "text": "ok"},
-    )
-    tts_id = tts["request"]["id"]
-    request_json(base_url, "GET", f"/api/projects/{slug}/voice/requests/{tts_id}")
-
     print("[contract-smoke] secrets")
     request_json(
         base_url,
