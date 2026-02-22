@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -31,6 +33,50 @@ pub struct BackendCommandResult {
     pub stdout: String,
     pub stderr: String,
     pub json: Option<Value>,
+}
+
+impl BackendCommandResult {
+    pub fn parse_json_as<T>(&self) -> Result<T, BackendOpsError>
+    where
+        T: DeserializeOwned,
+    {
+        let payload = self
+            .json
+            .as_ref()
+            .ok_or(BackendOpsError::MissingJsonOutput)?;
+        serde_json::from_value(payload.clone()).map_err(BackendOpsError::JsonDecode)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct BackendIngestRunResponse {
+    pub ok: bool,
+    pub project_slug: String,
+    pub run_id: String,
+    pub run_log_path: String,
+    pub jobs: u64,
+    pub candidates: u64,
+    pub assets_upserted: u64,
+    pub quality_reports_written: u64,
+    pub cost_events_written: u64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct BackendSyncProjectS3Response {
+    pub ok: bool,
+    #[serde(default)]
+    pub project_slug: Option<String>,
+    pub project_root: String,
+    pub destination: String,
+    #[serde(default)]
+    pub dry_run: Option<bool>,
+    #[serde(default)]
+    pub delete: Option<bool>,
+    #[serde(default)]
+    pub skipped: Option<bool>,
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 pub trait PipelineBackendOps: Send + Sync + 'static {
@@ -179,6 +225,22 @@ where
 
         Ok(parse_backend_command_result(output))
     }
+
+    pub fn ingest_run_typed(
+        &self,
+        request: &BackendIngestRunRequest,
+    ) -> Result<BackendIngestRunResponse, BackendOpsError> {
+        let result = self.ingest_run(request)?;
+        result.parse_json_as()
+    }
+
+    pub fn sync_project_s3_typed(
+        &self,
+        request: &BackendSyncProjectS3Request,
+    ) -> Result<BackendSyncProjectS3Response, BackendOpsError> {
+        let result = self.sync_project_s3(request)?;
+        result.parse_json_as()
+    }
 }
 
 impl<R> PipelineBackendOps for ScriptPipelineBackendOps<R>
@@ -225,6 +287,10 @@ pub enum BackendOpsError {
         status_code: i32,
         stderr: String,
     },
+    #[error("backend command produced no JSON stdout payload")]
+    MissingJsonOutput,
+    #[error("backend command JSON decode failed: {0}")]
+    JsonDecode(#[source] serde_json::Error),
 }
 
 fn validate_project_slug(value: &str) -> Result<(), BackendOpsError> {
@@ -358,5 +424,78 @@ mod tests {
 
         assert_eq!(result.json, Some(serde_json::json!({"ok": true})));
         assert_eq!(runner.take_seen().len(), 1);
+    }
+
+    #[test]
+    fn parses_typed_ingest_run_response() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::from(
+                "{\"ok\":true,\"project_slug\":\"demo\",\"run_id\":\"r1\",\"run_log_path\":\"var/projects/demo/runs/run.json\",\"jobs\":1,\"candidates\":2,\"assets_upserted\":3,\"quality_reports_written\":4,\"cost_events_written\":5,\"status\":\"ok\"}",
+            ),
+            stderr: String::new(),
+        }));
+        let ops = test_ops(runner);
+
+        let parsed = ops
+            .ingest_run_typed(&BackendIngestRunRequest {
+                run_log_path: PathBuf::from("var/projects/demo/runs/run.json"),
+                project_slug: String::from("demo"),
+                project_name: String::from("Demo"),
+                create_project_if_missing: true,
+                compute_hashes: false,
+            })
+            .expect("typed ingest response should parse");
+
+        assert_eq!(parsed.project_slug, "demo");
+        assert_eq!(parsed.jobs, 1);
+        assert_eq!(parsed.status, "ok");
+    }
+
+    #[test]
+    fn parses_typed_sync_project_s3_skipped_response() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::from(
+                "{\"ok\":true,\"skipped\":true,\"reason\":\"missing_local_project_root\",\"project_root\":\"/tmp/demo\",\"destination\":\"s3://bucket/demo/\"}",
+            ),
+            stderr: String::new(),
+        }));
+        let ops = test_ops(runner);
+
+        let parsed = ops
+            .sync_project_s3_typed(&BackendSyncProjectS3Request {
+                project_slug: String::from("demo"),
+                dry_run: false,
+                delete: false,
+                allow_missing_local: true,
+            })
+            .expect("typed sync response should parse");
+
+        assert_eq!(parsed.ok, true);
+        assert_eq!(parsed.skipped, Some(true));
+        assert_eq!(parsed.reason.as_deref(), Some("missing_local_project_root"));
+        assert!(parsed.project_slug.is_none());
+    }
+
+    #[test]
+    fn typed_parse_errors_when_stdout_is_not_json() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::from("not-json"),
+            stderr: String::new(),
+        }));
+        let ops = test_ops(runner);
+
+        let err = ops
+            .sync_project_s3_typed(&BackendSyncProjectS3Request {
+                project_slug: String::from("demo"),
+                dry_run: false,
+                delete: false,
+                allow_missing_local: false,
+            })
+            .expect_err("typed parse should fail");
+
+        assert!(matches!(err, BackendOpsError::MissingJsonOutput));
     }
 }
