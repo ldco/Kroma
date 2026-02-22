@@ -2,7 +2,7 @@
 
 Date: 2026-02-22
 Branch: `master`
-HEAD / upstream (`origin/master`): `c52273f`
+HEAD / upstream (`origin/master`): `9f972e0`
 Worktree: dirty (local uncommitted changes)
 
 ## Current Status
@@ -29,7 +29,10 @@ Worktree: dirty (local uncommitted changes)
 ## What Landed (Latest Relevant Backend Work)
 
 Latest backend commit on `master`: `a620df7`  
-Commit message: `fix(trigger): validate semantic errors before project lookup`
+Latest docs/handoff commit on `master`: `9f972e0`  
+Commit messages:
+- `fix(trigger): validate semantic errors before project lookup`
+- `refactor(trigger): remove redundant validation clones`
 
 ### Implemented
 
@@ -64,10 +67,11 @@ Commit message: `fix(trigger): validate semantic errors before project lookup`
 
 ## Local Work In Progress (Uncommitted)
 
-1. Trigger validation analysis follow-up (current local change)
-   - removed redundant cloning/reconstruction of `TriggerRunParams` inside `PipelineTriggerService::trigger`
-   - behavior unchanged; validation now reuses borrowed params directly
-2. Handoff refresh for this analysis pass (current local doc change)
+1. Next-phase runtime-consolidation kickoff (current local change)
+   - added `src-tauri/src/pipeline/backend_ops.rs` typed Rust boundary for script-backed `backend.py` operations
+   - covers `ingest-run` and `sync-project-s3` command building/execution shell with unit tests
+2. `src-tauri/src/pipeline/mod.rs`
+   - exports new `backend_ops` module
 3. Unrelated local file change remains outside backend work:
    - `logo.png` modified (not part of backend/runtime work)
 
@@ -79,6 +83,7 @@ Scope reviewed:
 3. Trigger endpoint coverage in `src-tauri/tests/pipeline_trigger_endpoints.rs`
 4. Contract/mount parity after recent trigger/OpenAPI changes
 5. Newly extracted shared trigger validation path for duplication/perf issues
+6. Next-phase `backend.py` dependency surface in `scripts/image-lab.mjs` / `scripts/backend.py` (`ingest-run`, `sync-project-s3`)
 
 Issues discovered:
 1. Bug (fixed): `reference_sets` import accepted entries without an `items` field.
@@ -96,6 +101,7 @@ Fixes implemented:
 5. Restored pre-lookup validation precedence for stage-aware trigger semantic errors.
 6. Updated endpoint tests to assert validation errors are returned before missing-project lookup for stage-aware invalid payloads.
 7. Removed redundant param cloning by validating `TriggerRunParams` by reference before destructuring in the trigger service.
+8. Started a typed Rust boundary (`pipeline::backend_ops`) for script-backed backend ingest/S3 sync operations.
 
 Remaining risks / TODO:
 1. `reference_sets` nested item behavior is authoritative per provided set (not per-item merge).
@@ -161,11 +167,17 @@ Local validation run for trigger validation clone-removal follow-up:
 
 Result: passing.
 
+Local validation run for next-phase `pipeline::backend_ops` boundary kickoff:
+1. `cargo fmt`
+2. `cargo test pipeline::backend_ops --lib`
+
+Result: passing.
+
 ## Next Priority Work
 
 1. Continue Phase 1 runtime consolidation (Rust app unification):
    - Rust pipeline orchestration replacement for `scripts/image-lab.mjs`
-   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary (next concrete slice: ingest-run / sync-project-s3 adapter boundary)
+   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary (in progress: `pipeline::backend_ops` typed script-backed boundary for ingest/sync)
    - Rust worker/dispatcher replacement for script workers
    - typed Rust tool adapters for external tools/APIs
 2. Decide whether `chat` / `agent instructions` belong in bootstrap scope and define rules before implementation.
@@ -179,7 +191,8 @@ Result: passing.
 
 ## Suggested Starting Point For Next Chat
 
-1. Add a Rust boundary for post-run `backend.py` operations currently invoked by `scripts/image-lab.mjs` (`ingest-run`, `sync-project-s3`), initially script-backed but typed.
-2. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
-3. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after milestone-level changes.
-4. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.
+1. Wire `pipeline::backend_ops` into the Rust runtime/orchestration path as the boundary for backend ingest + S3 sync post-run operations (still script-backed initially).
+2. Add typed JSON response parsing/structs for `backend.py ingest-run` and `sync-project-s3` payloads if the Rust path needs structured handling beyond raw stdout.
+3. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
+4. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after milestone-level changes.
+5. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.
