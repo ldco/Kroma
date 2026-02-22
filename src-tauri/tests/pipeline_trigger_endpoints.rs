@@ -356,23 +356,10 @@ async fn pipeline_trigger_rejects_out_of_range_candidates() {
 async fn pipeline_trigger_rejects_time_without_time_or_weather_stage() {
     let app = build_router_with_projects_store(test_store());
 
-    let created = send_json(
-        app.clone(),
-        Method::POST,
-        "/api/projects",
-        Body::from(r#"{"name":"Trigger Time Validation"}"#),
-        StatusCode::OK,
-    )
-    .await;
-    let slug = created["project"]["slug"]
-        .as_str()
-        .expect("project slug should exist")
-        .to_string();
-
     let response = send_json(
         app,
         Method::POST,
-        &format!("/api/projects/{slug}/runs/trigger"),
+        "/api/projects/missing-project/runs/trigger",
         Body::from(
             json!({
                 "mode":"dry",
@@ -395,23 +382,10 @@ async fn pipeline_trigger_rejects_time_without_time_or_weather_stage() {
 async fn pipeline_trigger_rejects_weather_without_weather_stage() {
     let app = build_router_with_projects_store(test_store());
 
-    let created = send_json(
-        app.clone(),
-        Method::POST,
-        "/api/projects",
-        Body::from(r#"{"name":"Trigger Weather Validation"}"#),
-        StatusCode::OK,
-    )
-    .await;
-    let slug = created["project"]["slug"]
-        .as_str()
-        .expect("project slug should exist")
-        .to_string();
-
     let response = send_json(
         app,
         Method::POST,
-        &format!("/api/projects/{slug}/runs/trigger"),
+        "/api/projects/missing-project/runs/trigger",
         Body::from(
             json!({
                 "mode":"dry",

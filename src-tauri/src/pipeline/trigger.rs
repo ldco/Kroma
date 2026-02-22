@@ -119,27 +119,18 @@ impl PipelineTriggerService {
             candidates,
         } = params;
 
-        if input.is_some() && scene_refs.is_some() {
-            return Err(PipelineTriggerError::InvalidRequest(String::from(
-                "Provide only one of: input, scene_refs",
-            )));
-        }
-        if input.is_none() && scene_refs.is_none() {
-            return Err(PipelineTriggerError::InvalidRequest(String::from(
-                "Provide one of: input, scene_refs",
-            )));
-        }
-        validate_stage_parameter_usage(stage, time, weather)?;
+        validate_trigger_input(mode, confirm_spend, &TriggerRunParams {
+            project_root: project_root.clone(),
+            input: input.clone(),
+            scene_refs: scene_refs.clone(),
+            style_refs: style_refs.clone(),
+            stage,
+            time,
+            weather,
+            candidates,
+        })?;
 
-        let confirm_spend = match mode {
-            TriggerMode::Dry => false,
-            TriggerMode::Run => {
-                if !confirm_spend {
-                    return Err(PipelineTriggerError::MissingSpendConfirmation);
-                }
-                true
-            }
-        };
+        let confirm_spend = matches!(mode, TriggerMode::Run);
 
         let input_source = if let Some(input_path) = input {
             Some(PipelineInputSource::InputPath(input_path))
@@ -164,6 +155,31 @@ impl PipelineTriggerService {
             })
             .map_err(PipelineTriggerError::Runtime)
     }
+}
+
+pub fn validate_trigger_input(
+    mode: TriggerMode,
+    confirm_spend: bool,
+    params: &TriggerRunParams,
+) -> Result<(), PipelineTriggerError> {
+    if params.input.is_some() && params.scene_refs.is_some() {
+        return Err(PipelineTriggerError::InvalidRequest(String::from(
+            "Provide only one of: input, scene_refs",
+        )));
+    }
+    if params.input.is_none() && params.scene_refs.is_none() {
+        return Err(PipelineTriggerError::InvalidRequest(String::from(
+            "Provide one of: input, scene_refs",
+        )));
+    }
+
+    validate_stage_parameter_usage(params.stage, params.time, params.weather)?;
+
+    if matches!(mode, TriggerMode::Run) && !confirm_spend {
+        return Err(PipelineTriggerError::MissingSpendConfirmation);
+    }
+
+    Ok(())
 }
 
 fn validate_stage_parameter_usage(

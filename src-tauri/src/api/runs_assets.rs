@@ -7,8 +7,8 @@ use serde_json::{json, Value};
 use crate::api::server::AppState;
 use crate::pipeline::runtime::PipelineRuntimeError;
 use crate::pipeline::trigger::{
-    PipelineTriggerError, TriggerMode, TriggerPipelineInput, TriggerRunParams, TriggerStage,
-    TriggerTime, TriggerWeather,
+    validate_trigger_input, PipelineTriggerError, TriggerMode, TriggerPipelineInput,
+    TriggerRunParams, TriggerStage, TriggerTime, TriggerWeather,
 };
 
 use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
@@ -236,6 +236,11 @@ pub async fn trigger_run_handler(
         }
     };
 
+    let confirm_spend = payload.confirm_spend.unwrap_or(false);
+    if let Err(error) = validate_trigger_input(mode, confirm_spend, &params) {
+        return map_pipeline_trigger_error(error);
+    }
+
     let store = state.projects_store.clone();
     let slug_for_lookup = slug.clone();
     let project_check =
@@ -252,7 +257,6 @@ pub async fn trigger_run_handler(
     }
 
     let trigger = state.pipeline_trigger.clone();
-    let confirm_spend = payload.confirm_spend.unwrap_or(false);
     let mode_label = trigger_mode_label(mode);
     let result = tokio::task::spawn_blocking(move || {
         trigger.trigger(TriggerPipelineInput {
