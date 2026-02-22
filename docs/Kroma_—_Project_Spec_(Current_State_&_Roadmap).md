@@ -1,7 +1,7 @@
 # Kroma — Project Spec (Current State & Roadmap)
 
 **Last updated:** 2026-02-22  
-**Status:** Active development — Rust backend is primary; pipeline scripts are still in use
+**Status:** Active development — Rust backend is primary; full Rust app consolidation is in progress (`scripts/` are transitional, not the end state)
 
 ---
 
@@ -26,8 +26,9 @@ It is **not** a GUI app today. It is a **backend-first, CLI-driven system** that
 
 1. Rust backend (`src-tauri`) is the primary API/backend implementation.
 2. Metadata/database APIs are mostly migrated to Rust and contract-tested.
-3. `scripts/` is still required for the image pipeline, local tool wrappers, and compatibility utilities.
+3. `scripts/` is still required today for the image pipeline, local tool wrappers, and compatibility utilities.
 4. Migration is partial: backend metadata APIs are far ahead of pipeline/runtime migration.
+5. Target architecture remains a single Rust-owned application; `scripts/` are a temporary migration layer and should shrink over time.
 
 ---
 
@@ -71,7 +72,7 @@ This is the main backend surface now (`npm run backend:rust`, default `127.0.0.1
 - Project/storage/asset/runs/chat/instruction/voice/secrets APIs
 - Bootstrap prompt export/import (`/bootstrap-prompt`, `/bootstrap-import`)
 
-#### Layer 2 — CLI Pipeline (`scripts/image-lab.mjs`) — Not yet migrated
+#### Layer 2 — CLI Pipeline (`scripts/image-lab.mjs`) — Transitional (to be migrated into Rust)
 The generation and post-process pipeline is still script-based.
 
 - `dry`/`run` orchestration
@@ -79,7 +80,7 @@ The generation and post-process pipeline is still script-based.
 - Local post-processing (rembg / Real-ESRGAN / color)
 - QA guard and candidate flow
 
-#### Layer 3 — `scripts/` Folder — Transitional but still required
+#### Layer 3 — `scripts/` Folder — Transitional only (currently required)
 `scripts/` still exists because not all runtime responsibilities are migrated to Rust yet.
 
 It currently contains:
@@ -96,7 +97,15 @@ Short answer: **partial migration**.
 2. Generation orchestration + local media toolchain is still Node/Python script-driven.
 3. Some legacy Python commands are retained for compatibility while migration continues.
 
-So no, it is not all migrated to Rust yet.
+This is a transition state, not the intended product architecture.
+
+The intended end state is:
+
+1. Rust owns API + DB + migrations + pipeline orchestration + workers + ingest/QA/cost logging.
+2. External tools/APIs are invoked through Rust modules/adapters (not ad-hoc scripts).
+3. `scripts/` is reduced to migration shims / dev utilities and then removed from the core runtime path.
+
+So no, it is not all migrated to Rust yet, and yes, the roadmap should continue pushing toward a single app.
 
 ---
 
@@ -325,6 +334,21 @@ Every instruction dispatched to an external agent API must include:
 
 ### Phase 1 — Stabilize & Complete Backend (Current Priority)
 
+This phase is not only about CRUD endpoints. It also includes consolidating runtime behavior into the Rust application so Kroma becomes a single app rather than a Rust backend plus script runtime.
+
+#### 10.0 Runtime Consolidation Into Rust (High Priority)
+
+Current state: API/data layers are mostly in Rust, but generation/runtime orchestration still depends on `scripts/`.
+
+Priority work:
+
+1. Replace `scripts/image-lab.mjs` orchestration with a Rust pipeline orchestration module
+2. Move run trigger / ingest parity paths into Rust endpoints + services
+3. Replace Python worker runtime (`agent_worker.py` / `agent_dispatch.py`) with Rust worker/service modules
+4. Build Rust adapters for external tools/integrations (OpenAI image calls, rembg, ESRGAN, S3 sync) behind typed interfaces
+5. Add parity tests for Rust runtime paths before deprecating script paths
+6. Define script deprecation milestones (feature flag -> default Rust path -> removal)
+
 #### 10.1 DB Schema Migration to Target Spec
 
 Most target schema items are now present in Rust. Current DB priorities are:
@@ -341,6 +365,8 @@ Most metadata CRUD/read endpoints are implemented in Rust. Remaining API priorit
 2. Pipeline execution mutation parity (trigger/ingest)
 3. Export mutation parity (`create export`, `sync-s3`)
 4. Preview-first UX support expansion around bootstrap import flows
+
+Note: endpoint completion alone is not sufficient; runtime execution must also move into Rust for full application consolidation (see 10.0).
 
 #### 10.3 Cost Tracking
 

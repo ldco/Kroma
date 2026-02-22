@@ -69,6 +69,55 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
         StatusCode::OK,
     )
     .await;
+    let seed_reference_set = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/reference-sets"),
+        Body::from(
+            json!({
+                "name":"Legacy References",
+                "description":"Seed set for bootstrap export"
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let seed_reference_set_id = seed_reference_set["reference_set"]["id"]
+        .as_str()
+        .expect("reference set id should exist")
+        .to_string();
+    let _seed_reference_item = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/reference-sets/{seed_reference_set_id}/items"),
+        Body::from(
+            json!({
+                "label":"Hero Face",
+                "content_text":"Legacy face reference notes",
+                "sort_order":1,
+                "metadata_json":{"source":"legacy"}
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let _seed_secret = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::from(
+            json!({
+                "provider_code":"openai",
+                "secret_name":"api_key",
+                "secret_value":"sk-seeded"
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
 
     let exported = send_json(
         app.clone(),
@@ -92,6 +141,26 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
             .expect("characters should be an array")
             .len(),
         1
+    );
+    assert_eq!(
+        exported["bootstrap"]["settings"]["reference_sets"]
+            .as_array()
+            .expect("reference_sets should be an array")
+            .len(),
+        1
+    );
+    assert_eq!(
+        exported["bootstrap"]["settings"]["secrets"]
+            .as_array()
+            .expect("secrets should be an array")
+            .len(),
+        1
+    );
+    assert!(
+        exported["bootstrap"]["settings"]["secrets"][0]
+            .get("secret_value")
+            .is_none(),
+        "bootstrap export must not include secret values"
     );
     assert!(
         exported["bootstrap"]["prompt"]
@@ -136,6 +205,26 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
                             "prompt_text": "Consistent wardrobe, cinematic framing, same face."
                         }
                     ],
+                    "reference_sets": [
+                        {
+                            "name": "Hero Faces",
+                            "description": "Canonical face references",
+                            "items": [
+                                {
+                                    "label": "Hero Front",
+                                    "content_text": "Front-facing portrait, neutral expression, sharp jawline",
+                                    "sort_order": 0,
+                                    "metadata_json": {"source": "bootstrap"}
+                                }
+                            ]
+                        }
+                    ],
+                    "secrets": [
+                        {
+                            "provider_code": "anthropic",
+                            "secret_name": "api_key"
+                        }
+                    ],
                     "prompt_templates": [
                         {
                             "name": "Hero Prompt",
@@ -175,6 +264,31 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
     assert_eq!(
         imported["bootstrap_import"]["changes"]["characters"]["updated"],
         json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["applied"]["reference_sets"],
+        json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["reference_sets"]["created"],
+        json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["reference_sets"]["deleted"],
+        json!(1)
+    );
+    assert_eq!(imported["bootstrap_import"]["applied"]["secrets"], json!(1));
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["secrets"]["created"],
+        json!(1)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["secrets"]["deleted"],
+        json!(0)
+    );
+    assert_eq!(
+        imported["bootstrap_import"]["changes"]["secrets"]["replaced"],
+        json!(false)
     );
     assert_eq!(
         imported["bootstrap_import"]["project"]["name"],
@@ -236,6 +350,48 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
         characters["characters"][0]["description"],
         json!("Refined protagonist profile")
     );
+
+    let reference_sets = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/reference-sets"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(reference_sets["count"], json!(1));
+    assert_eq!(
+        reference_sets["reference_sets"][0]["name"],
+        json!("Hero Faces")
+    );
+    let reference_set_id = reference_sets["reference_sets"][0]["id"]
+        .as_str()
+        .expect("reference set id should exist")
+        .to_string();
+    let reference_items = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/reference-sets/{reference_set_id}/items"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(reference_items["count"], json!(1));
+    assert_eq!(reference_items["items"][0]["label"], json!("Hero Front"));
+
+    let secrets = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(secrets["count"], json!(2));
+    assert_eq!(secrets["secrets"][0]["provider_code"], json!("anthropic"));
+    assert_eq!(secrets["secrets"][0]["has_value"], json!(false));
+    assert_eq!(secrets["secrets"][1]["provider_code"], json!("openai"));
+    assert_eq!(secrets["secrets"][1]["has_value"], json!(true));
 
     let templates = send_json(
         app,
@@ -364,7 +520,7 @@ async fn bootstrap_import_validation_is_enforced() {
     );
 
     let invalid_mode = send_json(
-        app,
+        app.clone(),
         Method::POST,
         &format!("/api/projects/{slug}/bootstrap-import"),
         Body::from(
@@ -384,6 +540,30 @@ async fn bootstrap_import_validation_is_enforced() {
     assert_eq!(
         invalid_mode["error"],
         json!("Field 'mode' must be one of: merge, replace")
+    );
+
+    let missing_reference_set_items = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/bootstrap-import"),
+        Body::from(
+            json!({
+                "settings": {
+                    "reference_sets": [
+                        {
+                            "name": "Refs Without Items"
+                        }
+                    ]
+                }
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert_eq!(
+        missing_reference_set_items["error"],
+        json!("Field 'reference_sets[].items' is required (use [] to provide an empty set)")
     );
 }
 
@@ -439,6 +619,43 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
         Method::POST,
         &format!("/api/projects/{slug}/characters"),
         Body::from(json!({"name":"Original Character","description":"Baseline"}).to_string()),
+        StatusCode::OK,
+    )
+    .await;
+    let seed_reference_set = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/reference-sets"),
+        Body::from(
+            json!({"name":"Original Reference Set","description":"Baseline set"}).to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    let seed_reference_set_id = seed_reference_set["reference_set"]["id"]
+        .as_str()
+        .expect("reference set id should exist")
+        .to_string();
+    let _seed_reference_item = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/reference-sets/{seed_reference_set_id}/items"),
+        Body::from(json!({"label":"Baseline Ref","content_text":"Baseline ref item"}).to_string()),
+        StatusCode::OK,
+    )
+    .await;
+    let _seed_secret = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::from(
+            json!({
+                "provider_code":"openai",
+                "secret_name":"api_key",
+                "secret_value":"sk-original"
+            })
+            .to_string(),
+        ),
         StatusCode::OK,
     )
     .await;
@@ -505,7 +722,7 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
     );
 
     let characters = send_json(
-        app,
+        app.clone(),
         Method::GET,
         &format!("/api/projects/{slug}/characters"),
         Body::empty(),
@@ -517,6 +734,30 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
         characters["characters"][0]["name"],
         json!("Original Character")
     );
+    let reference_sets = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/reference-sets"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(reference_sets["count"], json!(1));
+    assert_eq!(
+        reference_sets["reference_sets"][0]["name"],
+        json!("Original Reference Set")
+    );
+    let secrets = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(secrets["count"], json!(1));
+    assert_eq!(secrets["secrets"][0]["provider_code"], json!("openai"));
+    assert_eq!(secrets["secrets"][0]["has_value"], json!(true));
 
     assert_eq!(
         _replace_style_only["bootstrap_import"]["changes"]["provider_accounts"]["provided"],
@@ -536,6 +777,22 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
     );
     assert_eq!(
         _replace_style_only["bootstrap_import"]["changes"]["characters"]["deleted"],
+        json!(0)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["reference_sets"]["provided"],
+        json!(false)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["reference_sets"]["deleted"],
+        json!(0)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["secrets"]["provided"],
+        json!(false)
+    );
+    assert_eq!(
+        _replace_style_only["bootstrap_import"]["changes"]["secrets"]["deleted"],
         json!(0)
     );
 }
@@ -577,6 +834,41 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
         StatusCode::OK,
     )
     .await;
+    let seed_reference_set = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/reference-sets"),
+        Body::from(json!({"name":"Existing Refs","description":"Baseline refs"}).to_string()),
+        StatusCode::OK,
+    )
+    .await;
+    let seed_reference_set_id = seed_reference_set["reference_set"]["id"]
+        .as_str()
+        .expect("reference set id should exist")
+        .to_string();
+    let _seed_reference_item = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/reference-sets/{seed_reference_set_id}/items"),
+        Body::from(json!({"label":"Existing Ref Item","content_text":"Baseline ref"}).to_string()),
+        StatusCode::OK,
+    )
+    .await;
+    let _seed_secret = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::from(
+            json!({
+                "provider_code":"openai",
+                "secret_name":"api_key",
+                "secret_value":"sk-existing"
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
 
     let preview = send_json(
         app.clone(),
@@ -598,6 +890,25 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
                             "name": "Preview Character",
                             "description": "Preview-only character",
                             "prompt_text": "Preview-only character prompt"
+                        }
+                    ],
+                    "reference_sets": [
+                        {
+                            "name": "Preview Refs",
+                            "description": "Preview-only refs",
+                            "items": [
+                                {
+                                    "label": "Preview Ref Item",
+                                    "content_text": "Preview-only ref text",
+                                    "sort_order": 1
+                                }
+                            ]
+                        }
+                    ],
+                    "secrets": [
+                        {
+                            "provider_code": "anthropic",
+                            "secret_name": "api_key"
                         }
                     ]
                 }
@@ -634,12 +945,47 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
         json!(true)
     );
     assert_eq!(
+        preview["bootstrap_import"]["changes"]["reference_sets"]["created"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["reference_sets"]["deleted"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["reference_sets"]["replaced"],
+        json!(true)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["secrets"]["created"],
+        json!(1)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["secrets"]["deleted"],
+        json!(0)
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["changes"]["secrets"]["replaced"],
+        json!(false)
+    );
+    assert_eq!(
         preview["bootstrap_import"]["settings"]["style_guides"][0]["name"],
         json!("Preview Style")
     );
     assert_eq!(
         preview["bootstrap_import"]["settings"]["characters"][0]["name"],
         json!("Preview Character")
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["settings"]["reference_sets"][0]["name"],
+        json!("Preview Refs")
+    );
+    assert_eq!(
+        preview["bootstrap_import"]["settings"]["secrets"]
+            .as_array()
+            .expect("preview secrets should be array")
+            .len(),
+        2
     );
 
     let persisted = send_json(
@@ -657,7 +1003,7 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
     );
 
     let persisted_characters = send_json(
-        app,
+        app.clone(),
         Method::GET,
         &format!("/api/projects/{slug}/characters"),
         Body::empty(),
@@ -669,6 +1015,33 @@ async fn bootstrap_import_dry_run_previews_without_writing() {
         persisted_characters["characters"][0]["name"],
         json!("Existing Character")
     );
+    let persisted_reference_sets = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/projects/{slug}/reference-sets"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(persisted_reference_sets["count"], json!(1));
+    assert_eq!(
+        persisted_reference_sets["reference_sets"][0]["name"],
+        json!("Existing Refs")
+    );
+    let persisted_secrets = send_json(
+        app,
+        Method::GET,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(persisted_secrets["count"], json!(1));
+    assert_eq!(
+        persisted_secrets["secrets"][0]["provider_code"],
+        json!("openai")
+    );
+    assert_eq!(persisted_secrets["secrets"][0]["has_value"], json!(true));
 }
 
 async fn send_json(

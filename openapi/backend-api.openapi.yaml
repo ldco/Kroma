@@ -107,6 +107,31 @@ paths:
                           name: { type: string }
                           description: { type: string }
                           prompt_text: { type: string }
+                    reference_sets:
+                      type: array
+                      items:
+                        type: object
+                        required: [name, items]
+                        properties:
+                          name: { type: string }
+                          description: { type: string }
+                          items:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                label: { type: string }
+                                content_uri: { type: string }
+                                content_text: { type: string }
+                                sort_order: { type: integer }
+                                metadata_json: { type: object }
+                    secrets:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          provider_code: { type: string }
+                          secret_name: { type: string }
                     prompt_templates:
                       type: array
                       items:

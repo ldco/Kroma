@@ -9,7 +9,7 @@ use super::{
     fetch_project_by_slug, normalize_optional_storage_field, normalize_provider_code,
     normalize_required_text, normalize_slug, now_iso, parse_json_value, CharacterSummary,
     ProjectsRepoError, ProjectsStore, PromptTemplateSummary, ProviderAccountSummary,
-    StyleGuideSummary,
+    ReferenceSetItemSummary, ReferenceSetSummary, SecretSummary, StyleGuideSummary,
 };
 
 const BOOTSTRAP_SCHEMA_VERSION: &str = "kroma.bootstrap.v1";
@@ -27,7 +27,32 @@ pub struct ProjectBootstrapSettings {
     pub provider_accounts: Vec<ProviderAccountSummary>,
     pub style_guides: Vec<StyleGuideSummary>,
     pub characters: Vec<CharacterSummary>,
+    pub reference_sets: Vec<ProjectBootstrapReferenceSet>,
+    pub secrets: Vec<ProjectBootstrapSecret>,
     pub prompt_templates: Vec<PromptTemplateSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectBootstrapReferenceSet {
+    pub name: String,
+    pub description: String,
+    pub items: Vec<ProjectBootstrapReferenceSetItem>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectBootstrapReferenceSetItem {
+    pub label: String,
+    pub content_uri: String,
+    pub content_text: String,
+    pub sort_order: i64,
+    pub metadata_json: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectBootstrapSecret {
+    pub provider_code: String,
+    pub secret_name: String,
+    pub has_value: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +70,8 @@ pub struct BootstrapAppliedSummary {
     pub provider_accounts: usize,
     pub style_guides: usize,
     pub characters: usize,
+    pub reference_sets: usize,
+    pub secrets: usize,
     pub prompt_templates: usize,
 }
 
@@ -74,6 +101,8 @@ pub struct BootstrapImportChangeSummary {
     pub provider_accounts: BootstrapSectionChangeSummary,
     pub style_guides: BootstrapSectionChangeSummary,
     pub characters: BootstrapSectionChangeSummary,
+    pub reference_sets: BootstrapSectionChangeSummary,
+    pub secrets: BootstrapSectionChangeSummary,
     pub prompt_templates: BootstrapSectionChangeSummary,
 }
 
@@ -111,6 +140,10 @@ pub struct ProjectBootstrapSettingsInput {
     pub style_guides: Option<Vec<ProjectBootstrapStyleGuideInput>>,
     #[serde(default)]
     pub characters: Option<Vec<ProjectBootstrapCharacterInput>>,
+    #[serde(default)]
+    pub reference_sets: Option<Vec<ProjectBootstrapReferenceSetInput>>,
+    #[serde(default)]
+    pub secrets: Option<Vec<ProjectBootstrapSecretInput>>,
     #[serde(default)]
     pub prompt_templates: Option<Vec<ProjectBootstrapPromptTemplateInput>>,
 }
@@ -165,6 +198,38 @@ pub struct ProjectBootstrapCharacterInput {
     pub description: Option<String>,
     #[serde(default)]
     pub prompt_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProjectBootstrapReferenceSetInput {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub items: Option<Vec<ProjectBootstrapReferenceSetItemInput>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProjectBootstrapReferenceSetItemInput {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub content_uri: Option<String>,
+    #[serde(default)]
+    pub content_text: Option<String>,
+    #[serde(default)]
+    pub sort_order: Option<i64>,
+    #[serde(default)]
+    pub metadata_json: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProjectBootstrapSecretInput {
+    #[serde(default)]
+    pub provider_code: String,
+    #[serde(default)]
+    pub secret_name: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -230,11 +295,37 @@ struct NormalizedSettings {
     has_provider_accounts_section: bool,
     has_style_guides_section: bool,
     has_characters_section: bool,
+    has_reference_sets_section: bool,
+    has_secrets_section: bool,
     has_prompt_templates_section: bool,
     provider_accounts: Vec<NormalizedProviderAccount>,
     style_guides: Vec<NormalizedStyleGuide>,
     characters: Vec<NormalizedCharacter>,
+    reference_sets: Vec<NormalizedReferenceSet>,
+    secrets: Vec<NormalizedSecret>,
     prompt_templates: Vec<NormalizedPromptTemplate>,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedReferenceSet {
+    name: String,
+    description: Option<String>,
+    items: Vec<NormalizedReferenceSetItem>,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedReferenceSetItem {
+    label: String,
+    content_uri: Option<String>,
+    content_text: Option<String>,
+    sort_order: i64,
+    metadata_json: Value,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedSecret {
+    provider_code: String,
+    secret_name: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -284,6 +375,8 @@ impl ProjectsStore {
             provider_accounts: settings.provider_accounts.len(),
             style_guides: settings.style_guides.len(),
             characters: settings.characters.len(),
+            reference_sets: settings.reference_sets.len(),
+            secrets: settings.secrets.len(),
             prompt_templates: settings.prompt_templates.len(),
         };
 
@@ -355,6 +448,16 @@ impl ProjectsStore {
             if matches!(mode, BootstrapImportMode::Replace) && settings.has_characters_section {
                 tx.execute(
                     "DELETE FROM characters WHERE project_id = ?1",
+                    [&project.id],
+                )?;
+            }
+            if matches!(mode, BootstrapImportMode::Replace) && settings.has_reference_sets_section {
+                tx.execute(
+                    "DELETE FROM reference_set_items WHERE project_id = ?1",
+                    [&project.id],
+                )?;
+                tx.execute(
+                    "DELETE FROM reference_sets WHERE project_id = ?1",
                     [&project.id],
                 )?;
             }
@@ -462,6 +565,109 @@ impl ProjectsStore {
                 )?;
             }
 
+            for reference_set in &settings.reference_sets {
+                tx.execute(
+                    "
+                    INSERT INTO reference_sets (
+                        id,
+                        project_id,
+                        name,
+                        description,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                    ON CONFLICT(project_id, name) DO UPDATE SET
+                        description = excluded.description,
+                        updated_at = excluded.updated_at
+                ",
+                    params![
+                        Uuid::new_v4().to_string(),
+                        project.id.as_str(),
+                        reference_set.name.as_str(),
+                        reference_set.description.as_deref(),
+                        now
+                    ],
+                )?;
+
+                let reference_set_id: String = tx.query_row(
+                    "
+                    SELECT id
+                    FROM reference_sets
+                    WHERE project_id = ?1 AND name = ?2
+                ",
+                    params![project.id.as_str(), reference_set.name.as_str()],
+                    |row| row.get(0),
+                )?;
+
+                // Nested item lists are treated as authoritative for each provided set.
+                tx.execute(
+                    "
+                    DELETE FROM reference_set_items
+                    WHERE project_id = ?1 AND reference_set_id = ?2
+                ",
+                    params![project.id.as_str(), reference_set_id.as_str()],
+                )?;
+
+                for item in &reference_set.items {
+                    let metadata_json = serde_json::to_string(&item.metadata_json)
+                        .unwrap_or_else(|_| String::from("{}"));
+                    tx.execute(
+                        "
+                        INSERT INTO reference_set_items (
+                            id,
+                            project_id,
+                            reference_set_id,
+                            label,
+                            content_uri,
+                            content_text,
+                            sort_order,
+                            metadata_json,
+                            created_at,
+                            updated_at
+                        )
+                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+                    ",
+                        params![
+                            Uuid::new_v4().to_string(),
+                            project.id.as_str(),
+                            reference_set_id.as_str(),
+                            item.label.as_str(),
+                            item.content_uri.as_deref(),
+                            item.content_text.as_deref(),
+                            item.sort_order,
+                            metadata_json,
+                            now
+                        ],
+                    )?;
+                }
+            }
+
+            for secret in &settings.secrets {
+                // Bootstrap secrets are metadata-only: never import or overwrite secret values.
+                tx.execute(
+                    "
+                    INSERT INTO project_secrets (
+                        project_id,
+                        provider_code,
+                        secret_name,
+                        secret_value,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?1, ?2, ?3, '', ?4, ?4)
+                    ON CONFLICT(project_id, provider_code, secret_name) DO UPDATE SET
+                        updated_at = excluded.updated_at
+                ",
+                    params![
+                        project.id.as_str(),
+                        secret.provider_code.as_str(),
+                        secret.secret_name.as_str(),
+                        now
+                    ],
+                )?;
+            }
+
             for template in &settings.prompt_templates {
                 tx.execute(
                     "
@@ -526,6 +732,8 @@ impl ProjectsStore {
             let provider_accounts = load_provider_accounts(conn, project.id.as_str())?;
             let style_guides = load_style_guides(conn, project.id.as_str())?;
             let characters = load_characters(conn, project.id.as_str())?;
+            let reference_sets = load_reference_sets(conn, project.id.as_str())?;
+            let secrets = load_secrets(conn, project.id.as_str())?;
             let prompt_templates = load_prompt_templates(conn, project.id.as_str())?;
 
             Ok(BootstrapSnapshot {
@@ -539,6 +747,8 @@ impl ProjectsStore {
                     provider_accounts,
                     style_guides,
                     characters,
+                    reference_sets,
+                    secrets,
                     prompt_templates,
                 },
             })
@@ -743,6 +953,73 @@ fn normalize_bootstrap_settings(
         );
     }
 
+    let has_reference_sets_section = input.reference_sets.is_some();
+    let mut reference_sets = BTreeMap::new();
+    for reference_set in input.reference_sets.unwrap_or_default() {
+        let name = normalize_required_text(reference_set.name.as_str(), "reference_sets[].name")?;
+        let description = reference_set
+            .description
+            .as_deref()
+            .and_then(normalize_optional_storage_field);
+        let raw_items = reference_set.items.ok_or_else(|| {
+            ProjectsRepoError::Validation(String::from(
+                "Field 'reference_sets[].items' is required (use [] to provide an empty set)",
+            ))
+        })?;
+
+        let mut items = Vec::new();
+        for item in raw_items {
+            let label =
+                normalize_required_text(item.label.as_str(), "reference_sets[].items[].label")?;
+            let content_uri = item
+                .content_uri
+                .as_deref()
+                .and_then(normalize_optional_storage_field);
+            let content_text = item
+                .content_text
+                .as_deref()
+                .and_then(normalize_optional_storage_field);
+            if content_uri.is_none() && content_text.is_none() {
+                return Err(ProjectsRepoError::Validation(String::from(
+                    "Field 'reference_sets[].items[]' requires at least one of: content_uri, content_text",
+                )));
+            }
+            items.push(NormalizedReferenceSetItem {
+                label,
+                content_uri,
+                content_text,
+                sort_order: item.sort_order.unwrap_or(0),
+                metadata_json: item
+                    .metadata_json
+                    .unwrap_or_else(|| Value::Object(serde_json::Map::new())),
+            });
+        }
+
+        reference_sets.insert(
+            name.to_ascii_lowercase(),
+            NormalizedReferenceSet {
+                name,
+                description,
+                items,
+            },
+        );
+    }
+
+    let has_secrets_section = input.secrets.is_some();
+    let mut secrets = BTreeMap::new();
+    for secret in input.secrets.unwrap_or_default() {
+        let provider_code = normalize_provider_code(secret.provider_code.as_str())?;
+        let secret_name =
+            normalize_required_text(secret.secret_name.as_str(), "secrets[].secret_name")?;
+        secrets.insert(
+            format!("{provider_code}\u{0}{secret_name}"),
+            NormalizedSecret {
+                provider_code,
+                secret_name,
+            },
+        );
+    }
+
     let has_prompt_templates_section = input.prompt_templates.is_some();
     let mut prompt_templates = BTreeMap::new();
     for template in input.prompt_templates.unwrap_or_default() {
@@ -764,6 +1041,8 @@ fn normalize_bootstrap_settings(
         && !has_provider_accounts_section
         && !has_style_guides_section
         && !has_characters_section
+        && !has_reference_sets_section
+        && !has_secrets_section
         && !has_prompt_templates_section
     {
         return Err(ProjectsRepoError::Validation(String::from(
@@ -776,10 +1055,14 @@ fn normalize_bootstrap_settings(
         has_provider_accounts_section,
         has_style_guides_section,
         has_characters_section,
+        has_reference_sets_section,
+        has_secrets_section,
         has_prompt_templates_section,
         provider_accounts: providers.into_values().collect(),
         style_guides: style_guides.into_values().collect(),
         characters: characters.into_values().collect(),
+        reference_sets: reference_sets.into_values().collect(),
+        secrets: secrets.into_values().collect(),
         prompt_templates: prompt_templates.into_values().collect(),
     })
 }
@@ -817,6 +1100,18 @@ fn compute_bootstrap_import_changes(
             after_settings.characters.as_slice(),
             normalized.has_characters_section,
             matches!(mode, BootstrapImportMode::Replace) && normalized.has_characters_section,
+        ),
+        reference_sets: summarize_reference_set_changes(
+            before.settings.reference_sets.as_slice(),
+            after_settings.reference_sets.as_slice(),
+            normalized.has_reference_sets_section,
+            matches!(mode, BootstrapImportMode::Replace) && normalized.has_reference_sets_section,
+        ),
+        secrets: summarize_secret_changes(
+            before.settings.secrets.as_slice(),
+            after_settings.secrets.as_slice(),
+            normalized.has_secrets_section,
+            false,
         ),
         prompt_templates: summarize_prompt_template_changes(
             before.settings.prompt_templates.as_slice(),
@@ -913,6 +1208,56 @@ fn summarize_character_changes(
     summarize_section_changes(before_map, after_map, provided, replaced, characters_equal)
 }
 
+fn summarize_reference_set_changes(
+    before: &[ProjectBootstrapReferenceSet],
+    after: &[ProjectBootstrapReferenceSet],
+    provided: bool,
+    replaced: bool,
+) -> BootstrapSectionChangeSummary {
+    let before_map: BTreeMap<String, &ProjectBootstrapReferenceSet> = before
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    let after_map: BTreeMap<String, &ProjectBootstrapReferenceSet> = after
+        .iter()
+        .map(|item| (item.name.to_ascii_lowercase(), item))
+        .collect();
+    summarize_section_changes(
+        before_map,
+        after_map,
+        provided,
+        replaced,
+        reference_sets_equal,
+    )
+}
+
+fn summarize_secret_changes(
+    before: &[ProjectBootstrapSecret],
+    after: &[ProjectBootstrapSecret],
+    provided: bool,
+    replaced: bool,
+) -> BootstrapSectionChangeSummary {
+    let before_map: BTreeMap<String, &ProjectBootstrapSecret> = before
+        .iter()
+        .map(|item| {
+            (
+                format!("{}\u{0}{}", item.provider_code, item.secret_name),
+                item,
+            )
+        })
+        .collect();
+    let after_map: BTreeMap<String, &ProjectBootstrapSecret> = after
+        .iter()
+        .map(|item| {
+            (
+                format!("{}\u{0}{}", item.provider_code, item.secret_name),
+                item,
+            )
+        })
+        .collect();
+    summarize_section_changes(before_map, after_map, provided, replaced, secrets_equal)
+}
+
 fn summarize_section_changes<K, T, F>(
     before_map: BTreeMap<K, &T>,
     after_map: BTreeMap<K, &T>,
@@ -986,6 +1331,37 @@ fn characters_equal(left: &CharacterSummary, right: &CharacterSummary) -> bool {
         && left.prompt_text == right.prompt_text
 }
 
+fn reference_sets_equal(
+    left: &ProjectBootstrapReferenceSet,
+    right: &ProjectBootstrapReferenceSet,
+) -> bool {
+    left.name == right.name
+        && left.description == right.description
+        && left.items.len() == right.items.len()
+        && left
+            .items
+            .iter()
+            .zip(right.items.iter())
+            .all(|(a, b)| reference_set_items_equal(a, b))
+}
+
+fn reference_set_items_equal(
+    left: &ProjectBootstrapReferenceSetItem,
+    right: &ProjectBootstrapReferenceSetItem,
+) -> bool {
+    left.label == right.label
+        && left.content_uri == right.content_uri
+        && left.content_text == right.content_text
+        && left.sort_order == right.sort_order
+        && left.metadata_json == right.metadata_json
+}
+
+fn secrets_equal(left: &ProjectBootstrapSecret, right: &ProjectBootstrapSecret) -> bool {
+    left.provider_code == right.provider_code
+        && left.secret_name == right.secret_name
+        && left.has_value == right.has_value
+}
+
 fn preview_snapshot(
     snapshot: BootstrapSnapshot,
     settings: &NormalizedSettings,
@@ -1029,6 +1405,8 @@ fn preview_snapshot(
         project.id.as_str(),
         now.as_str(),
     );
+    let reference_sets = preview_reference_sets(snapshot.settings.reference_sets, settings, mode);
+    let secrets = preview_secrets(snapshot.settings.secrets, settings, mode);
     let prompt_templates = preview_prompt_templates(
         snapshot.settings.prompt_templates,
         settings,
@@ -1044,6 +1422,8 @@ fn preview_snapshot(
             provider_accounts,
             style_guides,
             characters,
+            reference_sets,
+            secrets,
             prompt_templates,
         },
     }
@@ -1226,6 +1606,76 @@ fn preview_characters(
     map.into_values().collect()
 }
 
+fn preview_reference_sets(
+    existing: Vec<ProjectBootstrapReferenceSet>,
+    settings: &NormalizedSettings,
+    mode: BootstrapImportMode,
+) -> Vec<ProjectBootstrapReferenceSet> {
+    let mut map: BTreeMap<String, ProjectBootstrapReferenceSet> =
+        if matches!(mode, BootstrapImportMode::Replace) && settings.has_reference_sets_section {
+            BTreeMap::new()
+        } else {
+            existing
+                .into_iter()
+                .map(|item| (item.name.to_ascii_lowercase(), item))
+                .collect()
+        };
+
+    if settings.has_reference_sets_section {
+        for reference_set in &settings.reference_sets {
+            map.insert(
+                reference_set.name.to_ascii_lowercase(),
+                ProjectBootstrapReferenceSet {
+                    name: reference_set.name.clone(),
+                    description: reference_set.description.clone().unwrap_or_default(),
+                    items: reference_set
+                        .items
+                        .iter()
+                        .map(|item| ProjectBootstrapReferenceSetItem {
+                            label: item.label.clone(),
+                            content_uri: item.content_uri.clone().unwrap_or_default(),
+                            content_text: item.content_text.clone().unwrap_or_default(),
+                            sort_order: item.sort_order,
+                            metadata_json: item.metadata_json.clone(),
+                        })
+                        .collect(),
+                },
+            );
+        }
+    }
+
+    map.into_values().collect()
+}
+
+fn preview_secrets(
+    existing: Vec<ProjectBootstrapSecret>,
+    settings: &NormalizedSettings,
+    _mode: BootstrapImportMode,
+) -> Vec<ProjectBootstrapSecret> {
+    let mut map: BTreeMap<String, ProjectBootstrapSecret> = existing
+        .into_iter()
+        .map(|item| {
+            (
+                format!("{}\u{0}{}", item.provider_code, item.secret_name),
+                item,
+            )
+        })
+        .collect();
+
+    if settings.has_secrets_section {
+        for secret in &settings.secrets {
+            let key = format!("{}\u{0}{}", secret.provider_code, secret.secret_name);
+            map.entry(key).or_insert_with(|| ProjectBootstrapSecret {
+                provider_code: secret.provider_code.clone(),
+                secret_name: secret.secret_name.clone(),
+                has_value: false,
+            });
+        }
+    }
+
+    map.into_values().collect()
+}
+
 fn load_provider_accounts(
     conn: &Connection,
     project_id: &str,
@@ -1356,6 +1806,129 @@ fn load_characters(
     Ok(out)
 }
 
+fn load_reference_sets(
+    conn: &Connection,
+    project_id: &str,
+) -> Result<Vec<ProjectBootstrapReferenceSet>, ProjectsRepoError> {
+    let mut set_stmt = conn.prepare(
+        "
+        SELECT id, name, description
+        FROM reference_sets
+        WHERE project_id = ?1
+        ORDER BY COALESCE(updated_at, '') DESC, id DESC
+    ",
+    )?;
+    let mut set_rows = set_stmt.query([project_id])?;
+    let mut out = Vec::new();
+
+    while let Some(set_row) = set_rows.next()? {
+        let reference_set = ReferenceSetSummary {
+            id: set_row.get("id")?,
+            project_id: project_id.to_string(),
+            name: set_row.get("name")?,
+            description: set_row
+                .get::<_, Option<String>>("description")?
+                .unwrap_or_default(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+
+        let mut item_stmt = conn.prepare(
+            "
+            SELECT
+              id,
+              project_id,
+              reference_set_id,
+              label,
+              content_uri,
+              content_text,
+              sort_order,
+              metadata_json,
+              created_at,
+              updated_at
+            FROM reference_set_items
+            WHERE project_id = ?1 AND reference_set_id = ?2
+            ORDER BY sort_order ASC, COALESCE(updated_at, '') DESC, id DESC
+        ",
+        )?;
+        let item_rows = item_stmt.query_map(
+            params![project_id, reference_set.id.as_str()],
+            |row| -> rusqlite::Result<ReferenceSetItemSummary> {
+                Ok(ReferenceSetItemSummary {
+                    id: row.get("id")?,
+                    project_id: row.get("project_id")?,
+                    reference_set_id: row.get("reference_set_id")?,
+                    label: row.get("label")?,
+                    content_uri: row
+                        .get::<_, Option<String>>("content_uri")?
+                        .unwrap_or_default(),
+                    content_text: row
+                        .get::<_, Option<String>>("content_text")?
+                        .unwrap_or_default(),
+                    sort_order: row.get("sort_order")?,
+                    metadata_json: parse_json_value(row.get::<_, Option<String>>("metadata_json")?),
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                })
+            },
+        )?;
+        let mut items = Vec::new();
+        for row in item_rows {
+            let item = row?;
+            items.push(ProjectBootstrapReferenceSetItem {
+                label: item.label,
+                content_uri: item.content_uri,
+                content_text: item.content_text,
+                sort_order: item.sort_order,
+                metadata_json: item.metadata_json,
+            });
+        }
+
+        out.push(ProjectBootstrapReferenceSet {
+            name: reference_set.name,
+            description: reference_set.description,
+            items,
+        });
+    }
+
+    Ok(out)
+}
+
+fn load_secrets(
+    conn: &Connection,
+    project_id: &str,
+) -> Result<Vec<ProjectBootstrapSecret>, ProjectsRepoError> {
+    let mut stmt = conn.prepare(
+        "
+        SELECT project_id, provider_code, secret_name, secret_value, updated_at
+        FROM project_secrets
+        WHERE project_id = ?1
+        ORDER BY provider_code ASC, secret_name ASC
+    ",
+    )?;
+    let mut rows = stmt.query([project_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let secret = SecretSummary {
+            project_id: row.get("project_id")?,
+            provider_code: row.get("provider_code")?,
+            secret_name: row.get("secret_name")?,
+            has_value: !row
+                .get::<_, Option<String>>("secret_value")?
+                .unwrap_or_default()
+                .trim()
+                .is_empty(),
+            updated_at: row.get("updated_at")?,
+        };
+        out.push(ProjectBootstrapSecret {
+            provider_code: secret.provider_code,
+            secret_name: secret.secret_name,
+            has_value: secret.has_value,
+        });
+    }
+    Ok(out)
+}
+
 fn bootstrap_response_template() -> Value {
     json!({
         "mode": "merge",
@@ -1390,6 +1963,29 @@ fn bootstrap_response_template() -> Value {
                     "prompt_text": "Describe the character and visual constraints."
                 }
             ],
+            "reference_sets": [
+                {
+                    "name": "Hero Faces",
+                    "description": "[OPTIONAL_REFERENCE_SET_DESCRIPTION]",
+                    "items": [
+                        {
+                            "label": "Hero closeup",
+                            "content_uri": "[OPTIONAL_FILE_OR_HTTP_URI]",
+                            "content_text": "Short text reference notes for this item.",
+                            "sort_order": 0,
+                            "metadata_json": {
+                                "source": "manual"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "secrets": [
+                {
+                    "provider_code": "openai",
+                    "secret_name": "api_key"
+                }
+            ],
             "prompt_templates": [
                 {
                     "name": "Cover Prompt",
@@ -1411,6 +2007,8 @@ fn render_bootstrap_prompt(snapshot: &BootstrapSnapshot, expected_response: &Val
         "provider_accounts": &snapshot.settings.provider_accounts,
         "style_guides": &snapshot.settings.style_guides,
         "characters": &snapshot.settings.characters,
+        "reference_sets": &snapshot.settings.reference_sets,
+        "secrets": &snapshot.settings.secrets,
         "prompt_templates": &snapshot.settings.prompt_templates,
     });
 
@@ -1429,7 +2027,11 @@ Rules:\n\
 - Keep provider_code lowercase (letters, numbers, '-', '_').\n\
 - Omit sections you do not want to change.\n\
 - Keep arrays concise and production-ready.\n\
-- Do not include secrets or API keys.\n\
+- Never include secret values or API keys.\n\
+- If you include a `secrets` section, provide metadata only (`provider_code`, `secret_name`).\n\
+- `secrets` imports are merge-only for safety; omitted secrets are not deleted.\n\
+- If you include `reference_sets`, each set must include an explicit `items` array (use `[]` for an empty set).\n\
+- For each provided reference set, the `items` array is treated as authoritative (omitted items for that set are removed).\n\
 \n\
 Current project settings:\n\
 {current_settings_pretty}\n"
