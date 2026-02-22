@@ -286,26 +286,24 @@ impl RustPostRunPipelineOrchestrator {
         script_request.options.storage_sync_s3 = Some(false);
         script_request
     }
-}
 
-impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
-    fn execute(
+    fn run_post_run_ingest_best_effort(
         &self,
         request: &PipelineRunRequest,
-    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        let mut result = self.inner.execute(&self.build_script_request(request))?;
-
-        let Some(summary) = parse_script_run_summary_from_stdout(result.stdout.as_str()) else {
+        stdout: &str,
+        stderr: &mut String,
+    ) {
+        let Some(summary) = parse_script_run_summary_from_stdout(stdout) else {
             append_stderr_line(
-                &mut result.stderr,
+                stderr,
                 "Rust post-run ingest skipped: missing 'Run log:' line in pipeline stdout",
             );
-            return Ok(result);
+            return;
         };
         if let Some(project_slug) = summary.project_slug.as_deref() {
             if project_slug != request.project_slug {
                 append_stderr_line(
-                    &mut result.stderr,
+                    stderr,
                     format!(
                         "Rust post-run ingest warning: script stdout project '{}' does not match request '{}'",
                         project_slug, request.project_slug
@@ -326,13 +324,41 @@ impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
         });
 
         if let Err(error) = finalize {
-            append_stderr_line(
-                &mut result.stderr,
-                format!("Rust post-run ingest skipped: {error}"),
-            );
+            append_stderr_line(stderr, format!("Rust post-run ingest skipped: {error}"));
         }
+    }
+}
 
-        Ok(result)
+impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
+    fn execute(
+        &self,
+        request: &PipelineRunRequest,
+    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
+        match self.inner.execute(&self.build_script_request(request)) {
+            Ok(mut result) => {
+                self.run_post_run_ingest_best_effort(
+                    request,
+                    result.stdout.as_str(),
+                    &mut result.stderr,
+                );
+                Ok(result)
+            }
+            Err(PipelineRuntimeError::CommandFailed {
+                program,
+                status_code,
+                stdout,
+                mut stderr,
+            }) => {
+                self.run_post_run_ingest_best_effort(request, stdout.as_str(), &mut stderr);
+                Err(PipelineRuntimeError::CommandFailed {
+                    program,
+                    status_code,
+                    stdout,
+                    stderr,
+                })
+            }
+            Err(other) => Err(other),
+        }
     }
 }
 
@@ -410,6 +436,7 @@ where
             return Err(PipelineRuntimeError::CommandFailed {
                 program: spec.program,
                 status_code: output.status_code,
+                stdout: output.stdout,
                 stderr: output.stderr,
             });
         }
@@ -434,6 +461,7 @@ pub enum PipelineRuntimeError {
     CommandFailed {
         program: String,
         status_code: i32,
+        stdout: String,
         stderr: String,
     },
 }
@@ -618,10 +646,12 @@ mod tests {
         match err {
             PipelineRuntimeError::CommandFailed {
                 status_code,
+                stdout,
                 stderr,
                 ..
             } => {
                 assert_eq!(status_code, 2);
+                assert_eq!(stdout, "");
                 assert_eq!(stderr, "usage error");
             }
             other => panic!("unexpected error: {other:?}"),
@@ -729,6 +759,18 @@ mod tests {
                 }))),
             }
         }
+
+        fn with_command_failed(stdout: &str, stderr: &str) -> Self {
+            Self {
+                seen: Mutex::new(Vec::new()),
+                next: Mutex::new(Some(Err(PipelineRuntimeError::CommandFailed {
+                    program: String::from("node"),
+                    status_code: 1,
+                    stdout: String::from(stdout),
+                    stderr: String::from(stderr),
+                }))),
+            }
+        }
     }
 
     impl PipelineOrchestrator for FakeInnerOrchestrator {
@@ -828,6 +870,46 @@ mod tests {
                 .expect("fake post-run ingest mutex poisoned")
                 .len(),
             0
+        );
+    }
+
+    #[test]
+    fn rust_post_run_wrapper_ingests_when_inner_command_fails_after_run_log() {
+        let inner = Arc::new(FakeInnerOrchestrator::with_command_failed(
+            "Run log: var/projects/demo/runs/run_1.json\nProject: demo",
+            "output guard failed",
+        ));
+        let backend_ops = Arc::new(FakePostRunBackendOps::default());
+        let post_run = PipelinePostRunService::new(backend_ops.clone());
+        let wrapper = RustPostRunPipelineOrchestrator::new(inner, post_run);
+
+        let err = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Run,
+                confirm_spend: true,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect_err("wrapper should preserve command failure");
+
+        match err {
+            PipelineRuntimeError::CommandFailed { stdout, stderr, .. } => {
+                assert!(stdout.contains("Run log:"));
+                assert!(stderr.contains("output guard failed"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        assert_eq!(
+            backend_ops
+                .seen_ingest
+                .lock()
+                .expect("fake post-run ingest mutex poisoned")
+                .len(),
+            1
         );
     }
 
