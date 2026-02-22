@@ -237,6 +237,51 @@ async fn pipeline_trigger_typed_fields_validate_before_execution() {
 }
 
 #[tokio::test]
+async fn pipeline_trigger_rejects_empty_scene_refs_array() {
+    let app = build_router_with_projects_store(test_store());
+
+    let response = send_json(
+        app,
+        Method::POST,
+        "/api/projects/missing-project/runs/trigger",
+        Body::from(
+            json!({
+                "mode":"dry",
+                "scene_refs":[]
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(response["error"], json!("Field 'scene_refs' must not be empty"));
+}
+
+#[tokio::test]
+async fn pipeline_trigger_rejects_empty_style_refs_array() {
+    let app = build_router_with_projects_store(test_store());
+
+    let response = send_json(
+        app,
+        Method::POST,
+        "/api/projects/missing-project/runs/trigger",
+        Body::from(
+            json!({
+                "mode":"dry",
+                "scene_refs":["a.png"],
+                "style_refs":[]
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(response["error"], json!("Field 'style_refs' must not be empty"));
+}
+
+#[tokio::test]
 async fn pipeline_trigger_requires_one_input_source_before_execution() {
     let app = build_router_with_projects_store(test_store());
 

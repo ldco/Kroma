@@ -386,6 +386,9 @@ fn normalize_string_list(
     let Some(values) = values else {
         return Ok(None);
     };
+    if values.is_empty() {
+        return Err(format!("Field '{field_name}' must not be empty"));
+    }
 
     let mut out = Vec::new();
     for value in values {

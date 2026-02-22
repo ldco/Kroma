@@ -335,9 +335,11 @@ paths:
                 scene_refs:
                   type: array
                   description: Required if `input` is omitted. Do not send both.
+                  minItems: 1
                   items: { type: string }
                 style_refs:
                   type: array
+                  minItems: 1
                   items: { type: string }
                 stage:
                   type: string
