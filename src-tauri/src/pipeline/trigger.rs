@@ -108,6 +108,8 @@ impl PipelineTriggerService {
             confirm_spend,
             params,
         } = input;
+        validate_trigger_input(mode, confirm_spend, &params)?;
+
         let TriggerRunParams {
             project_root,
             input,
@@ -118,17 +120,6 @@ impl PipelineTriggerService {
             weather,
             candidates,
         } = params;
-
-        validate_trigger_input(mode, confirm_spend, &TriggerRunParams {
-            project_root: project_root.clone(),
-            input: input.clone(),
-            scene_refs: scene_refs.clone(),
-            style_refs: style_refs.clone(),
-            stage,
-            time,
-            weather,
-            candidates,
-        })?;
 
         let confirm_spend = matches!(mode, TriggerMode::Run);
 

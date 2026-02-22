@@ -2,7 +2,7 @@
 
 Date: 2026-02-22
 Branch: `master`
-HEAD / upstream (`origin/master`): `a620df7`
+HEAD / upstream (`origin/master`): `c52273f`
 Worktree: dirty (local uncommitted changes)
 
 ## Current Status
@@ -64,8 +64,11 @@ Commit message: `fix(trigger): validate semantic errors before project lookup`
 
 ## Local Work In Progress (Uncommitted)
 
-1. Analysis/handoff refresh for the latest trigger validation changes (current local doc change)
-2. Unrelated local file change remains outside backend work:
+1. Trigger validation analysis follow-up (current local change)
+   - removed redundant cloning/reconstruction of `TriggerRunParams` inside `PipelineTriggerService::trigger`
+   - behavior unchanged; validation now reuses borrowed params directly
+2. Handoff refresh for this analysis pass (current local doc change)
+3. Unrelated local file change remains outside backend work:
    - `logo.png` modified (not part of backend/runtime work)
 
 ## Code Analysis (This Pass)
@@ -75,12 +78,15 @@ Scope reviewed:
 2. HTTP trigger handler validation/ordering in `src-tauri/src/api/runs_assets.rs`
 3. Trigger endpoint coverage in `src-tauri/tests/pipeline_trigger_endpoints.rs`
 4. Contract/mount parity after recent trigger/OpenAPI changes
+5. Newly extracted shared trigger validation path for duplication/perf issues
 
 Issues discovered:
 1. Bug (fixed): `reference_sets` import accepted entries without an `items` field.
    - In merge mode, this could silently delete all items for a provided reference set because per-set item application is authoritative.
 2. Regression (fixed): stage-aware trigger semantic validation ran only inside `PipelineTriggerService` after project lookup.
    - Invalid typed requests (e.g. `time` without compatible `stage`) could return `404 Project not found` before the expected `400` validation error.
+3. Performance/maintenance issue (fixed): `PipelineTriggerService::trigger` reconstructed/cloned all `TriggerRunParams` fields just to call shared validation.
+   - This added avoidable allocations and created a field-sync maintenance hazard for future trigger params.
 
 Fixes implemented:
 1. Added validation requiring `reference_sets[].items` to be explicitly present (use `[]` for an empty set).
@@ -89,6 +95,7 @@ Fixes implemented:
 4. Extracted shared trigger semantic validation helper and reused it in both the HTTP handler and trigger service.
 5. Restored pre-lookup validation precedence for stage-aware trigger semantic errors.
 6. Updated endpoint tests to assert validation errors are returned before missing-project lookup for stage-aware invalid payloads.
+7. Removed redundant param cloning by validating `TriggerRunParams` by reference before destructuring in the trigger service.
 
 Remaining risks / TODO:
 1. `reference_sets` nested item behavior is authoritative per provided set (not per-item merge).
@@ -148,11 +155,17 @@ Local validation run for trigger semantic-validation regression fix:
 
 Result: passing.
 
+Local validation run for trigger validation clone-removal follow-up:
+1. `cargo test pipeline::trigger --lib`
+2. `cargo test --test pipeline_trigger_endpoints`
+
+Result: passing.
+
 ## Next Priority Work
 
 1. Continue Phase 1 runtime consolidation (Rust app unification):
    - Rust pipeline orchestration replacement for `scripts/image-lab.mjs`
-   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary
+   - Replace `backend.py`-dependent pipeline operations with Rust modules behind the existing runtime boundary (next concrete slice: ingest-run / sync-project-s3 adapter boundary)
    - Rust worker/dispatcher replacement for script workers
    - typed Rust tool adapters for external tools/APIs
 2. Decide whether `chat` / `agent instructions` belong in bootstrap scope and define rules before implementation.
@@ -166,7 +179,7 @@ Result: passing.
 
 ## Suggested Starting Point For Next Chat
 
-1. Start a Rust boundary for post-run `backend.py` operations currently invoked by `scripts/image-lab.mjs` (`ingest-run`, `sync-project-s3`), even if still script-backed initially.
+1. Add a Rust boundary for post-run `backend.py` operations currently invoked by `scripts/image-lab.mjs` (`ingest-run`, `sync-project-s3`), initially script-backed but typed.
 2. Continue moving orchestration responsibilities out of `scripts/image-lab.mjs` and into Rust behind the existing runtime boundary.
 3. Use `docs/ROADMAP.md` as the first status check, then update `NEXT_CHAT_HANDOFF.md` after milestone-level changes.
 4. Keep `scripts/` callable only behind explicit Rust interfaces/migration boundaries.
