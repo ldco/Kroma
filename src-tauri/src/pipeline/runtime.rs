@@ -9,10 +9,14 @@ use uuid::Uuid;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
 use crate::pipeline::planning::{
-    build_generation_jobs, load_planning_manifest_file, PlannedGenerationJob,
+    build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
+    PlannedGenerationJob,
 };
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
+};
+use crate::pipeline::runlog::{
+    format_summary_marker, write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,51 +227,66 @@ where
         &self,
         request: &PipelineRunRequest,
     ) -> Result<Option<RustPlanningPreflightSummary>, PipelineRuntimeError> {
-        let Some(manifest_path_raw) = request.options.manifest_path.as_deref() else {
-            return Ok(None);
-        };
-
-        let manifest_path = resolve_under_app_root(self.app_root.as_path(), manifest_path_raw);
-        let mut manifest =
-            load_planning_manifest_file(manifest_path.as_path()).map_err(|error| {
-                PipelineRuntimeError::PlanningPreflight(format!(
-                    "manifest parse failed ({}): {error}",
-                    manifest_path.display()
-                ))
-            })?;
-
-        match request.options.input_source.as_ref() {
-            Some(PipelineInputSource::SceneRefs(values)) => {
-                manifest.scene_refs = values.clone();
-            }
-            Some(PipelineInputSource::InputPath(_)) => {
-                // File/dir expansion is still script-owned; typed manifest parsing still runs above.
-                return Ok(None);
-            }
-            None => {}
-        }
-
-        if !request.options.style_refs.is_empty() {
-            manifest.style_refs = request.options.style_refs.clone();
-        }
-
-        let stage = request.options.stage.unwrap_or(PipelineStageFilter::Style);
-        let time = request.options.time.unwrap_or(PipelineTimeFilter::Day);
-        let weather = request
-            .options
-            .weather
-            .unwrap_or(PipelineWeatherFilter::Clear);
-        let jobs = build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
-            PipelineRuntimeError::PlanningPreflight(format!(
-                "manifest planning preflight failed: {error}"
-            ))
-        })?;
-
-        Ok(Some(RustPlanningPreflightSummary {
-            job_ids: jobs.iter().map(|job| job.id.clone()).collect(),
-            jobs,
-        }))
+        build_rust_planning_preflight_summary(self.app_root.as_path(), request)
     }
+}
+
+fn build_rust_planning_preflight_summary(
+    app_root: &Path,
+    request: &PipelineRunRequest,
+) -> Result<Option<RustPlanningPreflightSummary>, PipelineRuntimeError> {
+    let has_manifest = request.options.manifest_path.is_some();
+    let has_scene_refs = matches!(
+        request.options.input_source,
+        Some(PipelineInputSource::SceneRefs(_))
+    );
+    if !has_manifest && !has_scene_refs {
+        return Ok(None);
+    }
+
+    let mut manifest = if let Some(manifest_path_raw) = request.options.manifest_path.as_deref() {
+        let manifest_path = resolve_under_app_root(app_root, manifest_path_raw);
+        load_planning_manifest_file(manifest_path.as_path()).map_err(|error| {
+            PipelineRuntimeError::PlanningPreflight(format!(
+                "manifest parse failed ({}): {error}",
+                manifest_path.display()
+            ))
+        })?
+    } else {
+        default_planning_manifest()
+    };
+
+    match request.options.input_source.as_ref() {
+        Some(PipelineInputSource::SceneRefs(values)) => {
+            manifest.scene_refs = values.clone();
+        }
+        Some(PipelineInputSource::InputPath(_)) => {
+            // File/dir expansion is still script-owned.
+            return Ok(None);
+        }
+        None => {}
+    }
+
+    if !request.options.style_refs.is_empty() {
+        manifest.style_refs = request.options.style_refs.clone();
+    }
+
+    let stage = request.options.stage.unwrap_or(PipelineStageFilter::Style);
+    let time = request.options.time.unwrap_or(PipelineTimeFilter::Day);
+    let weather = request
+        .options
+        .weather
+        .unwrap_or(PipelineWeatherFilter::Clear);
+    let jobs = build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
+        PipelineRuntimeError::PlanningPreflight(format!(
+            "manifest planning preflight failed: {error}"
+        ))
+    })?;
+
+    Ok(Some(RustPlanningPreflightSummary {
+        job_ids: jobs.iter().map(|job| job.id.clone()).collect(),
+        jobs,
+    }))
 }
 
 fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOptions) {
@@ -396,6 +415,18 @@ impl RustPostRunPipelineOrchestrator {
     }
 }
 
+#[derive(Clone)]
+pub struct RustDryRunPipelineOrchestrator {
+    inner: SharedPipelineOrchestrator,
+    app_root: PathBuf,
+}
+
+impl RustDryRunPipelineOrchestrator {
+    pub fn new(inner: SharedPipelineOrchestrator, app_root: PathBuf) -> Self {
+        Self { inner, app_root }
+    }
+}
+
 impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
     fn execute(
         &self,
@@ -426,6 +457,148 @@ impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
             }
             Err(other) => Err(other),
         }
+    }
+}
+
+impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
+    fn execute(
+        &self,
+        request: &PipelineRunRequest,
+    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
+        if !matches!(request.mode, PipelineRunMode::Dry) {
+            return self.inner.execute(request);
+        }
+
+        validate_project_slug(request.project_slug.as_str())?;
+        let Some(planned) =
+            build_rust_planning_preflight_summary(self.app_root.as_path(), request)?
+        else {
+            return self.inner.execute(request);
+        };
+
+        let project_root_abs = request
+            .options
+            .project_root
+            .as_deref()
+            .map(|v| resolve_under_app_root(self.app_root.as_path(), v))
+            .unwrap_or_else(|| {
+                self.app_root
+                    .join("var/projects")
+                    .join(request.project_slug.as_str())
+            });
+        let runs_dir = project_root_abs.join("runs");
+        fs::create_dir_all(runs_dir.as_path()).map_err(PipelineRuntimeError::Io)?;
+        let run_log_path_abs = runs_dir.join(format!("run_{}.json", make_run_log_stamp()));
+
+        let stage = request.options.stage.unwrap_or(PipelineStageFilter::Style);
+        let time = request.options.time.unwrap_or(PipelineTimeFilter::Day);
+        let weather = request
+            .options
+            .weather
+            .unwrap_or(PipelineWeatherFilter::Clear);
+        let candidate_count = u64::from(request.options.candidates.unwrap_or(1));
+        let project_root_display =
+            path_for_output(self.app_root.as_path(), project_root_abs.as_path());
+        let run_log_display = path_for_output(self.app_root.as_path(), run_log_path_abs.as_path());
+        let timestamp = iso_like_timestamp();
+
+        let jobs_json = planned
+            .jobs
+            .iter()
+            .map(|job| {
+                serde_json::json!({
+                    "id": job.id,
+                    "mode": job.mode,
+                    "time": job.time,
+                    "weather": job.weather,
+                    "input_images": job.input_images,
+                    "prompt": job.prompt,
+                    "status": "planned",
+                    "planned_generation": { "candidates": candidate_count },
+                    "planned_postprocess": {
+                        "upscale": false,
+                        "upscale_backend": serde_json::Value::Null,
+                        "color": false,
+                        "color_profile": serde_json::Value::Null,
+                        "bg_remove": false,
+                        "bg_remove_backends": [],
+                        "bg_refine_openai": false,
+                        "bg_refine_openai_required": false,
+                        "pipeline_order": ["generate"]
+                    },
+                    "planned_output_guard": {
+                        "enabled": true,
+                        "enforce_grayscale": false,
+                        "max_chroma_delta": 2,
+                        "fail_on_chroma_exceed": false
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let run_meta = serde_json::json!({
+            "timestamp": timestamp,
+            "project": request.project_slug,
+            "mode": "dry",
+            "stage": stage.as_str(),
+            "time": time.as_str(),
+            "weather": weather.as_str(),
+            "model": "",
+            "size": "",
+            "quality": "",
+            "generation": {
+                "candidates": candidate_count,
+                "max_candidates": candidate_count
+            },
+            "postprocess": {
+                "upscale": false,
+                "upscale_backend": serde_json::Value::Null,
+                "color": false,
+                "color_profile": serde_json::Value::Null,
+                "bg_remove": false,
+                "bg_remove_backends": [],
+                "bg_refine_openai": false,
+                "bg_refine_openai_required": false,
+                "pipeline_order": ["generate"]
+            },
+            "output_guard": {
+                "enabled": true,
+                "enforce_grayscale": false,
+                "max_chroma_delta": 2,
+                "fail_on_chroma_exceed": false
+            },
+            "storage": {
+                "project_root": project_root_display,
+                "resolved_from_backend": request.options.project_root.is_some()
+            },
+            "jobs": jobs_json
+        });
+
+        write_pretty_json_with_newline(run_log_path_abs.as_path(), &run_meta)
+            .map_err(|e| PipelineRuntimeError::Io(std::io::Error::other(e.to_string())))?;
+        let marker = format_summary_marker(&PipelineRunSummaryMarkerPayload {
+            run_log_path: run_log_display.clone(),
+            project_slug: request.project_slug.clone(),
+            project_root: project_root_display.clone(),
+            jobs: planned.job_count(),
+            mode: String::from("dry"),
+        })
+        .map_err(|e| PipelineRuntimeError::Io(std::io::Error::other(e.to_string())))?;
+
+        let stdout = [
+            format!("Run log: {run_log_display}"),
+            format!("Project: {}", request.project_slug),
+            format!("Project root: {project_root_display}"),
+            format!("Jobs: {} (dry/planned)", planned.job_count()),
+            marker,
+        ]
+        .join("\n");
+
+        Ok(PipelineRunResult {
+            status_code: 0,
+            stdout,
+            stderr: String::new(),
+        })
     }
 }
 
@@ -685,6 +858,33 @@ fn write_planned_jobs_temp_file(
     Ok(path)
 }
 
+fn normalize_relish_path(value: &str) -> String {
+    value.replace('\\', "/")
+}
+
+fn path_for_output(app_root: &Path, path: &Path) -> String {
+    match path.strip_prefix(app_root) {
+        Ok(rel) => normalize_relish_path(rel.to_string_lossy().as_ref()),
+        Err(_) => normalize_relish_path(path.to_string_lossy().as_ref()),
+    }
+}
+
+fn iso_like_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{:03}Z", now.as_secs(), now.subsec_millis())
+}
+
+fn make_run_log_stamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}-{:03}", now.as_secs(), now.subsec_millis())
+}
+
 pub fn default_app_root_from_manifest_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -708,7 +908,10 @@ pub fn default_pipeline_orchestrator_with_rust_post_run() -> RustPostRunPipeline
 pub fn default_pipeline_orchestrator_with_rust_post_run_backend_ops(
     backend_ops: SharedPipelineBackendOps,
 ) -> RustPostRunPipelineOrchestrator {
-    let inner: SharedPipelineOrchestrator = Arc::new(default_script_pipeline_orchestrator());
+    let app_root = default_app_root_from_manifest_dir();
+    let script_inner: SharedPipelineOrchestrator = Arc::new(default_script_pipeline_orchestrator());
+    let inner: SharedPipelineOrchestrator =
+        Arc::new(RustDryRunPipelineOrchestrator::new(script_inner, app_root));
     let post_run = PipelinePostRunService::new(backend_ops);
     RustPostRunPipelineOrchestrator::new(inner, post_run)
 }
@@ -776,6 +979,16 @@ mod tests {
             .as_nanos();
         let path = std::env::temp_dir().join(format!("kroma_runtime_manifest_{stamp}.json"));
         fs::write(path.as_path(), contents).expect("temp manifest should be written");
+        path
+    }
+
+    fn temp_app_root() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("kroma_runtime_app_root_{stamp}"));
+        fs::create_dir_all(path.as_path()).expect("temp app root should exist");
         path
     }
 
@@ -1304,6 +1517,74 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn rust_dry_run_wrapper_handles_scene_refs_without_inner_script_call() {
+        let app_root = temp_app_root();
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("should-not-run"));
+        let wrapper = RustDryRunPipelineOrchestrator::new(inner.clone(), app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from(
+                        "var/projects/demo/scenes/a.png",
+                    )])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("rust dry run should succeed");
+
+        assert!(result.stdout.contains("Run log: "));
+        assert!(result.stdout.contains("Project: demo"));
+        assert!(result.stdout.contains("KROMA_PIPELINE_SUMMARY_JSON:"));
+        assert!(inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .is_empty());
+
+        let summary = parse_script_run_summary_from_stdout(result.stdout.as_str())
+            .expect("summary should parse");
+        let run_log_abs = app_root.join(summary.run_log_path);
+        assert!(run_log_abs.is_file());
+
+        let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn rust_dry_run_wrapper_delegates_input_path_mode_to_inner() {
+        let app_root = temp_app_root();
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("ok"));
+        let wrapper = RustDryRunPipelineOrchestrator::new(inner.clone(), app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::InputPath(String::from("input-dir"))),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("wrapper should delegate and succeed");
+
+        assert_eq!(result.stdout, "ok");
+        assert_eq!(
+            inner
+                .seen
+                .lock()
+                .expect("fake inner orchestrator mutex poisoned")
+                .len(),
+            1
+        );
+
+        let _ = fs::remove_dir_all(app_root);
     }
 
     #[test]
