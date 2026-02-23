@@ -37,6 +37,14 @@ function hasFlag(name) {
   return args.includes(name);
 }
 
+function wantsJsonOutput() {
+  return hasFlag("--json");
+}
+
+function printJson(payload) {
+  console.log(JSON.stringify(payload));
+}
+
 function isImagePath(filePath) {
   return IMAGE_EXTS.has(path.extname(filePath).toLowerCase());
 }
@@ -215,7 +223,8 @@ function ensureUnderAllowedRoots(relPath, allowedRoots) {
   }
 }
 
-function resolveGenerationConfig() {
+function resolveGenerationConfig(options = {}) {
+  const allowMissingScenes = Boolean(options.allowMissingScenes);
   const manifestOverride = loadManifestIfExists();
   const merged = {
     ...DEFAULT_MANIFEST,
@@ -257,7 +266,7 @@ function resolveGenerationConfig() {
     sceneRefs = Array.isArray(merged.scene_refs) ? merged.scene_refs : [];
   }
 
-  if (!sceneRefs.length) {
+  if (!sceneRefs.length && !allowMissingScenes) {
     throw new Error("No scenes provided. Use --input <file|dir> or --scene-refs <a,b,c>.");
   }
   for (const rel of sceneRefs) {
@@ -1219,6 +1228,7 @@ function usage() {
     "Usage:",
     "  npm run lab -- dry --project NAME [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N]",
     "  npm run lab -- run --project NAME --confirm-spend [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N] [--post-upscale] [--upscale-backend ncnn|python] [--post-color] [--post-color-profile PROFILE] [--post-bg-remove]",
+    "  npm run lab -- generate-one --project NAME --prompt TEXT --input-images-file FILE --output PATH [--model MODEL] [--size WxH] [--quality low|medium|high] [--json]",
     "  npm run lab -- upscale [--project NAME] [--input PATH] [--output PATH] [--upscale-backend ncnn|python] [--upscale-scale 2|3|4]",
     "  npm run lab -- color [--project NAME] [--input PATH] [--output PATH] [--profile PROFILE] [--color-settings FILE]",
     "  npm run lab -- bgremove [--project NAME] [--input PATH] [--output PATH] [--bg-remove-backends rembg,photoroom,removebg] [--bg-refine-openai true|false]",
@@ -1272,9 +1282,9 @@ async function runGenerationMode(mode) {
   const confirmSpend = hasFlag("--confirm-spend");
   const dry = mode === "dry";
 
-  const manifest = resolveGenerationConfig();
-
-  const jobs = loadJobsFileIfExists() || buildJobs({ manifest, stage, time, weather });
+  const jobsFromFile = loadJobsFileIfExists();
+  const manifest = resolveGenerationConfig({ allowMissingScenes: Boolean(jobsFromFile) });
+  const jobs = jobsFromFile || buildJobs({ manifest, stage, time, weather });
   const safeBatchLimit = Number(manifest.safe_batch_limit || 20);
   if (jobs.length > safeBatchLimit && !hasFlag("--allow-large-batch")) {
     throw new Error(`Batch exceeds safety limit (${safeBatchLimit}). Use --allow-large-batch to override.`);
@@ -1558,12 +1568,89 @@ async function runGenerationMode(mode) {
   }
 }
 
+async function runGenerateOneMode() {
+  const projectCtx = getProjectContext();
+  const inputImagesFileArg = readArg("--input-images-file", "").trim();
+  if (!inputImagesFileArg) {
+    throw new Error("generate-one requires --input-images-file FILE");
+  }
+  const inputImagesFileAbs = resolvePath(inputImagesFileArg);
+  if (!fs.existsSync(inputImagesFileAbs)) {
+    throw new Error(`generate-one input-images file not found: ${inputImagesFileArg}`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(inputImagesFileAbs, "utf8"));
+  } catch (err) {
+    throw new Error(`generate-one input-images file is invalid JSON: ${inputImagesFileArg}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("generate-one --input-images-file must contain a JSON array of paths");
+  }
+  const inputImages = parsed.map((v) => String(v || "").trim()).filter(Boolean);
+  if (!inputImages.length) {
+    throw new Error("generate-one --input-images-file contains no image paths");
+  }
+
+  const prompt = readArg("--prompt", "").trim();
+  if (!prompt) {
+    throw new Error("generate-one requires --prompt TEXT");
+  }
+  const outputArg = readArg("--output", "").trim();
+  if (!outputArg) {
+    throw new Error("generate-one requires --output PATH");
+  }
+  const outputAbs = resolvePath(outputArg);
+  fs.mkdirSync(path.dirname(outputAbs), { recursive: true });
+  maybeArchiveExisting(outputAbs, projectCtx);
+
+  const model = readArg("--model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-1");
+  const size = readArg("--size", process.env.OPENAI_IMAGE_SIZE || "1024x1536");
+  const quality = readArg("--quality", process.env.OPENAI_IMAGE_QUALITY || "high");
+
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("Missing OPENAI_API_KEY in environment or .env");
+  }
+
+  const b64 = await callImagesEdits({
+    apiKey: process.env.OPENAI_API_KEY,
+    model,
+    size,
+    quality,
+    prompt,
+    inputImages
+  });
+  const bytes = Buffer.from(b64, "base64");
+  fs.writeFileSync(outputAbs, bytes);
+
+  const result = {
+    ok: true,
+    project: projectCtx.id,
+    output: toRel(outputAbs),
+    input_images: inputImages,
+    model,
+    size,
+    quality,
+    bytes_written: bytes.length
+  };
+  if (wantsJsonOutput()) {
+    printJson(result);
+    return;
+  }
+  console.log(`Generated image: ${result.output} (${result.bytes_written} bytes, ${model}, ${size}, ${quality})`);
+}
+
 function runUpscaleOnlyMode() {
   const projectCtx = getProjectContext();
   const postCfg = loadPostprocessConfig();
   const inputPath = readArg("--input", projectCtx.dirs.outputs);
   const outputPath = readArg("--output", projectCtx.dirs.upscaled);
   const info = runUpscalePass({ inputPath, outputPath, postCfg, projectCtx });
+  if (wantsJsonOutput()) {
+    printJson(info);
+    return;
+  }
   console.log(
     `Upscale done: ${info.input} -> ${info.output} (backend ${info.backend}, scale x${info.scale}, model ${info.model})`
   );
@@ -1576,6 +1663,10 @@ function runColorOnlyMode() {
   const outputPath = readArg("--output", projectCtx.dirs.color);
   const profile = readArg("--profile", postCfg.color.default_profile || "neutral");
   const info = runColorPass({ inputPath, outputPath, postCfg, profile, projectCtx });
+  if (wantsJsonOutput()) {
+    printJson(info);
+    return;
+  }
   console.log(`Color correction done: ${info.input} -> ${info.output} (profile ${info.profile})`);
 }
 
@@ -1585,6 +1676,10 @@ async function runBgRemoveOnlyMode() {
   const inputPath = readArg("--input", projectCtx.dirs.outputs);
   const outputPath = readArg("--output", projectCtx.dirs.bgRemove);
   const info = await runBackgroundRemovePass({ inputPath, outputPath, postCfg, projectCtx });
+  if (wantsJsonOutput()) {
+    printJson(info);
+    return;
+  }
   console.log(
     `Background remove done: ${info.input} -> ${info.output} (${info.processed} file(s), backends ${info.backends.join(" -> ")}, openai refine ${info.refine_openai ? "on" : "off"})`
   );
@@ -1595,6 +1690,10 @@ function runQaMode() {
   const manifest = loadManifestIfExists();
   const outputGuardCfg = resolveOutputGuardConfig(manifest);
   if (!outputGuardCfg.enabled) {
+    if (wantsJsonOutput()) {
+      printJson({ ok: true, skipped: true, enabled: false, reason: "output_guard_disabled" });
+      return;
+    }
     console.log("Output guard is disabled (--output-guard-enabled false).");
     return;
   }
@@ -1605,6 +1704,21 @@ function runQaMode() {
   const hardFailures = Number(summary.hard_failures || 0);
   const softWarnings = Number(summary.soft_warnings || 0);
   const totalFiles = Number(summary.total_files || 0);
+  if (wantsJsonOutput()) {
+    printJson({
+      ok: hardFailures === 0,
+      enabled: true,
+      has_hard_failures: hardFailures > 0,
+      input: toRel(resolvePath(inputPath)),
+      summary: {
+        total_files: totalFiles,
+        hard_failures: hardFailures,
+        soft_warnings: softWarnings
+      },
+      report
+    });
+    return;
+  }
 
   console.log(
     `QA checked ${totalFiles} file(s): hard_failures=${hardFailures}, soft_warnings=${softWarnings}, input=${toRel(resolvePath(inputPath))}`
@@ -1645,6 +1759,15 @@ function runArchiveBadMode() {
       moved.push({ from: toRel(abs), to: toRel(archivedAbs) });
     }
   }
+  if (wantsJsonOutput()) {
+    printJson({
+      ok: true,
+      archive_dir: toRel(projectCtx.dirs.archiveBad),
+      moved_count: moved.length,
+      moved
+    });
+    return;
+  }
   console.log(`Archived bad files: ${moved.length} -> ${toRel(projectCtx.dirs.archiveBad)}`);
 }
 
@@ -1669,6 +1792,11 @@ async function main() {
 
   if (mode === "bgremove") {
     await runBgRemoveOnlyMode();
+    return;
+  }
+
+  if (mode === "generate-one") {
+    await runGenerateOneMode();
     return;
   }
 

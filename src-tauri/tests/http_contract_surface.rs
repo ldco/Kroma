@@ -91,6 +91,7 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
         (HttpMethod::Put, "/api/projects/{slug}/storage/s3") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/runs") => StatusCode::NOT_FOUND,
         (HttpMethod::Post, "/api/projects/{slug}/runs/trigger") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Post, "/api/projects/{slug}/runs/validate-config") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}/jobs") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects/{slug}/assets") => StatusCode::NOT_FOUND,

@@ -255,12 +255,11 @@ fn choose_string(a: Option<&str>, b: Option<&str>, c: Option<&str>) -> Option<St
 }
 
 fn parse_string(value: &Value, field: &str) -> Result<String, PipelineSettingsLayerError> {
-    let parsed = value
-        .as_str()
-        .map(str::trim)
-        .ok_or_else(|| PipelineSettingsLayerError::InvalidFieldType {
+    let parsed = value.as_str().map(str::trim).ok_or_else(|| {
+        PipelineSettingsLayerError::InvalidFieldType {
             field: field.to_string(),
-        })?;
+        }
+    })?;
     if parsed.is_empty() {
         return Err(PipelineSettingsLayerError::InvalidFieldType {
             field: field.to_string(),
@@ -477,9 +476,11 @@ upscale_backend = "ncnn"
         )
         .expect("project settings write");
 
-        let overlay =
-            load_project_pipeline_settings(Some(project_root.as_path()), Some(".kroma/custom.json"))
-                .expect("project settings should load");
+        let overlay = load_project_pipeline_settings(
+            Some(project_root.as_path()),
+            Some(".kroma/custom.json"),
+        )
+        .expect("project settings should load");
         assert_eq!(
             overlay.manifest_path.as_deref(),
             Some("from-project-root.json")

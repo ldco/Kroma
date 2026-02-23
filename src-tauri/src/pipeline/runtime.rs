@@ -4,12 +4,15 @@ use std::process::Command;
 use std::sync::Arc;
 
 use serde::Deserialize;
+use serde_json::{json, Value};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
 use crate::pipeline::execution::{
     build_planned_run_log_record, ensure_generation_mode_dirs, execution_project_dirs,
+    finalize_job_from_candidates, ExecutionCandidateJobOutputs, ExecutionCandidateJobResult,
+    ExecutionCandidateRank, ExecutionCandidateResult, ExecutionCandidateStatus,
     ExecutionPlannedJob, ExecutionPlannedOutputGuardRecord, ExecutionPlannedPostprocessRecord,
     ExecutionPlannedRunLogContext,
 };
@@ -280,6 +283,7 @@ fn build_rust_planning_preflight_summary(
     request: &PipelineRunRequest,
 ) -> Result<Option<RustPlanningPreflightSummary>, PipelineRuntimeError> {
     let has_manifest = request.options.manifest_path.is_some();
+    let has_jobs_file = request.options.jobs_file.is_some();
     let has_scene_refs = matches!(
         request.options.input_source,
         Some(PipelineInputSource::SceneRefs(_))
@@ -288,7 +292,7 @@ fn build_rust_planning_preflight_summary(
         request.options.input_source,
         Some(PipelineInputSource::InputPath(_))
     );
-    if !has_manifest && !has_scene_refs && !has_input_path {
+    if !has_manifest && !has_jobs_file && !has_scene_refs && !has_input_path {
         return Ok(None);
     }
 
@@ -325,7 +329,7 @@ fn build_rust_planning_preflight_summary(
         None => {}
     }
 
-    if !request.options.style_refs.is_empty() {
+    if !has_jobs_file && !request.options.style_refs.is_empty() {
         manifest.style_refs = request.options.style_refs.clone();
     }
 
@@ -335,11 +339,15 @@ fn build_rust_planning_preflight_summary(
         .options
         .weather
         .unwrap_or(PipelineWeatherFilter::Clear);
-    let jobs = build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
-        PipelineRuntimeError::PlanningPreflight(format!(
-            "manifest planning preflight failed: {error}"
-        ))
-    })?;
+    let jobs = if let Some(jobs_file_raw) = request.options.jobs_file.as_deref() {
+        load_planned_jobs_file_for_preflight(app_root, jobs_file_raw)?
+    } else {
+        build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
+            PipelineRuntimeError::PlanningPreflight(format!(
+                "manifest planning preflight failed: {error}"
+            ))
+        })?
+    };
     if (jobs.len() as u64) > manifest.safe_batch_limit {
         return Err(PipelineRuntimeError::PlanningPreflight(format!(
             "Batch exceeds safety limit ({}). Use --allow-large-batch to override.",
@@ -379,6 +387,113 @@ fn build_rust_planning_preflight_summary(
         manifest_max_candidates: manifest.generation.max_candidates,
         jobs,
     }))
+}
+
+fn load_planned_jobs_file_for_preflight(
+    app_root: &Path,
+    jobs_file_raw: &str,
+) -> Result<Vec<PlannedGenerationJob>, PipelineRuntimeError> {
+    let jobs_path = resolve_under_app_root(app_root, jobs_file_raw);
+    let raw = fs::read_to_string(jobs_path.as_path()).map_err(|e| {
+        PipelineRuntimeError::PlanningPreflight(format!(
+            "jobs file read failed ({}): {e}",
+            jobs_path.display()
+        ))
+    })?;
+    let parsed: Value = serde_json::from_str(raw.as_str()).map_err(|e| {
+        PipelineRuntimeError::PlanningPreflight(format!(
+            "jobs file parse failed ({}): {e}",
+            jobs_path.display()
+        ))
+    })?;
+    let jobs = parsed.as_array().ok_or_else(|| {
+        PipelineRuntimeError::PlanningPreflight(format!(
+            "jobs file must contain a JSON array: {}",
+            jobs_path.display()
+        ))
+    })?;
+
+    let mut out = Vec::with_capacity(jobs.len());
+    for (idx, job) in jobs.iter().enumerate() {
+        let obj = job.as_object().ok_or_else(|| {
+            PipelineRuntimeError::PlanningPreflight(format!(
+                "jobs file entry {} must be an object",
+                idx + 1
+            ))
+        })?;
+        let id = jobs_file_required_string(obj.get("id"), idx, "id")?;
+        let prompt = jobs_file_required_string(obj.get("prompt"), idx, "prompt")?;
+
+        let input_images = obj
+            .get("input_images")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                PipelineRuntimeError::PlanningPreflight(format!(
+                    "jobs file entry {} missing 'input_images'",
+                    idx + 1
+                ))
+            })?
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| {
+                        PipelineRuntimeError::PlanningPreflight(format!(
+                            "jobs file entry {} has invalid 'input_images'",
+                            idx + 1
+                        ))
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if input_images.is_empty() {
+            return Err(PipelineRuntimeError::PlanningPreflight(format!(
+                "jobs file entry {} missing 'input_images'",
+                idx + 1
+            )));
+        }
+
+        let mode =
+            jobs_file_optional_string(obj.get("mode")).unwrap_or_else(|| String::from("style"));
+        let time =
+            jobs_file_optional_string(obj.get("time")).unwrap_or_else(|| String::from("day"));
+        let weather =
+            jobs_file_optional_string(obj.get("weather")).unwrap_or_else(|| String::from("clear"));
+
+        out.push(PlannedGenerationJob {
+            id,
+            prompt,
+            mode,
+            time,
+            weather,
+            input_images,
+        });
+    }
+    Ok(out)
+}
+
+fn jobs_file_required_string(
+    value: Option<&Value>,
+    idx: usize,
+    field: &str,
+) -> Result<String, PipelineRuntimeError> {
+    let parsed = jobs_file_optional_string(value).ok_or_else(|| {
+        PipelineRuntimeError::PlanningPreflight(format!(
+            "jobs file entry {} missing '{}'",
+            idx + 1,
+            field
+        ))
+    })?;
+    Ok(parsed)
+}
+
+fn jobs_file_optional_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
 }
 
 fn is_image_path(path: &Path) -> bool {
@@ -520,11 +635,21 @@ fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOpt
 pub struct RustPostRunPipelineOrchestrator {
     inner: SharedPipelineOrchestrator,
     post_run: PipelinePostRunService,
+    app_root: PathBuf,
 }
 
 impl RustPostRunPipelineOrchestrator {
     pub fn new(inner: SharedPipelineOrchestrator, post_run: PipelinePostRunService) -> Self {
-        Self { inner, post_run }
+        Self {
+            inner,
+            post_run,
+            app_root: default_app_root_from_manifest_dir(),
+        }
+    }
+
+    pub fn with_app_root(mut self, app_root: PathBuf) -> Self {
+        self.app_root = app_root;
+        self
     }
 
     fn build_script_request(&self, request: &PipelineRunRequest) -> PipelineRunRequest {
@@ -560,6 +685,12 @@ impl RustPostRunPipelineOrchestrator {
                 );
             }
         }
+        self.normalize_script_run_log_best_effort(summary.run_log_path.as_path(), stderr);
+        self.enrich_script_run_log_planned_metadata_best_effort(
+            request,
+            summary.run_log_path.as_path(),
+            stderr,
+        );
 
         let finalize = self.post_run.finalize_run(PostRunFinalizeParams {
             ingest: PostRunIngestParams {
@@ -574,6 +705,35 @@ impl RustPostRunPipelineOrchestrator {
 
         if let Err(error) = finalize {
             append_stderr_line(stderr, format!("Rust post-run ingest skipped: {error}"));
+        }
+    }
+
+    fn normalize_script_run_log_best_effort(&self, run_log_path: &Path, stderr: &mut String) {
+        if let Err(error) =
+            normalize_script_run_log_job_finalizations_file(self.app_root.as_path(), run_log_path)
+        {
+            append_stderr_line(
+                stderr,
+                format!("Rust run-log normalization skipped: {error}"),
+            );
+        }
+    }
+
+    fn enrich_script_run_log_planned_metadata_best_effort(
+        &self,
+        request: &PipelineRunRequest,
+        run_log_path: &Path,
+        stderr: &mut String,
+    ) {
+        if let Err(error) = enrich_script_run_log_planned_metadata_file(
+            self.app_root.as_path(),
+            request,
+            run_log_path,
+        ) {
+            append_stderr_line(
+                stderr,
+                format!("Rust planned-metadata run-log patch skipped: {error}"),
+            );
         }
     }
 }
@@ -851,6 +1011,352 @@ fn append_stderr_line(stderr: &mut String, line: impl AsRef<str>) {
     stderr.push_str(line.as_ref());
 }
 
+fn normalize_script_run_log_job_finalizations_file(
+    app_root: &Path,
+    run_log_path: &Path,
+) -> Result<(), String> {
+    let abs = if run_log_path.is_absolute() {
+        run_log_path.to_path_buf()
+    } else {
+        app_root.join(run_log_path)
+    };
+    if !abs.is_file() {
+        return Ok(());
+    }
+
+    let raw = fs::read_to_string(abs.as_path())
+        .map_err(|e| format!("read run log '{}': {e}", abs.display()))?;
+    let mut value: Value = serde_json::from_str(raw.as_str())
+        .map_err(|e| format!("parse run log '{}': {e}", abs.display()))?;
+    let changed = normalize_script_run_log_job_finalizations_value(&mut value)?;
+    if changed {
+        write_pretty_json_with_newline(abs.as_path(), &value)
+            .map_err(|e| format!("write normalized run log '{}': {e}", abs.display()))?;
+    }
+    Ok(())
+}
+
+fn enrich_script_run_log_planned_metadata_file(
+    app_root: &Path,
+    request: &PipelineRunRequest,
+    run_log_path: &Path,
+) -> Result<(), String> {
+    let effective = effective_pipeline_request_with_layered_settings(app_root, request)
+        .map_err(|e| format!("resolve layered settings: {e}"))?;
+    let Some(planned) = build_rust_planning_preflight_summary(app_root, &effective)
+        .map_err(|e| format!("build planning preflight summary: {e}"))?
+    else {
+        return Ok(());
+    };
+    if planned.jobs.is_empty() {
+        return Ok(());
+    }
+
+    let project_root_abs = effective
+        .options
+        .project_root
+        .as_deref()
+        .map(|v| resolve_under_app_root(app_root, v))
+        .unwrap_or_else(|| {
+            app_root
+                .join("var/projects")
+                .join(effective.project_slug.as_str())
+        });
+    let stage = effective
+        .options
+        .stage
+        .unwrap_or(PipelineStageFilter::Style);
+    let time = effective.options.time.unwrap_or(PipelineTimeFilter::Day);
+    let weather = effective
+        .options
+        .weather
+        .unwrap_or(PipelineWeatherFilter::Clear);
+    let candidate_count = effective
+        .options
+        .candidates
+        .map(u64::from)
+        .unwrap_or(planned.manifest_candidate_count);
+
+    let execution_jobs = planned
+        .jobs
+        .iter()
+        .cloned()
+        .map(ExecutionPlannedJob::from)
+        .collect::<Vec<_>>();
+    let planned_template = build_planned_run_log_record(
+        ExecutionPlannedRunLogContext {
+            timestamp: String::new(),
+            project_slug: effective.project_slug.clone(),
+            stage: stage.as_str().to_string(),
+            time: time.as_str().to_string(),
+            weather: weather.as_str().to_string(),
+            project_root: path_for_output(app_root, project_root_abs.as_path()),
+            resolved_from_backend: effective.options.project_root.is_some(),
+            candidate_count,
+            max_candidate_count: planned.manifest_max_candidates,
+            planned_postprocess: planned.planned_postprocess.clone(),
+            planned_output_guard: map_manifest_output_guard_to_planned_record(
+                &planned.manifest_output_guard,
+            ),
+        },
+        execution_jobs.as_slice(),
+    );
+
+    let abs = if run_log_path.is_absolute() {
+        run_log_path.to_path_buf()
+    } else {
+        app_root.join(run_log_path)
+    };
+    if !abs.is_file() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(abs.as_path())
+        .map_err(|e| format!("read run log '{}': {e}", abs.display()))?;
+    let mut value: Value = serde_json::from_str(raw.as_str())
+        .map_err(|e| format!("parse run log '{}': {e}", abs.display()))?;
+    let changed = patch_run_log_planned_metadata_value(&mut value, &planned_template)?;
+    if changed {
+        write_pretty_json_with_newline(abs.as_path(), &value)
+            .map_err(|e| format!("write patched run log '{}': {e}", abs.display()))?;
+    }
+    Ok(())
+}
+
+fn normalize_script_run_log_job_finalizations_value(run_log: &mut Value) -> Result<bool, String> {
+    let Some(jobs) = run_log.get_mut("jobs").and_then(Value::as_array_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for job in jobs {
+        changed |= normalize_script_run_log_job_finalization(job)?;
+    }
+    Ok(changed)
+}
+
+fn patch_run_log_planned_metadata_value(
+    run_log: &mut Value,
+    planned: &crate::pipeline::execution::ExecutionPlannedRunLogRecord,
+) -> Result<bool, String> {
+    let Some(run_obj) = run_log.as_object_mut() else {
+        return Err(String::from("run log root must be an object"));
+    };
+    let planned_json =
+        serde_json::to_value(planned).map_err(|e| format!("serialize planned metadata: {e}"))?;
+    let planned_obj = planned_json
+        .as_object()
+        .ok_or_else(|| String::from("planned metadata root must be object"))?;
+
+    let mut changed = false;
+    for key in ["generation", "postprocess", "output_guard", "storage"] {
+        if let Some(value) = planned_obj.get(key).cloned() {
+            changed |= upsert_json_field(run_obj, key, value);
+        }
+    }
+
+    let mut planned_jobs_by_id = Vec::<(String, Value)>::new();
+    if let Some(planned_jobs) = planned_obj.get("jobs").and_then(Value::as_array) {
+        for job in planned_jobs {
+            let Some(id) = job.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            planned_jobs_by_id.push((id.to_string(), job.clone()));
+        }
+    }
+
+    let Some(run_jobs) = run_obj.get_mut("jobs").and_then(Value::as_array_mut) else {
+        return Ok(changed);
+    };
+    for job in run_jobs {
+        let Some(job_obj) = job.as_object_mut() else {
+            continue;
+        };
+        let Some(id) = job_obj.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some((_, planned_job)) = planned_jobs_by_id
+            .iter()
+            .find(|(planned_id, _)| planned_id == id)
+        else {
+            continue;
+        };
+        for key in [
+            "planned_generation",
+            "planned_postprocess",
+            "planned_output_guard",
+        ] {
+            if let Some(value) = planned_job.get(key).cloned() {
+                changed |= upsert_json_field(job_obj, key, value);
+            }
+        }
+    }
+
+    Ok(changed)
+}
+
+fn normalize_script_run_log_job_finalization(job: &mut Value) -> Result<bool, String> {
+    let Some(job_obj) = job.as_object_mut() else {
+        return Ok(false);
+    };
+    let Some(candidates) = job_obj.get("candidates").and_then(Value::as_array).cloned() else {
+        return Ok(false);
+    };
+    if candidates.is_empty() {
+        return Ok(false);
+    }
+
+    let parsed_candidates = candidates
+        .iter()
+        .map(parse_execution_candidate_from_run_log)
+        .collect::<Result<Vec<_>, _>>()?;
+    let finalized = finalize_job_from_candidates(parsed_candidates.as_slice())
+        .map_err(|e| format!("finalize job from candidates: {e}"))?;
+
+    let winner_candidate_json = finalized.selected_candidate.and_then(|selected| {
+        candidates.iter().find(|candidate| {
+            candidate
+                .get("candidate_index")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u8::try_from(v).ok())
+                == Some(selected)
+        })
+    });
+
+    let mut changed = false;
+    changed |= upsert_json_field(job_obj, "status", json!(finalized.status.as_str()));
+
+    if let Some(selected) = finalized.selected_candidate {
+        changed |= upsert_json_field(job_obj, "selected_candidate", json!(selected));
+    } else {
+        changed |= upsert_json_field(job_obj, "selected_candidate", Value::Null);
+    }
+
+    if let Some(final_output) = finalized
+        .final_output
+        .as_deref()
+        .map(path_to_run_log_string)
+    {
+        changed |= upsert_json_field(job_obj, "final_output", json!(final_output));
+        changed |= upsert_json_field(job_obj, "output", json!(final_output));
+    } else {
+        changed |= upsert_json_field(job_obj, "final_output", Value::Null);
+        changed |= remove_json_field(job_obj, "output");
+    }
+
+    if let Some(reason) = finalized.failure_reason {
+        changed |= upsert_json_field(job_obj, "failure_reason", json!(reason));
+    } else {
+        changed |= remove_json_field(job_obj, "failure_reason");
+    }
+
+    changed |= sync_winner_passthrough_fields(job_obj, winner_candidate_json);
+    Ok(changed)
+}
+
+fn parse_execution_candidate_from_run_log(
+    candidate: &Value,
+) -> Result<ExecutionCandidateJobResult, String> {
+    let obj = candidate
+        .as_object()
+        .ok_or_else(|| String::from("candidate must be an object"))?;
+    let candidate_index = obj
+        .get("candidate_index")
+        .and_then(Value::as_u64)
+        .and_then(|v| u8::try_from(v).ok())
+        .ok_or_else(|| String::from("candidate_index missing or invalid"))?;
+    let status = match obj
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("generated")
+        .trim()
+    {
+        "done" => ExecutionCandidateStatus::Done,
+        "failed_output_guard" => ExecutionCandidateStatus::FailedOutputGuard,
+        _ => ExecutionCandidateStatus::Generated,
+    };
+
+    let rank_obj = obj.get("rank").and_then(Value::as_object);
+    let rank = ExecutionCandidateRank {
+        hard_failures: rank_obj
+            .and_then(|m| m.get("hard_failures"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        soft_warnings: rank_obj
+            .and_then(|m| m.get("soft_warnings"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        avg_chroma_exceed: rank_obj
+            .and_then(|m| m.get("avg_chroma_exceed"))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
+    };
+
+    Ok(ExecutionCandidateJobResult {
+        candidate: ExecutionCandidateResult {
+            candidate_index,
+            status,
+            rank,
+        },
+        outputs: ExecutionCandidateJobOutputs {
+            output: parse_candidate_output_path(obj.get("output")),
+            final_output: parse_candidate_output_path(obj.get("final_output")),
+            bg_remove: parse_candidate_output_path(obj.get("bg_remove")),
+            upscale: parse_candidate_output_path(obj.get("upscale")),
+            color: parse_candidate_output_path(obj.get("color")),
+        },
+    })
+}
+
+fn parse_candidate_output_path(value: Option<&Value>) -> Option<PathBuf> {
+    match value {
+        Some(Value::String(path)) => Some(PathBuf::from(path)),
+        Some(Value::Object(obj)) => obj.get("output").and_then(Value::as_str).map(PathBuf::from),
+        _ => None,
+    }
+}
+
+fn path_to_run_log_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn upsert_json_field(
+    obj: &mut serde_json::Map<String, Value>,
+    key: &str,
+    new_value: Value,
+) -> bool {
+    if obj.get(key) == Some(&new_value) {
+        return false;
+    }
+    obj.insert(String::from(key), new_value);
+    true
+}
+
+fn remove_json_field(obj: &mut serde_json::Map<String, Value>, key: &str) -> bool {
+    obj.remove(key).is_some()
+}
+
+fn sync_winner_passthrough_fields(
+    job_obj: &mut serde_json::Map<String, Value>,
+    winner_candidate_json: Option<&Value>,
+) -> bool {
+    const KEYS: [&str; 4] = ["bg_remove", "upscale", "color", "output_guard"];
+    let mut changed = false;
+    let winner_obj = winner_candidate_json.and_then(Value::as_object);
+    for key in KEYS {
+        if let Some(value) = winner_obj.and_then(|obj| obj.get(key)).cloned() {
+            changed |= upsert_json_field(job_obj, key, value);
+        } else {
+            changed |= remove_json_field(job_obj, key);
+        }
+    }
+    changed
+}
+
+fn strip_script_planning_inputs_when_jobs_file_present(request: &mut PipelineRunRequest) {
+    // When Rust injects a planned jobs file, avoid duplicate scene/style scanning in the script path.
+    request.options.input_source = None;
+    request.options.style_refs.clear();
+}
+
 impl<R> PipelineOrchestrator for ScriptPipelineOrchestrator<R>
 where
     R: PipelineCommandRunner,
@@ -866,10 +1372,11 @@ where
         let mut spec = self.build_command(&script_request)?;
         let planned_jobs = self.run_rust_planning_preflight(&script_request)?;
         if let Some(planned) = planned_jobs.as_ref() {
-            if script_request.options.manifest_path.is_some() && !planned.jobs.is_empty() {
+            if script_request.options.jobs_file.is_none() && !planned.jobs.is_empty() {
                 let jobs_file =
                     write_planned_jobs_temp_file(self.app_root.as_path(), &planned.jobs)?;
                 script_request.options.jobs_file = Some(jobs_file.to_string_lossy().to_string());
+                strip_script_planning_inputs_when_jobs_file_present(&mut script_request);
                 temp_jobs_file = Some(jobs_file);
                 spec = match self.build_command(&script_request) {
                     Ok(spec) => spec,
@@ -1244,6 +1751,17 @@ mod tests {
         path
     }
 
+    fn temp_input_dir_with_image() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("kroma_runtime_input_{stamp}"));
+        fs::create_dir_all(dir.as_path()).expect("temp input dir should exist");
+        fs::write(dir.join("scene_a.png"), b"png").expect("temp image should be written");
+        dir
+    }
+
     #[test]
     fn builds_script_command_for_dry_mode() {
         let orchestrator = test_orchestrator(FakeRunner::default());
@@ -1614,8 +2132,70 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert!(seen[0].args.windows(2).any(|w| w[0] == "--jobs-file"));
+        assert!(!seen[0].args.iter().any(|arg| arg == "--scene-refs"));
 
         let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
+    fn execute_injects_jobs_file_for_scene_refs_without_manifest_and_strips_scene_style_inputs() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        let orchestrator = test_orchestrator(runner.clone());
+
+        let _ = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    style_refs: vec![String::from("style.png")],
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("execution should succeed");
+
+        let seen = runner.take_seen();
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].args.windows(2).any(|w| w[0] == "--jobs-file"));
+        assert!(!seen[0].args.iter().any(|arg| arg == "--scene-refs"));
+        assert!(!seen[0].args.iter().any(|arg| arg == "--style-refs"));
+    }
+
+    #[test]
+    fn execute_injects_jobs_file_for_input_path_without_manifest_and_strips_input_arg() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        let orchestrator = test_orchestrator(runner.clone());
+        let input_dir = temp_input_dir_with_image();
+
+        let _ = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::InputPath(
+                        input_dir.to_string_lossy().to_string(),
+                    )),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("execution should succeed");
+
+        let seen = runner.take_seen();
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].args.windows(2).any(|w| w[0] == "--jobs-file"));
+        assert!(!seen[0].args.iter().any(|arg| arg == "--input"));
+
+        let _ = fs::remove_dir_all(input_dir);
     }
 
     #[test]
@@ -1940,6 +2520,177 @@ bg_refine_openai_required = false
     }
 
     #[test]
+    fn rust_post_run_wrapper_normalizes_run_log_job_finalization_before_ingest() {
+        let app_root = temp_app_root();
+        let run_log_rel = PathBuf::from("var/projects/demo/runs/run_1.json");
+        let run_log_abs = app_root.join(run_log_rel.as_path());
+        fs::create_dir_all(
+            run_log_abs
+                .parent()
+                .expect("run log parent should have a parent"),
+        )
+        .expect("run log dir should exist");
+        fs::write(
+            run_log_abs.as_path(),
+            serde_json::to_vec_pretty(&json!({
+                    "project": "demo",
+                    "mode": "run",
+                    "jobs": [
+                        {
+                        "id": "style_1_a",
+                        "status": "done",
+                        "selected_candidate": 2,
+                        "final_output": "var/projects/demo/outputs/wrong.png",
+                        "output": "var/projects/demo/outputs/wrong.png",
+                        "failure_reason": "stale",
+                        "candidates": [
+                            {
+                                "candidate_index": 1,
+                                "status": "done",
+                                "output": "var/projects/demo/outputs/a.png",
+                                "final_output": "var/projects/demo/color_corrected/a_profile.png",
+                                "rank": {
+                                    "hard_failures": 0,
+                                    "soft_warnings": 0,
+                                    "avg_chroma_exceed": 0.0
+                                },
+                                "bg_remove": { "output": "var/projects/demo/background_removed/a_nobg.png" },
+                                "output_guard": { "summary": { "hard_failures": 0 } }
+                            },
+                            {
+                                "candidate_index": 2,
+                                "status": "done",
+                                "output": "var/projects/demo/outputs/b.png",
+                                "final_output": "var/projects/demo/color_corrected/b_profile.png",
+                                "rank": {
+                                    "hard_failures": 1,
+                                    "soft_warnings": 0,
+                                    "avg_chroma_exceed": 0.0
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }))
+            .expect("run log json should serialize"),
+        )
+        .expect("run log should be written");
+
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout(
+            "KROMA_PIPELINE_SUMMARY_JSON: {\"run_log_path\":\"var/projects/demo/runs/run_1.json\",\"project_slug\":\"demo\",\"project_root\":\"var/projects/demo\",\"jobs\":1,\"mode\":\"run\"}",
+        ));
+        let backend_ops = Arc::new(FakePostRunBackendOps::default());
+        let post_run = PipelinePostRunService::new(backend_ops.clone());
+        let wrapper =
+            RustPostRunPipelineOrchestrator::new(inner, post_run).with_app_root(app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Run,
+                confirm_spend: true,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("wrapper execution should succeed");
+
+        assert!(result.stderr.is_empty());
+        assert_eq!(
+            backend_ops
+                .seen_ingest
+                .lock()
+                .expect("fake post-run ingest mutex poisoned")
+                .len(),
+            1
+        );
+
+        let raw = fs::read_to_string(run_log_abs.as_path()).expect("run log should be readable");
+        let run_log: serde_json::Value =
+            serde_json::from_str(raw.as_str()).expect("run log should parse");
+        let job = run_log
+            .get("jobs")
+            .and_then(|v| v.as_array())
+            .and_then(|v| v.first())
+            .expect("first job should exist");
+
+        assert_eq!(job.get("status").and_then(|v| v.as_str()), Some("done"));
+        assert_eq!(
+            job.get("selected_candidate").and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            job.get("final_output").and_then(|v| v.as_str()),
+            Some("var/projects/demo/color_corrected/a_profile.png")
+        );
+        assert_eq!(
+            job.get("output").and_then(|v| v.as_str()),
+            Some("var/projects/demo/color_corrected/a_profile.png")
+        );
+        assert!(job.get("failure_reason").is_none());
+        assert_eq!(
+            job.get("bg_remove")
+                .and_then(|v| v.get("output"))
+                .and_then(|v| v.as_str()),
+            Some("var/projects/demo/background_removed/a_nobg.png")
+        );
+        assert!(job.get("output_guard").is_some());
+        assert_eq!(
+            job.get("planned_generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            job.get("planned_postprocess")
+                .and_then(|v| v.get("pipeline_order"))
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.as_str()),
+            Some("generate")
+        );
+        assert_eq!(
+            job.get("planned_output_guard")
+                .and_then(|v| v.get("max_chroma_delta"))
+                .and_then(|v| v.as_f64()),
+            Some(2.0)
+        );
+        assert_eq!(
+            run_log
+                .get("generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            run_log
+                .get("generation")
+                .and_then(|v| v.get("max_candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(6)
+        );
+        assert_eq!(
+            run_log
+                .get("storage")
+                .and_then(|v| v.get("project_root"))
+                .and_then(|v| v.as_str()),
+            Some("var/projects/demo")
+        );
+        assert_eq!(
+            run_log
+                .get("postprocess")
+                .and_then(|v| v.get("pipeline_order"))
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.as_str()),
+            Some("generate")
+        );
+
+        let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
     fn rust_dry_run_wrapper_handles_scene_refs_without_inner_script_call() {
         let app_root = temp_app_root();
         let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("should-not-run"));
@@ -2252,6 +3003,67 @@ bg_refine_openai_required = false
             .lock()
             .expect("fake inner orchestrator mutex poisoned")
             .is_empty());
+
+        let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn rust_dry_run_wrapper_handles_jobs_file_without_inner_script_call() {
+        let app_root = temp_app_root();
+        fs::create_dir_all(app_root.join("var/tmp")).expect("tmp dir should exist");
+        fs::write(
+            app_root.join("var/tmp/jobs.json"),
+            r#"[{
+  "id":"manual_job_1",
+  "prompt":"prompt",
+  "mode":"style",
+  "time":"day",
+  "weather":"clear",
+  "input_images":["var/projects/demo/scenes/a.png"]
+}]"#,
+        )
+        .expect("jobs file should be written");
+
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("should-not-run"));
+        let wrapper = RustDryRunPipelineOrchestrator::new(inner.clone(), app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    jobs_file: Some(String::from("var/tmp/jobs.json")),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("rust dry jobs-file run should succeed");
+
+        assert!(result.stdout.contains("Jobs: 1 (dry/planned)"));
+        assert!(inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .is_empty());
+
+        let summary = parse_script_run_summary_from_stdout(result.stdout.as_str())
+            .expect("summary should parse");
+        let run_log_abs = app_root.join(summary.run_log_path);
+        let raw = fs::read_to_string(run_log_abs.as_path()).expect("run log should be readable");
+        let run_log: serde_json::Value =
+            serde_json::from_str(raw.as_str()).expect("run log should parse");
+        let job = run_log
+            .get("jobs")
+            .and_then(|v| v.as_array())
+            .and_then(|v| v.first())
+            .expect("job should exist");
+        assert_eq!(job.get("id").and_then(|v| v.as_str()), Some("manual_job_1"));
+        assert_eq!(
+            job.get("planned_generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(1)
+        );
 
         let _ = fs::remove_dir_all(app_root);
     }

@@ -214,6 +214,34 @@ Typical setup:
 1. Create `config/pipeline.settings.toml` from the example.
 2. Create `config/pipeline.manifest.json` and `config/postprocess.json` from the example files (or point the TOML file at your own paths).
 
+Validate the layered config stack (Rust-owned validation path):
+
+```bash
+cd src-tauri
+cargo run -- validate-pipeline-config --project-root ../var/projects/my_project
+```
+
+Validate only specific files (without settings files) by overriding manifest/postprocess paths:
+
+```bash
+cd src-tauri
+cargo run -- validate-pipeline-config \
+  --manifest ../config/pipeline.manifest.json \
+  --postprocess-config ../config/postprocess.json
+```
+
+This validates:
+- app settings (`config/pipeline.settings.toml` or JSON fallback)
+- project settings (`<project_root>/.kroma/pipeline.settings.json`)
+- referenced pipeline manifest JSON (if configured)
+- referenced postprocess config JSON (if configured)
+
+Project-scoped API validation endpoint (backend resolves `project_root` from stored project storage when omitted):
+
+```bash
+POST /api/projects/{slug}/runs/validate-config
+```
+
 Example app settings (`TOML`):
 
 ```toml

@@ -1,4 +1,5 @@
 pub mod backend_ops;
+pub mod config_validation;
 pub mod execution;
 pub mod planning;
 pub mod post_run;
@@ -6,6 +7,7 @@ pub mod postprocess_planning;
 pub mod runlog;
 pub mod runtime;
 pub mod settings_layer;
+pub mod tool_adapters;
 pub mod trigger;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

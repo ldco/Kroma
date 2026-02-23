@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::{
+    fs,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
@@ -54,6 +58,22 @@ async fn pipeline_trigger_returns_not_found_for_missing_project() {
 }
 
 #[tokio::test]
+async fn pipeline_validate_config_returns_not_found_for_missing_project() {
+    let app = build_router_with_projects_store(test_store());
+
+    let response = send_json(
+        app,
+        Method::POST,
+        "/api/projects/missing-project/runs/validate-config",
+        Body::from(json!({"project_root":"var/projects/any"}).to_string()),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+
+    assert_eq!(response["error"], json!("Project not found"));
+}
+
+#[tokio::test]
 async fn pipeline_trigger_run_mode_requires_spend_confirmation() {
     let app = build_router_with_projects_store(test_store());
 
@@ -83,6 +103,133 @@ async fn pipeline_trigger_run_mode_requires_spend_confirmation() {
         response["error"],
         json!("Run mode requires explicit spend confirmation")
     );
+}
+
+#[tokio::test]
+async fn pipeline_validate_config_uses_project_storage_root_when_missing() {
+    let store = test_store();
+    let app = build_router_with_projects_store(store.clone());
+
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Validate Config Root"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let temp_root = temp_test_dir("kroma_validate_config_endpoint");
+    let project_root = temp_root.join("project-root");
+    fs::create_dir_all(project_root.join(".kroma")).expect("project settings dir");
+    let manifest_path = temp_root.join("manifest.json");
+    let post_path = temp_root.join("post.json");
+    fs::write(
+        &manifest_path,
+        r#"{"scene_refs":["a.png"],"prompts":{"style_base":"ok"}}"#,
+    )
+    .expect("manifest write");
+    fs::write(&post_path, r#"{}"#).expect("postprocess write");
+    fs::write(
+        project_root.join(".kroma/pipeline.settings.json"),
+        json!({
+            "pipeline": {
+                "manifest_path": manifest_path.to_string_lossy(),
+                "postprocess_config_path": post_path.to_string_lossy()
+            }
+        })
+        .to_string(),
+    )
+    .expect("project settings write");
+
+    store
+        .update_project_storage_local(
+            slug.as_str(),
+            UpdateStorageLocalInput {
+                project_root: Some(project_root.to_string_lossy().to_string()),
+                ..UpdateStorageLocalInput::default()
+            },
+        )
+        .expect("project storage local root should update");
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/validate-config"),
+        Body::from(
+            json!({
+                "app_settings_path": temp_root.join("missing-app-settings.toml").to_string_lossy()
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+
+    assert_eq!(response["ok"], json!(true));
+    assert_eq!(response["summary"]["project_settings_loaded"], json!(true));
+    assert_eq!(
+        response["summary"]["resolved_manifest_path"],
+        json!(manifest_path.to_string_lossy().to_string())
+    );
+    assert_eq!(
+        response["summary"]["resolved_postprocess_config_path"],
+        json!(post_path.to_string_lossy().to_string())
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[tokio::test]
+async fn pipeline_validate_config_returns_bad_request_for_invalid_manifest_override() {
+    let app = build_router_with_projects_store(test_store());
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Validate Config Invalid"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let temp_root = temp_test_dir("kroma_validate_config_invalid");
+    let missing_manifest = temp_root.join("missing-manifest.json");
+    let post_path = temp_root.join("post.json");
+    fs::write(&post_path, r#"{}"#).expect("postprocess write");
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/validate-config"),
+        Body::from(
+            json!({
+                "project_root": temp_root.join("project-root").to_string_lossy(),
+                "app_settings_path": temp_root.join("missing-app-settings.toml").to_string_lossy(),
+                "manifest_path": missing_manifest.to_string_lossy(),
+                "postprocess_config_path": post_path.to_string_lossy()
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(response["ok"], json!(false));
+    let error = response["error"]
+        .as_str()
+        .expect("error should be string")
+        .to_string();
+    assert!(error.contains("planning manifest validation failed"));
+
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[tokio::test]
@@ -506,6 +653,16 @@ fn test_store() -> Arc<ProjectsStore> {
     let store = Arc::new(ProjectsStore::new(db, PathBuf::from(root)));
     store.initialize().expect("store should initialize");
     store
+}
+
+fn temp_test_dir(prefix: &str) -> PathBuf {
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time should be monotonic")
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!("{prefix}_{stamp}_{}", Uuid::new_v4()));
+    fs::create_dir_all(&dir).expect("temp dir should be creatable");
+    dir
 }
 
 #[derive(Default)]

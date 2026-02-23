@@ -3,8 +3,14 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::path::PathBuf;
 
 use crate::api::server::AppState;
+use crate::pipeline::config_validation::{
+    validate_pipeline_config_stack, PipelineConfigValidationError, PipelineConfigValidationRequest,
+    PipelineConfigValidationSummary,
+};
+use crate::pipeline::runtime::default_app_root_from_manifest_dir;
 use crate::pipeline::runtime::PipelineRuntimeError;
 use crate::pipeline::trigger::{
     validate_trigger_input, PipelineTriggerError, TriggerMode, TriggerPipelineInput,
@@ -49,6 +55,20 @@ pub struct TriggerRunInput {
     pub weather: Option<String>,
     #[serde(default)]
     pub candidates: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ValidatePipelineConfigInput {
+    #[serde(default)]
+    pub project_root: Option<String>,
+    #[serde(default)]
+    pub app_settings_path: Option<String>,
+    #[serde(default)]
+    pub project_settings_path: Option<String>,
+    #[serde(default)]
+    pub manifest_path: Option<String>,
+    #[serde(default)]
+    pub postprocess_config_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -104,6 +124,12 @@ struct AssetDetailResponse {
 struct TriggerRunResponse {
     ok: bool,
     pipeline_trigger: TriggerRunResultPayload,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ValidatePipelineConfigResponse {
+    ok: bool,
+    summary: PipelineConfigValidationSummary,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -294,20 +320,61 @@ pub async fn trigger_run_handler(
     }
 }
 
-fn build_trigger_params(payload: &TriggerRunInput) -> Result<TriggerRunParams, String> {
-    let project_root = payload
-        .project_root
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(ToOwned::to_owned);
+pub async fn validate_pipeline_config_handler(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(payload): Json<ValidatePipelineConfigInput>,
+) -> ApiObject<Value> {
+    let mut project_root = normalize_optional_string(payload.project_root.as_deref());
+    let store = state.projects_store.clone();
+    let slug_for_lookup = slug.clone();
+    let project_check =
+        tokio::task::spawn_blocking(move || store.get_project_storage(slug_for_lookup.as_str()))
+            .await;
+    let storage = match project_check {
+        Ok(Ok(storage)) => storage,
+        Ok(Err(error)) => return map_repo_error(error, "Project not found"),
+        Err(join_error) => {
+            return internal_error(format!(
+                "pipeline config validation project storage lookup task failed: {join_error}"
+            ));
+        }
+    };
+    if project_root.is_none() {
+        let resolved = storage.storage.local.project_root.trim();
+        if !resolved.is_empty() {
+            project_root = Some(resolved.to_string());
+        }
+    }
 
-    let input_path = payload
-        .input
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(ToOwned::to_owned);
+    let req = PipelineConfigValidationRequest {
+        app_root: default_app_root_from_manifest_dir(),
+        project_root: project_root.map(PathBuf::from),
+        app_settings_path: normalize_optional_string(payload.app_settings_path.as_deref()),
+        project_settings_path: normalize_optional_string(payload.project_settings_path.as_deref()),
+        manifest_path_override: normalize_optional_string(payload.manifest_path.as_deref()),
+        postprocess_config_path_override: normalize_optional_string(
+            payload.postprocess_config_path.as_deref(),
+        ),
+    };
+
+    let result = tokio::task::spawn_blocking(move || validate_pipeline_config_stack(&req)).await;
+    match result {
+        Ok(Ok(summary)) => (
+            StatusCode::OK,
+            into_json(ValidatePipelineConfigResponse { ok: true, summary }),
+        ),
+        Ok(Err(error)) => map_pipeline_config_validation_error(error),
+        Err(join_error) => internal_error(format!(
+            "pipeline config validation task failed: {join_error}"
+        )),
+    }
+}
+
+fn build_trigger_params(payload: &TriggerRunInput) -> Result<TriggerRunParams, String> {
+    let project_root = normalize_optional_string(payload.project_root.as_deref());
+
+    let input_path = normalize_optional_string(payload.input.as_deref());
     let scene_refs = normalize_string_list(payload.scene_refs.as_ref(), "scene_refs")?;
 
     if input_path.is_some() && scene_refs.is_some() {
@@ -388,6 +455,13 @@ fn build_trigger_params(payload: &TriggerRunInput) -> Result<TriggerRunParams, S
         weather,
         candidates: candidates_u8,
     })
+}
+
+fn normalize_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn normalize_string_list(
@@ -500,6 +574,16 @@ fn map_pipeline_trigger_error(error: PipelineTriggerError) -> ApiObject<Value> {
             internal_error(format!("pipeline planned-jobs temp file error: {message}"))
         }
     }
+}
+
+fn map_pipeline_config_validation_error(error: PipelineConfigValidationError) -> ApiObject<Value> {
+    (
+        StatusCode::BAD_REQUEST,
+        into_json(json!({
+            "ok": false,
+            "error": error.to_string()
+        })),
+    )
 }
 
 fn summarize_pipeline_command_failure(stderr: &str) -> String {

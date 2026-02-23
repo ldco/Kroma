@@ -156,6 +156,9 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Post, "/api/projects/{slug}/runs/trigger") => {
             post(crate::api::runs_assets::trigger_run_handler)
         }
+        (HttpMethod::Post, "/api/projects/{slug}/runs/validate-config") => {
+            post(crate::api::runs_assets::validate_pipeline_config_handler)
+        }
         (HttpMethod::Get, "/api/projects/{slug}/runs/{runId}") => {
             get(crate::api::runs_assets::get_run_detail_handler)
         }
