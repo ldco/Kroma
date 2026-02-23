@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use thiserror::Error;
 
 use crate::db::projects::{IngestRunLogInput, ProjectsRepoError, ProjectsStore};
@@ -331,7 +331,70 @@ where
         &self,
         request: &BackendSyncProjectS3Request,
     ) -> Result<BackendCommandResult, BackendOpsError> {
+        validate_project_slug(request.project_slug.as_str())?;
+        if let Some(result) = self.sync_project_s3_precheck(request)? {
+            return Ok(result);
+        }
         self.script_sync_ops.sync_project_s3(request)
+    }
+}
+
+impl<R> NativeIngestScriptSyncBackendOps<R>
+where
+    R: PipelineCommandRunner,
+{
+    fn sync_project_s3_precheck(
+        &self,
+        request: &BackendSyncProjectS3Request,
+    ) -> Result<Option<BackendCommandResult>, BackendOpsError> {
+        let payload = self
+            .projects_store
+            .get_project_storage(request.project_slug.as_str())
+            .map_err(BackendOpsError::ProjectsRepo)?;
+
+        let s3 = &payload.storage.s3;
+        if !s3.enabled {
+            return Err(BackendOpsError::SyncPrecheck(String::from(
+                "S3 storage is disabled for this project. Enable via set-project-storage-s3.",
+            )));
+        }
+        let bucket = s3.bucket.trim();
+        if bucket.is_empty() {
+            return Err(BackendOpsError::SyncPrecheck(String::from(
+                "S3 bucket is not configured for this project.",
+            )));
+        }
+
+        let prefix = s3.prefix.trim().trim_matches('/');
+        let dst = if prefix.is_empty() {
+            format!("s3://{bucket}/{}/", payload.project.slug)
+        } else {
+            format!("s3://{bucket}/{prefix}/{}/", payload.project.slug)
+        };
+
+        let local_root = PathBuf::from(payload.storage.local.project_root.clone());
+        if !local_root.exists() {
+            if request.allow_missing_local {
+                let payload = json!({
+                    "ok": true,
+                    "skipped": true,
+                    "reason": "missing_local_project_root",
+                    "project_root": payload.storage.local.project_root,
+                    "destination": dst,
+                });
+                return Ok(Some(BackendCommandResult {
+                    stdout: payload.to_string(),
+                    stderr: String::new(),
+                    json: Some(payload),
+                }));
+            }
+            return Err(BackendOpsError::SyncPrecheck(format!(
+                "Local project root not found: {}",
+                local_root.display()
+            )));
+        }
+
+        Ok(None)
     }
 }
 
@@ -366,6 +429,8 @@ pub enum BackendOpsError {
     JsonEncode(#[source] serde_json::Error),
     #[error("backend projects repo error: {0}")]
     ProjectsRepo(#[source] ProjectsRepoError),
+    #[error("{0}")]
+    SyncPrecheck(String),
 }
 
 fn validate_project_slug(value: &str) -> Result<(), BackendOpsError> {
@@ -399,8 +464,11 @@ pub fn default_backend_ops_with_native_ingest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::projects::{UpdateStorageS3Input, UpsertProjectInput};
     use crate::pipeline::runtime::CommandOutput;
+    use std::fs;
     use std::sync::{Arc, Mutex};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[derive(Clone, Default)]
     struct FakeRunner {
@@ -443,6 +511,16 @@ mod tests {
 
     fn test_ops(runner: FakeRunner) -> ScriptPipelineBackendOps<FakeRunner> {
         ScriptPipelineBackendOps::new(default_app_root_from_manifest_dir(), runner)
+    }
+
+    fn temp_repo_root() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("kroma_backend_ops_test_{stamp}"));
+        fs::create_dir_all(root.as_path()).expect("temp repo root should be created");
+        root
     }
 
     #[test]
@@ -578,5 +656,89 @@ mod tests {
             .expect_err("typed parse should fail");
 
         assert!(matches!(err, BackendOpsError::MissingJsonOutput));
+    }
+
+    #[test]
+    fn hybrid_sync_precheck_skips_missing_local_without_calling_script() {
+        let repo_root = temp_repo_root();
+        let db_path = repo_root.join("var/backend/app.db");
+        let store = Arc::new(ProjectsStore::new(db_path, repo_root.clone()));
+        store.initialize().expect("schema should initialize");
+        store
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Demo"),
+                slug: Some(String::from("demo")),
+                ..UpsertProjectInput::default()
+            })
+            .expect("project should be created");
+        store
+            .update_project_storage_s3(
+                "demo",
+                UpdateStorageS3Input {
+                    enabled: Some(true),
+                    bucket: Some(String::from("bucket")),
+                    prefix: Some(String::from("iat-projects")),
+                    ..UpdateStorageS3Input::default()
+                },
+            )
+            .expect("s3 storage should be configured");
+
+        let runner = FakeRunner::default();
+        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+
+        let result = hybrid
+            .sync_project_s3(&BackendSyncProjectS3Request {
+                project_slug: String::from("demo"),
+                dry_run: false,
+                delete: false,
+                allow_missing_local: true,
+            })
+            .expect("missing local root should return skipped json");
+
+        let parsed: BackendSyncProjectS3Response = result
+            .parse_json_as()
+            .expect("skipped payload should parse");
+        assert_eq!(parsed.skipped, Some(true));
+        assert_eq!(parsed.reason.as_deref(), Some("missing_local_project_root"));
+        assert!(runner.take_seen().is_empty());
+
+        let _ = fs::remove_dir_all(repo_root);
+    }
+
+    #[test]
+    fn hybrid_sync_precheck_rejects_disabled_s3_without_calling_script() {
+        let repo_root = temp_repo_root();
+        let db_path = repo_root.join("var/backend/app.db");
+        let store = Arc::new(ProjectsStore::new(db_path, repo_root.clone()));
+        store.initialize().expect("schema should initialize");
+        store
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Demo"),
+                slug: Some(String::from("demo")),
+                ..UpsertProjectInput::default()
+            })
+            .expect("project should be created");
+
+        let runner = FakeRunner::default();
+        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+
+        let err = hybrid
+            .sync_project_s3(&BackendSyncProjectS3Request {
+                project_slug: String::from("demo"),
+                dry_run: false,
+                delete: false,
+                allow_missing_local: true,
+            })
+            .expect_err("disabled s3 should fail in rust precheck");
+
+        match err {
+            BackendOpsError::SyncPrecheck(message) => {
+                assert!(message.contains("S3 storage is disabled"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert!(runner.take_seen().is_empty());
+
+        let _ = fs::remove_dir_all(repo_root);
     }
 }
