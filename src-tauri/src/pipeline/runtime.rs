@@ -217,7 +217,7 @@ where
     fn run_rust_planning_preflight(
         &self,
         request: &PipelineRunRequest,
-    ) -> Result<Option<u64>, PipelineRuntimeError> {
+    ) -> Result<Option<RustPlanningPreflightSummary>, PipelineRuntimeError> {
         let Some(manifest_path_raw) = request.options.manifest_path.as_deref() else {
             return Ok(None);
         };
@@ -258,7 +258,9 @@ where
             ))
         })?;
 
-        Ok(Some(jobs.len() as u64))
+        Ok(Some(RustPlanningPreflightSummary {
+            job_ids: jobs.into_iter().map(|job| job.id).collect(),
+        }))
     }
 }
 
@@ -425,6 +427,26 @@ struct PipelineScriptRunSummary {
     jobs: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RustPlanningPreflightSummary {
+    job_ids: Vec<String>,
+}
+
+impl RustPlanningPreflightSummary {
+    fn job_count(&self) -> u64 {
+        self.job_ids.len() as u64
+    }
+
+    fn ids_preview(&self, limit: usize) -> String {
+        self.job_ids
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 fn parse_script_run_summary_from_stdout(stdout: &str) -> Option<PipelineScriptRunSummary> {
     const MARKER: &str = "KROMA_PIPELINE_SUMMARY_JSON:";
     if let Some(marker_line) = stdout
@@ -532,14 +554,21 @@ where
             stdout: output.stdout,
             stderr: output.stderr,
         };
-        if let Some(expected_jobs) = planned_jobs {
+        if let Some(planned) = planned_jobs {
             if let Some(summary) = parse_script_run_summary_from_stdout(result.stdout.as_str()) {
                 if let Some(actual_jobs) = summary.jobs {
+                    let expected_jobs = planned.job_count();
                     if actual_jobs != expected_jobs {
+                        let ids_preview = planned.ids_preview(3);
                         append_stderr_line(
                             &mut result.stderr,
                             format!(
-                                "Rust planning preflight warning: planned {expected_jobs} jobs but script reported {actual_jobs}"
+                                "Rust planning preflight warning: planned {expected_jobs} jobs but script reported {actual_jobs}{}",
+                                if ids_preview.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" (planned ids: {ids_preview})")
+                                }
                             ),
                         );
                     }
