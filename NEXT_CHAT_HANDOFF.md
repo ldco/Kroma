@@ -50,6 +50,8 @@ Worktree: dirty (local uncommitted changes)
    - sanitized output file path builder (port of `buildFileOutputPath`)
    - candidate winner selection ranking (port of `pickBestCandidate`)
    - stricter candidate filename contract (`total_candidates >= 1`)
+4. Next-phase starter landed after this patch:
+   - `pipeline::execution::plan_candidate_output_paths(...)` now ports script path planning for generate/bg-remove/upscale/color pass order and naming (typed + unit tested)
 
 ### Validation (latest patch)
 
@@ -63,6 +65,7 @@ Result: passing.
 ### Open Tasks / Recommended Next Steps (updated)
 
 1. Use the new Rust `pipeline::execution` path-building/ranking helpers inside an actual Rust run-mode loop (not only dry-run support/foundations).
+   - started: candidate output/post-process path planning is now available as a typed Rust helper
 2. Port candidate generation/post-process orchestration from `scripts/image-lab.mjs` into Rust execution services:
    - generation call step
    - optional bg-remove/upscale/color pass ordering

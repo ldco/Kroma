@@ -52,6 +52,28 @@ pub struct ExecutionProjectDirs {
     pub archive_replaced: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionUpscalePathConfig {
+    pub scale: u8,
+    pub format: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExecutionPostprocessPathConfig {
+    pub bg_remove_format: Option<String>,
+    pub upscale: Option<ExecutionUpscalePathConfig>,
+    pub color_profile: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionCandidatePathPlan {
+    pub generated: PathBuf,
+    pub bg_remove: Option<PathBuf>,
+    pub upscale: Option<PathBuf>,
+    pub color: Option<PathBuf>,
+    pub final_output: PathBuf,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionCandidateStatus {
     Generated,
@@ -79,6 +101,14 @@ pub enum ExecutionPlanningError {
     InvalidCandidateIndex,
     #[error("total candidates must be >= 1")]
     InvalidTotalCandidates,
+    #[error("upscale scale must be >= 1")]
+    InvalidUpscaleScale,
+    #[error("upscale format must not be empty")]
+    EmptyUpscaleFormat,
+    #[error("background remove format must not be empty")]
+    EmptyBgRemoveFormat,
+    #[error("color profile must not be empty")]
+    EmptyColorProfile,
 }
 
 pub fn candidate_output_file_name(
@@ -130,6 +160,90 @@ pub fn build_file_output_path(
     FileOutputPathTarget {
         path: output_dir.join(format!("{base}{safe_suffix}{extension}")),
     }
+}
+
+pub fn plan_candidate_output_paths(
+    dirs: &ExecutionProjectDirs,
+    job_id: &str,
+    candidate_index: u8,
+    total_candidates: u8,
+    post: &ExecutionPostprocessPathConfig,
+) -> Result<ExecutionCandidatePathPlan, ExecutionPlanningError> {
+    let generated_name = candidate_output_file_name(job_id, candidate_index, total_candidates)?;
+    let generated = dirs.outputs.join(generated_name.file_name);
+
+    let mut current = generated.clone();
+    let mut bg_remove = None;
+    let mut upscale = None;
+    let mut color = None;
+
+    if let Some(format) = post.bg_remove_format.as_deref() {
+        let format = format.trim();
+        if format.is_empty() {
+            return Err(ExecutionPlanningError::EmptyBgRemoveFormat);
+        }
+        let next = build_file_output_path(
+            dirs.bg_remove.as_path(),
+            current
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("image.png"),
+            Some("nobg"),
+            &format!(".{format}"),
+        )
+        .path;
+        current = next.clone();
+        bg_remove = Some(next);
+    }
+
+    if let Some(upscale_cfg) = post.upscale.as_ref() {
+        if upscale_cfg.scale == 0 {
+            return Err(ExecutionPlanningError::InvalidUpscaleScale);
+        }
+        let format = upscale_cfg.format.trim();
+        if format.is_empty() {
+            return Err(ExecutionPlanningError::EmptyUpscaleFormat);
+        }
+        let next = build_file_output_path(
+            dirs.upscaled.as_path(),
+            current
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("image.png"),
+            Some(format!("x{}", upscale_cfg.scale).as_str()),
+            &format!(".{format}"),
+        )
+        .path;
+        current = next.clone();
+        upscale = Some(next);
+    }
+
+    if let Some(profile) = post.color_profile.as_deref() {
+        let profile = profile.trim();
+        if profile.is_empty() {
+            return Err(ExecutionPlanningError::EmptyColorProfile);
+        }
+        let next = build_file_output_path(
+            dirs.color.as_path(),
+            current
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("image.png"),
+            Some(profile),
+            ".png",
+        )
+        .path;
+        current = next.clone();
+        color = Some(next);
+    }
+
+    Ok(ExecutionCandidatePathPlan {
+        generated,
+        bg_remove,
+        upscale,
+        color,
+        final_output: current,
+    })
 }
 
 pub fn execution_project_dirs(project_root: &Path) -> ExecutionProjectDirs {
@@ -353,5 +467,122 @@ mod tests {
 
         let winner = pick_best_candidate(&candidates).expect("winner should exist");
         assert_eq!(winner.candidate_index, 1);
+    }
+
+    #[test]
+    fn plan_candidate_output_paths_matches_generate_only_script_behavior() {
+        let dirs = execution_project_dirs(Path::new("/tmp/demo"));
+        let plan = plan_candidate_output_paths(
+            &dirs,
+            "style_1_scene_01",
+            1,
+            1,
+            &ExecutionPostprocessPathConfig::default(),
+        )
+        .expect("plan should build");
+
+        assert_eq!(
+            plan.generated,
+            PathBuf::from("/tmp/demo/outputs/style_1_scene_01.png")
+        );
+        assert_eq!(plan.bg_remove, None);
+        assert_eq!(plan.upscale, None);
+        assert_eq!(plan.color, None);
+        assert_eq!(plan.final_output, plan.generated);
+    }
+
+    #[test]
+    fn plan_candidate_output_paths_matches_script_pass_order_and_naming() {
+        let dirs = execution_project_dirs(Path::new("/tmp/demo"));
+        let plan = plan_candidate_output_paths(
+            &dirs,
+            "style_1_scene_01",
+            2,
+            3,
+            &ExecutionPostprocessPathConfig {
+                bg_remove_format: Some(String::from("webp")),
+                upscale: Some(ExecutionUpscalePathConfig {
+                    scale: 4,
+                    format: String::from("png"),
+                }),
+                color_profile: Some(String::from("cinematic-v2")),
+            },
+        )
+        .expect("plan should build");
+
+        assert_eq!(
+            plan.generated,
+            PathBuf::from("/tmp/demo/outputs/style_1_scene_01__c2.png")
+        );
+        assert_eq!(
+            plan.bg_remove,
+            Some(PathBuf::from(
+                "/tmp/demo/background_removed/style_1_scene_01__c2_nobg.webp"
+            ))
+        );
+        assert_eq!(
+            plan.upscale,
+            Some(PathBuf::from(
+                "/tmp/demo/upscaled/style_1_scene_01__c2_nobg_x4.png"
+            ))
+        );
+        assert_eq!(
+            plan.color,
+            Some(PathBuf::from(
+                "/tmp/demo/color_corrected/style_1_scene_01__c2_nobg_x4_cinematic-v2.png"
+            ))
+        );
+        assert_eq!(
+            plan.final_output,
+            PathBuf::from(
+                "/tmp/demo/color_corrected/style_1_scene_01__c2_nobg_x4_cinematic-v2.png"
+            )
+        );
+    }
+
+    #[test]
+    fn plan_candidate_output_paths_rejects_empty_postprocess_values() {
+        let dirs = execution_project_dirs(Path::new("/tmp/demo"));
+        let err = plan_candidate_output_paths(
+            &dirs,
+            "job",
+            1,
+            1,
+            &ExecutionPostprocessPathConfig {
+                bg_remove_format: Some(String::from(" ")),
+                ..ExecutionPostprocessPathConfig::default()
+            },
+        )
+        .expect_err("empty bg-remove format should fail");
+        assert_eq!(err, ExecutionPlanningError::EmptyBgRemoveFormat);
+
+        let err = plan_candidate_output_paths(
+            &dirs,
+            "job",
+            1,
+            1,
+            &ExecutionPostprocessPathConfig {
+                upscale: Some(ExecutionUpscalePathConfig {
+                    scale: 0,
+                    format: String::from("png"),
+                }),
+                ..ExecutionPostprocessPathConfig::default()
+            },
+        )
+        .expect_err("zero upscale scale should fail");
+        assert_eq!(err, ExecutionPlanningError::InvalidUpscaleScale);
+
+        let err = plan_candidate_output_paths(
+            &dirs,
+            "job",
+            1,
+            1,
+            &ExecutionPostprocessPathConfig {
+                color_profile: Some(String::from("")),
+                ..ExecutionPostprocessPathConfig::default()
+            },
+        )
+        .expect_err("empty color profile should fail");
+        assert_eq!(err, ExecutionPlanningError::EmptyColorProfile);
     }
 }
