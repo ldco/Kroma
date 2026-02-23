@@ -188,7 +188,7 @@ Status:
    - post-run backend operations for typed trigger path are now Rust-owned (ingest + S3 sync)
    - `scripts/image-lab.mjs` post-run backend calls removed; remaining script responsibility is generation/post-process orchestration
    - next: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules
-   - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, project directory layout, and candidate post-process output path planning (generate/bg-remove/upscale/color chain)
+   - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, project directory layout, candidate post-process output path planning, and per-job candidate loop expansion into ordered typed plans
 
 ### Near-Term Backend / Bootstrap Work
 

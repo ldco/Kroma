@@ -67,6 +67,7 @@ pub struct ExecutionPostprocessPathConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionCandidatePathPlan {
+    pub candidate_index: u8,
     pub generated: PathBuf,
     pub bg_remove: Option<PathBuf>,
     pub upscale: Option<PathBuf>,
@@ -238,12 +239,36 @@ pub fn plan_candidate_output_paths(
     }
 
     Ok(ExecutionCandidatePathPlan {
+        candidate_index,
         generated,
         bg_remove,
         upscale,
         color,
         final_output: current,
     })
+}
+
+pub fn plan_job_candidate_output_paths(
+    dirs: &ExecutionProjectDirs,
+    job_id: &str,
+    total_candidates: u8,
+    post: &ExecutionPostprocessPathConfig,
+) -> Result<Vec<ExecutionCandidatePathPlan>, ExecutionPlanningError> {
+    if total_candidates == 0 {
+        return Err(ExecutionPlanningError::InvalidTotalCandidates);
+    }
+
+    let mut plans = Vec::with_capacity(total_candidates as usize);
+    for candidate_index in 1..=total_candidates {
+        plans.push(plan_candidate_output_paths(
+            dirs,
+            job_id,
+            candidate_index,
+            total_candidates,
+            post,
+        )?);
+    }
+    Ok(plans)
 }
 
 pub fn execution_project_dirs(project_root: &Path) -> ExecutionProjectDirs {
@@ -485,6 +510,7 @@ mod tests {
             plan.generated,
             PathBuf::from("/tmp/demo/outputs/style_1_scene_01.png")
         );
+        assert_eq!(plan.candidate_index, 1);
         assert_eq!(plan.bg_remove, None);
         assert_eq!(plan.upscale, None);
         assert_eq!(plan.color, None);
@@ -514,6 +540,7 @@ mod tests {
             plan.generated,
             PathBuf::from("/tmp/demo/outputs/style_1_scene_01__c2.png")
         );
+        assert_eq!(plan.candidate_index, 2);
         assert_eq!(
             plan.bg_remove,
             Some(PathBuf::from(
@@ -584,5 +611,30 @@ mod tests {
         )
         .expect_err("empty color profile should fail");
         assert_eq!(err, ExecutionPlanningError::EmptyColorProfile);
+    }
+
+    #[test]
+    fn plan_job_candidate_output_paths_expands_candidate_loop_in_order() {
+        let dirs = execution_project_dirs(Path::new("/tmp/demo"));
+        let plans = plan_job_candidate_output_paths(
+            &dirs,
+            "job",
+            3,
+            &ExecutionPostprocessPathConfig::default(),
+        )
+        .expect("job candidate plans should build");
+
+        assert_eq!(plans.len(), 3);
+        assert_eq!(plans[0].candidate_index, 1);
+        assert_eq!(plans[1].candidate_index, 2);
+        assert_eq!(plans[2].candidate_index, 3);
+        assert_eq!(
+            plans[0].generated,
+            PathBuf::from("/tmp/demo/outputs/job__c1.png")
+        );
+        assert_eq!(
+            plans[2].generated,
+            PathBuf::from("/tmp/demo/outputs/job__c3.png")
+        );
     }
 }

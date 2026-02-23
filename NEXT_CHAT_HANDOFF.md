@@ -52,6 +52,7 @@ Worktree: dirty (local uncommitted changes)
    - stricter candidate filename contract (`total_candidates >= 1`)
 4. Next-phase starter landed after this patch:
    - `pipeline::execution::plan_candidate_output_paths(...)` now ports script path planning for generate/bg-remove/upscale/color pass order and naming (typed + unit tested)
+   - `pipeline::execution::plan_job_candidate_output_paths(...)` now ports the per-job candidate loop expansion into ordered typed plans
 
 ### Validation (latest patch)
 
