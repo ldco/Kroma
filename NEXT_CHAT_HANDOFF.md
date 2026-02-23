@@ -91,9 +91,17 @@ Result: passing.
 
 Remaining risks / TODO (review follow-up):
 1. Rust preflight still duplicates manifest parsing/planning work already performed by `image-lab.mjs` (temporary migration cost).
-2. Rust preflight skips scene expansion parity for `input_source = InputPath(...)`; file/dir expansion is still script-owned.
+2. Rust now covers scene expansion parity for typed dry `input` runs, but run-mode execution/post-process remains script-owned.
 3. Next migration step remains to replace script-owned generation/post-process execution with Rust execution modules.
-4. Rust now passes planned jobs via `--jobs-file`, but `image-lab.mjs` still owns the execution loop and run-log writing.
+4. Rust now passes planned jobs via `--jobs-file` for script-backed runs, but `image-lab.mjs` still owns the run-mode execution loop and final run-log writing on that path.
+
+Review follow-up (2026-02-23, latest runtime slice):
+1. Fixed regression in Rust preflight activation guard: typed dry `input` path runs were still delegating to script because the guard skipped `InputPath`.
+2. Fixed temp-file leak edge case in script-backed `--jobs-file` path when the second `build_command` fails after writing the temp file.
+3. Validation:
+   - `cargo test pipeline::runtime --lib`
+   - `cargo test --test pipeline_trigger_endpoints --test http_contract_surface`
+4. Result: passing.
 
 ### Current Status / Open Tasks (updated)
 
@@ -107,8 +115,9 @@ Remaining risks / TODO (review follow-up):
 8. Follow-up landed: Rust runtime now writes planned jobs to a temp JSON file and passes `--jobs-file` to `image-lab.mjs` for manifest-backed scene-ref runs, bypassing script-side planning on the typed app path.
 9. Next phase starter landed: new `pipeline::runlog` Rust module provides typed summary-marker formatting and pretty JSON run-log writing helpers (foundation for replacing script run-log output).
 10. Major follow-up landed: typed dry runs with `scene_refs` now execute in Rust (planning + run-log writing + summary marker) via `RustDryRunPipelineOrchestrator` and no longer require Node/script execution on that path.
-11. Next phase starter landed: `pipeline::execution` Rust module (run-mode execution foundation) with script-parity candidate output filename logic and tests.
-12. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: move candidate generation/post-process loop pieces into `pipeline::execution` and reuse `pipeline::runlog` for final log output).
+11. Review+follow-up landed: typed dry runs with `input` path (file/dir) now also execute in Rust using Rust image-file discovery (recursive image scan parity) and no longer delegate to the script path.
+12. Next phase starter landed: `pipeline::execution` Rust module (run-mode execution foundation) with script-parity candidate output filename logic and tests.
+13. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: move candidate generation/post-process loop pieces into `pipeline::execution` and reuse `pipeline::runlog` for final log output).
 
 ### Recommended Next Steps
 

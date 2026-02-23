@@ -240,7 +240,11 @@ fn build_rust_planning_preflight_summary(
         request.options.input_source,
         Some(PipelineInputSource::SceneRefs(_))
     );
-    if !has_manifest && !has_scene_refs {
+    let has_input_path = matches!(
+        request.options.input_source,
+        Some(PipelineInputSource::InputPath(_))
+    );
+    if !has_manifest && !has_scene_refs && !has_input_path {
         return Ok(None);
     }
 
@@ -260,9 +264,19 @@ fn build_rust_planning_preflight_summary(
         Some(PipelineInputSource::SceneRefs(values)) => {
             manifest.scene_refs = values.clone();
         }
-        Some(PipelineInputSource::InputPath(_)) => {
-            // File/dir expansion is still script-owned.
-            return Ok(None);
+        Some(PipelineInputSource::InputPath(path)) => {
+            let input_abs = resolve_under_app_root(app_root, path);
+            if !input_abs.exists() {
+                return Err(PipelineRuntimeError::PlanningPreflight(format!(
+                    "input not found: {}",
+                    path
+                )));
+            }
+            manifest.scene_refs = list_image_files_recursive(input_abs.as_path())
+                .map_err(PipelineRuntimeError::Io)?
+                .into_iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
         }
         None => {}
     }
@@ -287,6 +301,42 @@ fn build_rust_planning_preflight_summary(
         job_ids: jobs.iter().map(|job| job.id.clone()).collect(),
         jobs,
     }))
+}
+
+fn is_image_path(path: &Path) -> bool {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tif" | "tiff"
+    )
+}
+
+fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
+    let meta = fs::metadata(input_abs)?;
+    if meta.is_file() {
+        return Ok(if is_image_path(input_abs) {
+            vec![input_abs.to_path_buf()]
+        } else {
+            Vec::new()
+        });
+    }
+
+    let mut out = Vec::new();
+    for entry in fs::read_dir(input_abs)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            out.extend(list_image_files_recursive(path.as_path())?);
+            continue;
+        }
+        if file_type.is_file() && is_image_path(path.as_path()) {
+            out.push(path);
+        }
+    }
+    Ok(out)
 }
 
 fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOptions) {
@@ -730,8 +780,16 @@ where
                 let jobs_file =
                     write_planned_jobs_temp_file(self.app_root.as_path(), &planned.jobs)?;
                 script_request.options.jobs_file = Some(jobs_file.to_string_lossy().to_string());
-                spec = self.build_command(&script_request)?;
                 temp_jobs_file = Some(jobs_file);
+                spec = match self.build_command(&script_request) {
+                    Ok(spec) => spec,
+                    Err(error) => {
+                        if let Some(path) = temp_jobs_file.take() {
+                            let _ = fs::remove_file(path);
+                        }
+                        return Err(error);
+                    }
+                };
             }
         }
         let output = match self.runner.run(&spec) {
@@ -1557,8 +1615,13 @@ mod tests {
     }
 
     #[test]
-    fn rust_dry_run_wrapper_delegates_input_path_mode_to_inner() {
+    fn rust_dry_run_wrapper_handles_input_path_without_inner_script_call() {
         let app_root = temp_app_root();
+        let input_dir = app_root.join("inputs");
+        fs::create_dir_all(input_dir.join("nested")).expect("input dir should exist");
+        fs::write(input_dir.join("a.png"), b"a").expect("image a should exist");
+        fs::write(input_dir.join("nested/b.jpg"), b"b").expect("image b should exist");
+        fs::write(input_dir.join("nested/readme.txt"), b"x").expect("non-image file should exist");
         let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("ok"));
         let wrapper = RustDryRunPipelineOrchestrator::new(inner.clone(), app_root.clone());
 
@@ -1568,21 +1631,18 @@ mod tests {
                 mode: PipelineRunMode::Dry,
                 confirm_spend: false,
                 options: PipelineRunOptions {
-                    input_source: Some(PipelineInputSource::InputPath(String::from("input-dir"))),
+                    input_source: Some(PipelineInputSource::InputPath(String::from("inputs"))),
                     ..PipelineRunOptions::default()
                 },
             })
-            .expect("wrapper should delegate and succeed");
+            .expect("rust dry input-path run should succeed");
 
-        assert_eq!(result.stdout, "ok");
-        assert_eq!(
-            inner
-                .seen
-                .lock()
-                .expect("fake inner orchestrator mutex poisoned")
-                .len(),
-            1
-        );
+        assert!(result.stdout.contains("Jobs: 2 (dry/planned)"));
+        assert!(inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .is_empty());
 
         let _ = fs::remove_dir_all(app_root);
     }
