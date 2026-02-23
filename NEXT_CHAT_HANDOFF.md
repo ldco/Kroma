@@ -42,9 +42,9 @@ Worktree: dirty (local uncommitted changes)
 2. Default typed `runs/trigger` post-run path now uses:
    - Rust post-run wrapper (`pipeline::runtime`)
    - Rust post-run service (`pipeline::post_run`)
-   - native Rust ingest (via `pipeline::backend_ops` hybrid adapter)
-3. `backend.py ingest-run` is no longer used on the default Rust `runs/trigger` path.
-4. Remaining post-run script dependency on that path is `backend.py sync-project-s3` only.
+   - native Rust ingest + Rust AWS CLI sync execution (via `pipeline::backend_ops` hybrid adapter)
+3. `backend.py ingest-run` and `backend.py sync-project-s3` are no longer used on the default Rust `runs/trigger` post-run path.
+4. Remaining runtime script dependency on that path is `scripts/image-lab.mjs` generation/orchestration itself (post-run backend ops are Rust-owned).
 5. Script handoff hardening is in place:
    - `scripts/image-lab.mjs` emits `KROMA_PIPELINE_SUMMARY_JSON: {...}`
    - Rust parser prefers the structured marker and keeps text-line fallback during migration

@@ -332,10 +332,10 @@ where
         request: &BackendSyncProjectS3Request,
     ) -> Result<BackendCommandResult, BackendOpsError> {
         validate_project_slug(request.project_slug.as_str())?;
-        if let Some(result) = self.sync_project_s3_precheck(request)? {
-            return Ok(result);
+        match self.sync_project_s3_precheck(request)? {
+            SyncPrecheckOutcome::Skipped(result) => Ok(result),
+            SyncPrecheckOutcome::Ready(ready) => self.execute_aws_sync(request, ready),
         }
-        self.script_sync_ops.sync_project_s3(request)
     }
 }
 
@@ -346,7 +346,7 @@ where
     fn sync_project_s3_precheck(
         &self,
         request: &BackendSyncProjectS3Request,
-    ) -> Result<Option<BackendCommandResult>, BackendOpsError> {
+    ) -> Result<SyncPrecheckOutcome, BackendOpsError> {
         let payload = self
             .projects_store
             .get_project_storage(request.project_slug.as_str())
@@ -382,7 +382,7 @@ where
                     "project_root": payload.storage.local.project_root,
                     "destination": dst,
                 });
-                return Ok(Some(BackendCommandResult {
+                return Ok(SyncPrecheckOutcome::Skipped(BackendCommandResult {
                     stdout: payload.to_string(),
                     stderr: String::new(),
                     json: Some(payload),
@@ -394,8 +394,108 @@ where
             )));
         }
 
-        Ok(None)
+        Ok(SyncPrecheckOutcome::Ready(SyncReadyContext {
+            project_slug: payload.project.slug,
+            project_root: payload.storage.local.project_root,
+            destination: dst,
+            region: s3.region.clone(),
+            profile: s3.profile.clone(),
+            endpoint_url: s3.endpoint_url.clone(),
+        }))
     }
+
+    fn execute_aws_sync(
+        &self,
+        request: &BackendSyncProjectS3Request,
+        ready: SyncReadyContext,
+    ) -> Result<BackendCommandResult, BackendOpsError> {
+        let mut args = vec![
+            String::from("s3"),
+            String::from("sync"),
+            ready.project_root.clone(),
+            ready.destination.clone(),
+            String::from("--only-show-errors"),
+        ];
+        if request.delete {
+            args.push(String::from("--delete"));
+        }
+        if request.dry_run {
+            args.push(String::from("--dryrun"));
+        }
+        if !ready.region.trim().is_empty() {
+            args.push(String::from("--region"));
+            args.push(ready.region.clone());
+        }
+        if !ready.profile.trim().is_empty() {
+            args.push(String::from("--profile"));
+            args.push(ready.profile.clone());
+        }
+        if !ready.endpoint_url.trim().is_empty() {
+            args.push(String::from("--endpoint-url"));
+            args.push(ready.endpoint_url.clone());
+        }
+
+        let spec = CommandSpec {
+            program: String::from("aws"),
+            args,
+            cwd: self.script_sync_ops.app_root.clone(),
+        };
+        let output = self
+            .script_sync_ops
+            .runner
+            .run(&spec)
+            .map_err(|err| match err {
+                PipelineRuntimeError::Io(source)
+                    if source.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    BackendOpsError::SyncPrecheck(String::from(
+                        "AWS CLI not found. Install aws cli v2 to use sync-project-s3.",
+                    ))
+                }
+                other => BackendOpsError::CommandRunner(other),
+            })?;
+
+        if output.status_code != 0 {
+            let stderr = if output.stderr.trim().is_empty() {
+                output.stdout
+            } else {
+                output.stderr
+            };
+            return Err(BackendOpsError::CommandFailed {
+                program: spec.program,
+                status_code: output.status_code,
+                stderr,
+            });
+        }
+
+        let payload = json!({
+            "ok": true,
+            "project_slug": ready.project_slug,
+            "project_root": ready.project_root,
+            "destination": ready.destination,
+            "dry_run": request.dry_run,
+            "delete": request.delete,
+        });
+        Ok(BackendCommandResult {
+            stdout: payload.to_string(),
+            stderr: String::new(),
+            json: Some(payload),
+        })
+    }
+}
+
+enum SyncPrecheckOutcome {
+    Skipped(BackendCommandResult),
+    Ready(SyncReadyContext),
+}
+
+struct SyncReadyContext {
+    project_slug: String,
+    project_root: String,
+    destination: String,
+    region: String,
+    profile: String,
+    endpoint_url: String,
 }
 
 fn parse_backend_command_result(output: CommandOutput) -> BackendCommandResult {
@@ -738,6 +838,76 @@ mod tests {
             other => panic!("unexpected error: {other:?}"),
         }
         assert!(runner.take_seen().is_empty());
+
+        let _ = fs::remove_dir_all(repo_root);
+    }
+
+    #[test]
+    fn hybrid_sync_executes_aws_cli_when_ready() {
+        let repo_root = temp_repo_root();
+        let db_path = repo_root.join("var/backend/app.db");
+        let store = Arc::new(ProjectsStore::new(db_path, repo_root.clone()));
+        store.initialize().expect("schema should initialize");
+        store
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Demo"),
+                slug: Some(String::from("demo")),
+                ..UpsertProjectInput::default()
+            })
+            .expect("project should be created");
+        store
+            .update_project_storage_s3(
+                "demo",
+                UpdateStorageS3Input {
+                    enabled: Some(true),
+                    bucket: Some(String::from("bucket")),
+                    prefix: Some(String::from("iat-projects")),
+                    region: Some(String::from("us-east-1")),
+                    profile: Some(String::from("test-profile")),
+                    endpoint_url: Some(String::from("http://localhost:9000")),
+                },
+            )
+            .expect("s3 storage should be configured");
+
+        fs::create_dir_all(repo_root.join("var/projects/demo"))
+            .expect("local project root should exist for sync");
+
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+
+        let result = hybrid
+            .sync_project_s3(&BackendSyncProjectS3Request {
+                project_slug: String::from("demo"),
+                dry_run: true,
+                delete: true,
+                allow_missing_local: false,
+            })
+            .expect("ready sync should run aws command");
+
+        let parsed: BackendSyncProjectS3Response =
+            result.parse_json_as().expect("sync response should parse");
+        assert_eq!(parsed.project_slug.as_deref(), Some("demo"));
+        assert_eq!(parsed.dry_run, Some(true));
+        assert_eq!(parsed.delete, Some(true));
+
+        let seen = runner.take_seen();
+        assert_eq!(seen.len(), 1);
+        let cmd = &seen[0];
+        assert_eq!(cmd.program, "aws");
+        assert!(cmd.args.iter().any(|arg| arg == "s3"));
+        assert!(cmd.args.iter().any(|arg| arg == "sync"));
+        assert!(cmd.args.iter().any(|arg| arg == "--dryrun"));
+        assert!(cmd.args.iter().any(|arg| arg == "--delete"));
+        assert!(cmd.args.iter().any(|arg| arg == "--region"));
+        assert!(cmd.args.iter().any(|arg| arg == "us-east-1"));
+        assert!(cmd.args.iter().any(|arg| arg == "--profile"));
+        assert!(cmd.args.iter().any(|arg| arg == "test-profile"));
+        assert!(cmd.args.iter().any(|arg| arg == "--endpoint-url"));
+        assert!(cmd.args.iter().any(|arg| arg == "http://localhost:9000"));
 
         let _ = fs::remove_dir_all(repo_root);
     }
