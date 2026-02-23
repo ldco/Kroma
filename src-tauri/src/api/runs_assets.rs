@@ -480,6 +480,13 @@ fn map_pipeline_trigger_error(error: PipelineTriggerError) -> ApiObject<Value> {
                 "error": summarize_pipeline_command_failure(stderr.as_str())
             })),
         ),
+        PipelineTriggerError::Runtime(PipelineRuntimeError::PlanningPreflight(message)) => (
+            StatusCode::BAD_REQUEST,
+            into_json(json!({
+                "ok": false,
+                "error": message
+            })),
+        ),
         PipelineTriggerError::Runtime(PipelineRuntimeError::ScriptNotFound(path)) => {
             internal_error(format!(
                 "pipeline script fallback missing: {}",

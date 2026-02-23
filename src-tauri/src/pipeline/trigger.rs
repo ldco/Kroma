@@ -135,6 +135,7 @@ impl PipelineTriggerService {
                 mode: mode.to_pipeline_mode(),
                 confirm_spend,
                 options: PipelineRunOptions {
+                    manifest_path: None,
                     project_root,
                     input_source,
                     style_refs,

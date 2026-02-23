@@ -6,6 +6,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
+use crate::pipeline::planning::{build_generation_jobs, load_planning_manifest_file};
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
 };
@@ -80,6 +81,7 @@ impl PipelineWeatherFilter {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PipelineRunOptions {
+    pub manifest_path: Option<String>,
     pub project_root: Option<String>,
     pub input_source: Option<PipelineInputSource>,
     pub style_refs: Vec<String>,
@@ -211,9 +213,61 @@ where
             cwd: self.app_root.clone(),
         })
     }
+
+    fn run_rust_planning_preflight(
+        &self,
+        request: &PipelineRunRequest,
+    ) -> Result<(), PipelineRuntimeError> {
+        let Some(manifest_path_raw) = request.options.manifest_path.as_deref() else {
+            return Ok(());
+        };
+
+        let manifest_path = resolve_under_app_root(self.app_root.as_path(), manifest_path_raw);
+        let mut manifest =
+            load_planning_manifest_file(manifest_path.as_path()).map_err(|error| {
+                PipelineRuntimeError::PlanningPreflight(format!(
+                    "manifest parse failed ({}): {error}",
+                    manifest_path.display()
+                ))
+            })?;
+
+        match request.options.input_source.as_ref() {
+            Some(PipelineInputSource::SceneRefs(values)) => {
+                manifest.scene_refs = values.clone();
+            }
+            Some(PipelineInputSource::InputPath(_)) => {
+                // File/dir expansion is still script-owned; typed manifest parsing still runs above.
+                return Ok(());
+            }
+            None => {}
+        }
+
+        if !request.options.style_refs.is_empty() {
+            manifest.style_refs = request.options.style_refs.clone();
+        }
+
+        let stage = request.options.stage.unwrap_or(PipelineStageFilter::Style);
+        let time = request.options.time.unwrap_or(PipelineTimeFilter::Day);
+        let weather = request
+            .options
+            .weather
+            .unwrap_or(PipelineWeatherFilter::Clear);
+        build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
+            PipelineRuntimeError::PlanningPreflight(format!(
+                "manifest planning preflight failed: {error}"
+            ))
+        })?;
+
+        Ok(())
+    }
 }
 
 fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOptions) {
+    if let Some(manifest_path) = options.manifest_path.as_ref() {
+        args.push(String::from("--manifest"));
+        args.push(manifest_path.clone());
+    }
+
     if let Some(project_root) = options.project_root.as_ref() {
         args.push(String::from("--project-root"));
         args.push(project_root.clone());
@@ -461,6 +515,7 @@ where
         &self,
         request: &PipelineRunRequest,
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
+        self.run_rust_planning_preflight(request)?;
         let spec = self.build_command(request)?;
         let output = self.runner.run(&spec)?;
         if output.status_code != 0 {
@@ -495,6 +550,8 @@ pub enum PipelineRuntimeError {
         stdout: String,
         stderr: String,
     },
+    #[error("{0}")]
+    PlanningPreflight(String),
 }
 
 fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
@@ -509,6 +566,15 @@ fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
         Ok(())
     } else {
         Err(PipelineRuntimeError::InvalidProjectSlug)
+    }
+}
+
+fn resolve_under_app_root(app_root: &Path, value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        path
+    } else {
+        app_root.join(path)
     }
 }
 
@@ -548,7 +614,9 @@ mod tests {
         BackendSyncProjectS3Request, PipelineBackendOps,
     };
     use serde_json::json;
+    use std::fs;
     use std::sync::{Arc, Mutex};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[derive(Clone, Default)]
     struct FakeRunner {
@@ -592,6 +660,16 @@ mod tests {
     fn test_orchestrator(runner: FakeRunner) -> ScriptPipelineOrchestrator<FakeRunner> {
         let app_root = default_app_root_from_manifest_dir();
         ScriptPipelineOrchestrator::new(app_root, runner)
+    }
+
+    fn temp_manifest_file(contents: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("kroma_runtime_manifest_{stamp}.json"));
+        fs::write(path.as_path(), contents).expect("temp manifest should be written");
+        path
     }
 
     #[test]
@@ -735,6 +813,89 @@ mod tests {
             .args
             .windows(2)
             .any(|w| w == ["--storage-sync-s3", "false"]));
+    }
+
+    #[test]
+    fn build_command_includes_manifest_path_when_set() {
+        let orchestrator = test_orchestrator(FakeRunner::default());
+        let cmd = orchestrator
+            .build_command(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(String::from("config/manifest.json")),
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("command should build");
+
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--manifest", "config/manifest.json"]));
+    }
+
+    #[test]
+    fn execute_rejects_invalid_manifest_preflight_before_runner() {
+        let runner = FakeRunner::default();
+        let orchestrator = test_orchestrator(runner.clone());
+        let manifest_path =
+            temp_manifest_file(r#"{"prompts":{"style_base":123},"scene_refs":["a.png"]}"#);
+
+        let err = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(manifest_path.to_string_lossy().to_string()),
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect_err("invalid manifest preflight should fail");
+
+        match err {
+            PipelineRuntimeError::PlanningPreflight(message) => {
+                assert!(message.contains("manifest parse failed"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert!(runner.take_seen().is_empty());
+
+        let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
+    fn execute_runs_when_manifest_preflight_succeeds() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::from("ok"),
+            stderr: String::new(),
+        }));
+        let orchestrator = test_orchestrator(runner.clone());
+        let manifest_path =
+            temp_manifest_file(r#"{"prompts":{"style_base":"ok"},"scene_refs":["a.png"]}"#);
+
+        let result = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(manifest_path.to_string_lossy().to_string()),
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("execution should succeed");
+
+        assert_eq!(result.status_code, 0);
+        assert_eq!(runner.take_seen().len(), 1);
+
+        let _ = fs::remove_file(manifest_path);
     }
 
     #[derive(Default)]

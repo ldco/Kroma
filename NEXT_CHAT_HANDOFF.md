@@ -69,13 +69,15 @@ Result: passing.
 2. Remaining major script dependency on the app trigger path is `scripts/image-lab.mjs` generation/orchestration itself.
 3. Next phase started: Rust `pipeline::planning` module now ports `image-lab` prompt composition + generation job planning.
 4. Follow-up landed: typed planning manifest defaults + JSON parser (`scene_refs`, `style_refs`, `policy.default_no_invention`, `prompts`) with tests for script-subset parity.
-5. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: wire parsed manifests into runtime/planning execution path).
+5. Follow-up landed: `pipeline::runtime` now supports typed `manifest_path` and runs Rust planning preflight (manifest parse + job planning) before script execution when a manifest is provided.
+6. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: feed Rust planning results into execution/logging instead of using script-side planning only).
 
 ### Recommended Next Steps
 
 1. Start a Rust orchestration module for run planning + job expansion currently handled in `scripts/image-lab.mjs`.
    - Started: `src-tauri/src/pipeline/planning.rs` (prompt composition + generation job planning parity helpers/tests)
    - Extended: planning manifest default values + typed JSON/file parsing for the planning subset used by `image-lab`
+   - Wired (preflight): `ScriptPipelineOrchestrator::execute` validates manifest/planning in Rust before invoking `image-lab.mjs` when `manifest_path` is set
 2. Move script stdout/run-log ownership into Rust (structured in-memory result + Rust log writer), then delete script summary parsing fallback.
 3. Add re-ingest/idempotency tests for native Rust ingest (especially changed candidate/output paths across repeated `run_log_path` imports).
    - Started: same `run_log_path` replacement coverage added in `pipeline_ingest` tests; still expand for multi-job/missing-path edge cases
