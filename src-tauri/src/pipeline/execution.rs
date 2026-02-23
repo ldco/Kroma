@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::pipeline::planning::PlannedGenerationJob;
@@ -16,6 +17,9 @@ pub struct ExecutionRunContext {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionPlannedJob {
     pub id: String,
+    pub mode: String,
+    pub time: String,
+    pub weather: String,
     pub input_images: Vec<String>,
     pub prompt: String,
 }
@@ -24,6 +28,9 @@ impl From<PlannedGenerationJob> for ExecutionPlannedJob {
     fn from(value: PlannedGenerationJob) -> Self {
         Self {
             id: value.id,
+            mode: value.mode,
+            time: value.time,
+            weather: value.weather,
             input_images: value.input_images,
             prompt: value.prompt,
         }
@@ -99,7 +106,17 @@ pub enum ExecutionCandidateStatus {
     FailedOutputGuard,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl ExecutionCandidateStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Generated => "generated",
+            Self::Done => "done",
+            Self::FailedOutputGuard => "failed_output_guard",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ExecutionCandidateRank {
     pub hard_failures: u64,
     pub soft_warnings: u64,
@@ -115,6 +132,7 @@ pub struct ExecutionCandidateResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionCandidateJobOutputs {
+    pub output: Option<PathBuf>,
     pub final_output: Option<PathBuf>,
     pub bg_remove: Option<PathBuf>,
     pub upscale: Option<PathBuf>,
@@ -175,6 +193,37 @@ pub struct ExecutionJobFinalization {
     pub color: Option<PathBuf>,
     pub failure_reason: Option<&'static str>,
     pub failed_output_guard_jobs_increment: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionRunLogCandidateRecord {
+    pub candidate_index: u8,
+    pub output: Option<String>,
+    pub status: String,
+    pub rank: ExecutionCandidateRank,
+    pub final_output: Option<String>,
+    pub bg_remove: Option<String>,
+    pub upscale: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionRunLogJobRecord {
+    pub id: String,
+    pub mode: String,
+    pub time: String,
+    pub weather: String,
+    pub input_images: Vec<String>,
+    pub prompt: String,
+    pub status: String,
+    pub selected_candidate: Option<u8>,
+    pub final_output: Option<String>,
+    pub output: Option<String>,
+    pub bg_remove: Option<String>,
+    pub upscale: Option<String>,
+    pub color: Option<String>,
+    pub failure_reason: Option<String>,
+    pub candidates: Vec<ExecutionRunLogCandidateRecord>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -508,6 +557,58 @@ pub fn finalize_job_from_candidates(
             failed_output_guard_jobs_increment: 1,
         }),
     }
+}
+
+pub fn build_run_log_candidate_record<F>(
+    candidate: &ExecutionCandidateJobResult,
+    path_mapper: F,
+) -> ExecutionRunLogCandidateRecord
+where
+    F: Fn(&Path) -> String + Copy,
+{
+    ExecutionRunLogCandidateRecord {
+        candidate_index: candidate.candidate.candidate_index,
+        output: candidate.outputs.output.as_deref().map(path_mapper),
+        status: candidate.candidate.status.as_str().to_string(),
+        rank: candidate.candidate.rank.clone(),
+        final_output: candidate.outputs.final_output.as_deref().map(path_mapper),
+        bg_remove: candidate.outputs.bg_remove.as_deref().map(path_mapper),
+        upscale: candidate.outputs.upscale.as_deref().map(path_mapper),
+        color: candidate.outputs.color.as_deref().map(path_mapper),
+    }
+}
+
+pub fn build_run_log_job_record<F>(
+    job: &ExecutionPlannedJob,
+    candidates: &[ExecutionCandidateJobResult],
+    path_mapper: F,
+) -> Result<ExecutionRunLogJobRecord, ExecutionOutcomeError>
+where
+    F: Fn(&Path) -> String + Copy,
+{
+    let finalized = finalize_job_from_candidates(candidates)?;
+    let candidate_records = candidates
+        .iter()
+        .map(|candidate| build_run_log_candidate_record(candidate, path_mapper))
+        .collect::<Vec<_>>();
+
+    Ok(ExecutionRunLogJobRecord {
+        id: job.id.clone(),
+        mode: job.mode.clone(),
+        time: job.time.clone(),
+        weather: job.weather.clone(),
+        input_images: job.input_images.clone(),
+        prompt: job.prompt.clone(),
+        status: finalized.status.as_str().to_string(),
+        selected_candidate: finalized.selected_candidate,
+        final_output: finalized.final_output.as_deref().map(path_mapper),
+        output: finalized.output.as_deref().map(path_mapper),
+        bg_remove: finalized.bg_remove.as_deref().map(path_mapper),
+        upscale: finalized.upscale.as_deref().map(path_mapper),
+        color: finalized.color.as_deref().map(path_mapper),
+        failure_reason: finalized.failure_reason.map(str::to_string),
+        candidates: candidate_records,
+    })
 }
 
 fn sanitize_id(value: &str) -> String {
@@ -901,6 +1002,7 @@ mod tests {
                     },
                 },
                 outputs: ExecutionCandidateJobOutputs {
+                    output: Some(PathBuf::from("outputs/job__c2.png")),
                     final_output: Some(PathBuf::from("outputs/job__c2.png")),
                     bg_remove: None,
                     upscale: None,
@@ -918,6 +1020,7 @@ mod tests {
                     },
                 },
                 outputs: ExecutionCandidateJobOutputs {
+                    output: Some(PathBuf::from("outputs/job__c1.png")),
                     final_output: Some(PathBuf::from("color_corrected/job__c1_nobg_x4_cinema.png")),
                     bg_remove: Some(PathBuf::from("background_removed/job__c1_nobg.webp")),
                     upscale: Some(PathBuf::from("upscaled/job__c1_nobg_x4.png")),
@@ -965,6 +1068,7 @@ mod tests {
                 },
             },
             outputs: ExecutionCandidateJobOutputs {
+                output: Some(PathBuf::from("outputs/job__c1.png")),
                 final_output: None,
                 bg_remove: None,
                 upscale: None,
@@ -994,6 +1098,7 @@ mod tests {
                 },
             },
             outputs: ExecutionCandidateJobOutputs {
+                output: Some(PathBuf::from("outputs/job__c1.png")),
                 final_output: None,
                 bg_remove: None,
                 upscale: None,
@@ -1021,6 +1126,7 @@ mod tests {
                 },
             },
             outputs: ExecutionCandidateJobOutputs {
+                output: Some(PathBuf::from("outputs/job__c3.png")),
                 final_output: Some(PathBuf::from("color_corrected/job__c3.png")),
                 bg_remove: Some(PathBuf::from("background_removed/job__c3.webp")),
                 upscale: Some(PathBuf::from("upscaled/job__c3.png")),
@@ -1054,6 +1160,7 @@ mod tests {
                 },
             },
             outputs: ExecutionCandidateJobOutputs {
+                output: Some(PathBuf::from("outputs/job__c1.png")),
                 final_output: None,
                 bg_remove: None,
                 upscale: None,
@@ -1071,5 +1178,96 @@ mod tests {
             Some("all_candidates_failed_output_guard")
         );
         assert_eq!(finalized.failed_output_guard_jobs_increment, 1);
+    }
+
+    #[test]
+    fn build_run_log_candidate_record_preserves_generated_and_final_outputs() {
+        let record = build_run_log_candidate_record(
+            &ExecutionCandidateJobResult {
+                candidate: ExecutionCandidateResult {
+                    candidate_index: 2,
+                    status: ExecutionCandidateStatus::Done,
+                    rank: ExecutionCandidateRank {
+                        hard_failures: 0,
+                        soft_warnings: 1,
+                        avg_chroma_exceed: 0.25,
+                    },
+                },
+                outputs: ExecutionCandidateJobOutputs {
+                    output: Some(PathBuf::from("outputs/job__c2.png")),
+                    final_output: Some(PathBuf::from("color_corrected/job__c2.png")),
+                    bg_remove: Some(PathBuf::from("background_removed/job__c2.webp")),
+                    upscale: Some(PathBuf::from("upscaled/job__c2.png")),
+                    color: Some(PathBuf::from("color_corrected/job__c2.png")),
+                },
+            },
+            |p| p.to_string_lossy().replace('\\', "/"),
+        );
+
+        assert_eq!(record.candidate_index, 2);
+        assert_eq!(record.status, "done");
+        assert_eq!(record.output.as_deref(), Some("outputs/job__c2.png"));
+        assert_eq!(
+            record.final_output.as_deref(),
+            Some("color_corrected/job__c2.png")
+        );
+        assert_eq!(
+            record.bg_remove.as_deref(),
+            Some("background_removed/job__c2.webp")
+        );
+    }
+
+    #[test]
+    fn build_run_log_job_record_shapes_done_job_fields_from_finalization() {
+        let job = ExecutionPlannedJob {
+            id: String::from("job"),
+            mode: String::from("style"),
+            time: String::from("day"),
+            weather: String::from("clear"),
+            input_images: vec![String::from("scenes/a.png")],
+            prompt: String::from("prompt"),
+        };
+
+        let record = build_run_log_job_record(
+            &job,
+            &[ExecutionCandidateJobResult {
+                candidate: ExecutionCandidateResult {
+                    candidate_index: 1,
+                    status: ExecutionCandidateStatus::Done,
+                    rank: ExecutionCandidateRank {
+                        hard_failures: 0,
+                        soft_warnings: 0,
+                        avg_chroma_exceed: 0.0,
+                    },
+                },
+                outputs: ExecutionCandidateJobOutputs {
+                    output: Some(PathBuf::from("outputs/job.png")),
+                    final_output: Some(PathBuf::from("color_corrected/job.png")),
+                    bg_remove: None,
+                    upscale: None,
+                    color: Some(PathBuf::from("color_corrected/job.png")),
+                },
+            }],
+            |p| p.to_string_lossy().replace('\\', "/"),
+        )
+        .expect("run-log job record should build");
+
+        assert_eq!(record.id, "job");
+        assert_eq!(record.mode, "style");
+        assert_eq!(record.time, "day");
+        assert_eq!(record.weather, "clear");
+        assert_eq!(record.status, "done");
+        assert_eq!(record.selected_candidate, Some(1));
+        assert_eq!(record.output.as_deref(), Some("color_corrected/job.png"));
+        assert_eq!(
+            record.final_output.as_deref(),
+            Some("color_corrected/job.png")
+        );
+        assert_eq!(record.failure_reason, None);
+        assert_eq!(record.candidates.len(), 1);
+        assert_eq!(
+            record.candidates[0].output.as_deref(),
+            Some("outputs/job.png")
+        );
     }
 }
