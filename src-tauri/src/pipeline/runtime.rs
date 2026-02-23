@@ -8,6 +8,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
+use crate::pipeline::execution::{ensure_generation_mode_dirs, execution_project_dirs};
 use crate::pipeline::planning::{
     build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
     PlannedGenerationJob,
@@ -324,8 +325,9 @@ fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io:
     }
 
     let mut out = Vec::new();
-    for entry in fs::read_dir(input_abs)? {
-        let entry = entry?;
+    let mut entries = fs::read_dir(input_abs)?.collect::<Result<Vec<_>, std::io::Error>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
         let path = entry.path();
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
@@ -536,9 +538,11 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
                     .join("var/projects")
                     .join(request.project_slug.as_str())
             });
-        let runs_dir = project_root_abs.join("runs");
-        fs::create_dir_all(runs_dir.as_path()).map_err(PipelineRuntimeError::Io)?;
-        let run_log_path_abs = runs_dir.join(format!("run_{}.json", make_run_log_stamp()));
+        let project_dirs = execution_project_dirs(project_root_abs.as_path());
+        ensure_generation_mode_dirs(&project_dirs).map_err(PipelineRuntimeError::Io)?;
+        let run_log_path_abs = project_dirs
+            .runs
+            .join(format!("run_{}.json", make_run_log_stamp()));
 
         let stage = request.options.stage.unwrap_or(PipelineStageFilter::Style);
         let time = request.options.time.unwrap_or(PipelineTimeFilter::Day);
@@ -548,7 +552,7 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
             .unwrap_or(PipelineWeatherFilter::Clear);
         let candidate_count = u64::from(request.options.candidates.unwrap_or(1));
         let project_root_display =
-            path_for_output(self.app_root.as_path(), project_root_abs.as_path());
+            path_for_output(self.app_root.as_path(), project_dirs.root.as_path());
         let run_log_display = path_for_output(self.app_root.as_path(), run_log_path_abs.as_path());
         let timestamp = iso_like_timestamp();
 
@@ -1638,6 +1642,9 @@ mod tests {
             .expect("rust dry input-path run should succeed");
 
         assert!(result.stdout.contains("Jobs: 2 (dry/planned)"));
+        assert!(app_root.join("var/projects/demo/outputs").is_dir());
+        assert!(app_root.join("var/projects/demo/archive/bad").is_dir());
+        assert!(app_root.join("var/projects/demo/archive/replaced").is_dir());
         assert!(inner
             .seen
             .lock()
@@ -1645,6 +1652,41 @@ mod tests {
             .is_empty());
 
         let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn list_image_files_recursive_returns_sorted_deterministic_order() {
+        let root = temp_app_root();
+        let input = root.join("inputs");
+        fs::create_dir_all(input.join("z-dir")).expect("z-dir should exist");
+        fs::create_dir_all(input.join("a-dir")).expect("a-dir should exist");
+        fs::write(input.join("b.png"), b"b").expect("b should exist");
+        fs::write(input.join("a.png"), b"a").expect("a should exist");
+        fs::write(input.join("z-dir/2.jpg"), b"z2").expect("z2 should exist");
+        fs::write(input.join("a-dir/1.jpg"), b"a1").expect("a1 should exist");
+
+        let files =
+            list_image_files_recursive(input.as_path()).expect("image file listing should work");
+        let rels = files
+            .iter()
+            .map(|p| {
+                p.strip_prefix(root.as_path())
+                    .expect("path should be under root")
+            })
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            rels,
+            vec![
+                String::from("inputs/a-dir/1.jpg"),
+                String::from("inputs/a.png"),
+                String::from("inputs/b.png"),
+                String::from("inputs/z-dir/2.jpg")
+            ]
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

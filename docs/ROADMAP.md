@@ -102,6 +102,8 @@ Status:
   - script run path now emits run log + summary marker only; Rust runtime owns post-run backend operations
 - Typed trigger path now injects `project_root` from Rust project storage
   - avoids script-side backend storage lookup (`backend.py get-project-storage`) for the app-triggered run path
+- Rust-native dry-run execution is now in place for typed trigger app flows (`scene_refs` and `input`)
+  - planning + run-log writing + summary marker emitted from Rust (no Node on those dry paths)
 
 ### Scope Cleanup / Legacy Removal (Pushed)
 
@@ -117,7 +119,7 @@ Status:
 
 #### 1. Rust Pipeline Runtime Boundary (WIP)
 
-- `src-tauri/src/pipeline/runtime.rs`
+  - `src-tauri/src/pipeline/runtime.rs`
   - `PipelineOrchestrator` trait
   - `PipelineCommandRunner` trait
   - `ScriptPipelineOrchestrator` (temporary fallback adapter to `scripts/image-lab.mjs`)
@@ -126,6 +128,9 @@ Status:
     - keeps script-side S3 sync disabled (`--storage-sync-s3 false`) to prevent duplicate post-run sync execution
     - Rust post-run ingest now uses native DB transaction path (`ProjectsStore::ingest_run_log`)
     - structured script summary marker is emitted and parsed (`KROMA_PIPELINE_SUMMARY_JSON`) with text fallback retained during migration
+  - `RustDryRunPipelineOrchestrator` now executes typed dry scene-ref and input-path runs in Rust
+    - deterministic Rust image discovery for `--input` (sorted recursive listing)
+    - generation directory layout creation delegated to `pipeline::execution`
 
 #### 2. Rust Pipeline Trigger Service (WIP)
 
@@ -183,6 +188,7 @@ Status:
    - post-run backend operations for typed trigger path are now Rust-owned (ingest + S3 sync)
    - `scripts/image-lab.mjs` post-run backend calls removed; remaining script responsibility is generation/post-process orchestration
    - next: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules
+   - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, and project directory layout
 
 ### Near-Term Backend / Bootstrap Work
 

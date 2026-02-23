@@ -26,6 +26,49 @@ Worktree: dirty (local uncommitted changes)
 6. Product-scope cleanup is now committed on `master`: voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`) were removed; active pipeline/runtime script dependencies remain.
 7. `docs/ROADMAP.md` is now tracked on `master` as the day-to-day progress board (kept alongside the larger spec doc).
 
+## Latest Patch (2026-02-23, runtime/execution extraction)
+
+### Scope Reviewed
+
+1. `src-tauri/src/pipeline/runtime.rs` (Rust dry-run path + `--input` file discovery)
+2. `src-tauri/src/pipeline/execution.rs` (new Rust run-mode execution foundations)
+3. Script parity behavior in `scripts/image-lab.mjs` for file output naming / candidate winner ranking / generation directory layout
+
+### Issues Discovered
+
+1. Bug (fixed): Rust recursive image discovery for typed dry `--input` runs used filesystem iteration order.
+   - Impact: nondeterministic job ordering across machines/filesystems; unstable run-log job order and migration parity checks.
+2. Parity gap (fixed): Rust dry-run path only created `runs/` while the script generation path creates `outputs`, `runs`, and archive directories up front.
+   - Impact: dry-run directory side effects diverged from script behavior and from the future Rust run-mode path.
+
+### Fixes Implemented
+
+1. `pipeline::runtime` now sorts recursive directory entries during Rust `--input` image discovery for deterministic planning order.
+2. `pipeline::runtime` dry-run path now uses `pipeline::execution` project directory helpers (`execution_project_dirs`, `ensure_generation_mode_dirs`) instead of hardcoded path joins.
+3. `pipeline::execution` extracted additional script-parity helpers:
+   - generation directory creation (`outputs`, `runs`, `archive/*`)
+   - sanitized output file path builder (port of `buildFileOutputPath`)
+   - candidate winner selection ranking (port of `pickBestCandidate`)
+   - stricter candidate filename contract (`total_candidates >= 1`)
+
+### Validation (latest patch)
+
+1. `cargo test pipeline::execution --lib`
+2. `cargo test pipeline::runtime --lib`
+3. `cargo test --test pipeline_trigger_endpoints --test http_contract_surface`
+4. `cargo fmt`
+
+Result: passing.
+
+### Open Tasks / Recommended Next Steps (updated)
+
+1. Use the new Rust `pipeline::execution` path-building/ranking helpers inside an actual Rust run-mode loop (not only dry-run support/foundations).
+2. Port candidate generation/post-process orchestration from `scripts/image-lab.mjs` into Rust execution services:
+   - generation call step
+   - optional bg-remove/upscale/color pass ordering
+   - output-guard evaluation + candidate ranking/winner selection
+3. Replace script run-log writing for run-mode with `pipeline::runlog` and remove `image-lab.mjs` run-mode ownership.
+
 ## Latest Review Pass (2026-02-23)
 
 ### Scope (newly added Rust migration code reviewed)
