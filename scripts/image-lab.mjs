@@ -26,6 +26,7 @@ const DEFAULT_MANIFEST = {
     weather_rain: "Visible wet surfaces, puddles, and reflection cues; no style drift."
   }
 };
+const RUN_SUMMARY_MARKER = "KROMA_PIPELINE_SUMMARY_JSON:";
 
 function readArg(name, fallback = "") {
   const idx = args.indexOf(name);
@@ -153,6 +154,17 @@ function mustExist(relativePath, label = "file") {
 
 function normalizeRel(p) {
   return String(p).replace(/\\/g, "/");
+}
+
+function emitRunSummaryMarker({ runLogPath, projectCtx, projectDirs, jobsCount, dry }) {
+  const payload = {
+    run_log_path: normalizeRel(path.relative(root, runLogPath)),
+    project_slug: String(projectCtx.id || ""),
+    project_root: toRel(projectDirs.root),
+    jobs: Number(jobsCount || 0),
+    mode: dry ? "dry" : "run"
+  };
+  console.log(`${RUN_SUMMARY_MARKER} ${JSON.stringify(payload)}`);
 }
 
 function ensureUnderAllowedRoots(relPath, allowedRoots) {
@@ -1617,6 +1629,13 @@ async function runGenerationMode(mode) {
   console.log(`Project: ${projectCtx.id}`);
   console.log(`Project root: ${toRel(projectDirs.root)}`);
   console.log(`Jobs: ${jobs.length} (${dry ? "dry/planned" : "run/completed"})`);
+  emitRunSummaryMarker({
+    runLogPath,
+    projectCtx,
+    projectDirs,
+    jobsCount: jobs.length,
+    dry
+  });
   if (backendIngest.enabled && backendIngest.attempted) {
     console.log(`Backend ingest: ${backendIngest.ok ? "ok" : "failed"}`);
   }

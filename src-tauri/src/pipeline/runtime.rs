@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
+use serde::Deserialize;
 use thiserror::Error;
 
 use crate::pipeline::backend_ops::default_script_backend_ops;
@@ -371,6 +372,25 @@ struct PipelineScriptRunSummary {
 }
 
 fn parse_script_run_summary_from_stdout(stdout: &str) -> Option<PipelineScriptRunSummary> {
+    const MARKER: &str = "KROMA_PIPELINE_SUMMARY_JSON:";
+    if let Some(marker_line) = stdout
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(MARKER))
+    {
+        let payload = marker_line.trim_start_matches(MARKER).trim();
+        if !payload.is_empty() {
+            if let Ok(parsed) = serde_json::from_str::<PipelineScriptRunSummaryMarker>(payload) {
+                return Some(PipelineScriptRunSummary {
+                    run_log_path: PathBuf::from(parsed.run_log_path),
+                    project_slug: parsed.project_slug.filter(|v| !v.trim().is_empty()),
+                    project_root: parsed.project_root.filter(|v| !v.trim().is_empty()),
+                    jobs: parsed.jobs,
+                });
+            }
+        }
+    }
+
     let mut run_log_path = None;
     let mut project_slug = None;
     let mut project_root = None;
@@ -413,6 +433,17 @@ fn parse_script_run_summary_from_stdout(stdout: &str) -> Option<PipelineScriptRu
         project_root,
         jobs,
     })
+}
+
+#[derive(Debug, Deserialize)]
+struct PipelineScriptRunSummaryMarker {
+    run_log_path: String,
+    #[serde(default)]
+    project_slug: Option<String>,
+    #[serde(default)]
+    project_root: Option<String>,
+    #[serde(default)]
+    jobs: Option<u64>,
 }
 
 fn append_stderr_line(stderr: &mut String, line: impl AsRef<str>) {
@@ -919,6 +950,22 @@ mod tests {
             "Run log: var/projects/demo/runs/run_1.json\nProject: demo\nProject root: var/projects/demo\nJobs: 3 (run/completed)\n",
         )
         .expect("summary should parse");
+
+        assert_eq!(
+            parsed.run_log_path,
+            PathBuf::from("var/projects/demo/runs/run_1.json")
+        );
+        assert_eq!(parsed.project_slug.as_deref(), Some("demo"));
+        assert_eq!(parsed.project_root.as_deref(), Some("var/projects/demo"));
+        assert_eq!(parsed.jobs, Some(3));
+    }
+
+    #[test]
+    fn parses_script_run_summary_from_marker_line() {
+        let parsed = parse_script_run_summary_from_stdout(
+            "KROMA_PIPELINE_SUMMARY_JSON: {\"run_log_path\":\"var/projects/demo/runs/run_1.json\",\"project_slug\":\"demo\",\"project_root\":\"var/projects/demo\",\"jobs\":3,\"mode\":\"run\"}\n",
+        )
+        .expect("marker summary should parse");
 
         assert_eq!(
             parsed.run_log_path,
