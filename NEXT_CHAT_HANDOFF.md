@@ -105,7 +105,8 @@ Remaining risks / TODO (review follow-up):
 6. Follow-up landed: runtime now compares Rust planned job count vs script summary job count (when available) and emits a warning on mismatch (parity signal during migration).
 7. Next phase starter landed: runtime preflight now retains Rust-planned job IDs (not only count) and includes IDs in parity mismatch warnings.
 8. Follow-up landed: Rust runtime now writes planned jobs to a temp JSON file and passes `--jobs-file` to `image-lab.mjs` for manifest-backed scene-ref runs, bypassing script-side planning on the typed app path.
-9. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: replace script-owned generation/post-process execution loop with Rust execution modules).
+9. Next phase starter landed: new `pipeline::runlog` Rust module provides typed summary-marker formatting and pretty JSON run-log writing helpers (foundation for replacing script run-log output).
+10. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: replace script-owned generation/post-process execution loop with Rust execution modules and use `pipeline::runlog` for log output).
 
 ### Recommended Next Steps
 
