@@ -107,7 +107,8 @@ Remaining risks / TODO (review follow-up):
 8. Follow-up landed: Rust runtime now writes planned jobs to a temp JSON file and passes `--jobs-file` to `image-lab.mjs` for manifest-backed scene-ref runs, bypassing script-side planning on the typed app path.
 9. Next phase starter landed: new `pipeline::runlog` Rust module provides typed summary-marker formatting and pretty JSON run-log writing helpers (foundation for replacing script run-log output).
 10. Major follow-up landed: typed dry runs with `scene_refs` now execute in Rust (planning + run-log writing + summary marker) via `RustDryRunPipelineOrchestrator` and no longer require Node/script execution on that path.
-11. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: replace run-mode generation/post-process execution loop with Rust execution modules and reuse `pipeline::runlog` for final log output).
+11. Next phase starter landed: `pipeline::execution` Rust module (run-mode execution foundation) with script-parity candidate output filename logic and tests.
+12. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: move candidate generation/post-process loop pieces into `pipeline::execution` and reuse `pipeline::runlog` for final log output).
 
 ### Recommended Next Steps
 
