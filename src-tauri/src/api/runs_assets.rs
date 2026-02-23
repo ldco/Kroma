@@ -226,7 +226,7 @@ pub async fn trigger_run_handler(
         }
     };
 
-    let params = match build_trigger_params(&payload) {
+    let mut params = match build_trigger_params(&payload) {
         Ok(params) => params,
         Err(message) => {
             return (
@@ -244,14 +244,21 @@ pub async fn trigger_run_handler(
     let store = state.projects_store.clone();
     let slug_for_lookup = slug.clone();
     let project_check =
-        tokio::task::spawn_blocking(move || store.get_project_detail(slug_for_lookup.as_str()))
+        tokio::task::spawn_blocking(move || store.get_project_storage(slug_for_lookup.as_str()))
             .await;
     match project_check {
-        Ok(Ok(_project)) => {}
+        Ok(Ok(storage)) => {
+            if params.project_root.is_none() {
+                let resolved = storage.storage.local.project_root.trim();
+                if !resolved.is_empty() {
+                    params.project_root = Some(resolved.to_string());
+                }
+            }
+        }
         Ok(Err(error)) => return map_repo_error(error, "Project not found"),
         Err(join_error) => {
             return internal_error(format!(
-                "pipeline trigger project lookup task failed: {join_error}"
+                "pipeline trigger project storage lookup task failed: {join_error}"
             ));
         }
     }

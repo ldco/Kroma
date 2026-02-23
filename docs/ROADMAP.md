@@ -100,6 +100,8 @@ Status:
   - `backend.py sync-project-s3` is no longer used for the default Rust `runs/trigger` post-run path
 - Removed script-owned post-run backend ingest/sync calls from `scripts/image-lab.mjs`
   - script run path now emits run log + summary marker only; Rust runtime owns post-run backend operations
+- Typed trigger path now injects `project_root` from Rust project storage
+  - avoids script-side backend storage lookup (`backend.py get-project-storage`) for the app-triggered run path
 
 ### Scope Cleanup / Legacy Removal (Pushed)
 

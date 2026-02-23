@@ -49,6 +49,7 @@ Worktree: dirty (local uncommitted changes)
    - `scripts/image-lab.mjs` emits `KROMA_PIPELINE_SUMMARY_JSON: {...}`
    - Rust parser prefers the structured marker and keeps text-line fallback during migration
 6. `scripts/image-lab.mjs` no longer executes backend ingest/S3 sync directly (post-run backend calls removed from the script run path).
+7. Typed `runs/trigger` now injects `project_root` from Rust project storage when omitted, reducing dependency on script-side backend storage resolution for the app path.
 
 ## What Landed (Latest Relevant Backend Work)
 

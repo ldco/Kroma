@@ -11,7 +11,7 @@ use uuid::Uuid;
 use kroma_backend_core::api::server::{
     build_router_with_projects_store, build_router_with_projects_store_and_pipeline_trigger,
 };
-use kroma_backend_core::db::projects::ProjectsStore;
+use kroma_backend_core::db::projects::{ProjectsStore, UpdateStorageLocalInput};
 use kroma_backend_core::pipeline::runtime::{
     PipelineInputSource, PipelineOrchestrator, PipelineRunRequest, PipelineRunResult,
     PipelineRuntimeError, PipelineStageFilter, PipelineTimeFilter, PipelineWeatherFilter,
@@ -209,6 +209,67 @@ async fn pipeline_trigger_typed_fields_translate_to_cli_args() {
     assert_eq!(seen[0].options.time, Some(PipelineTimeFilter::Day));
     assert_eq!(seen[0].options.weather, Some(PipelineWeatherFilter::Clear));
     assert_eq!(seen[0].options.candidates, Some(2));
+}
+
+#[tokio::test]
+async fn pipeline_trigger_injects_project_root_from_rust_storage_when_missing() {
+    let store = test_store();
+    let fake = Arc::new(FakeOrchestrator::with_next(Ok(PipelineRunResult {
+        status_code: 0,
+        stdout: String::new(),
+        stderr: String::new(),
+    })));
+    let pipeline_trigger = PipelineTriggerService::new(fake.clone());
+    let app =
+        build_router_with_projects_store_and_pipeline_trigger(store.clone(), pipeline_trigger);
+
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Trigger Root Injection"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    store
+        .update_project_storage_local(
+            slug.as_str(),
+            UpdateStorageLocalInput {
+                project_root: Some(String::from("var/projects/custom-demo")),
+                ..UpdateStorageLocalInput::default()
+            },
+        )
+        .expect("project storage local root should update");
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/trigger"),
+        Body::from(
+            json!({
+                "mode":"dry",
+                "scene_refs":["scene_a.png"]
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+
+    assert_eq!(response["ok"], json!(true));
+    let seen = fake.take_seen();
+    assert_eq!(seen.len(), 1);
+    let injected_root = seen[0]
+        .options
+        .project_root
+        .as_deref()
+        .expect("project root should be injected");
+    assert!(injected_root.ends_with("/var/projects/custom-demo"));
 }
 
 #[tokio::test]
