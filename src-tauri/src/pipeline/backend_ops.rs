@@ -2,10 +2,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use crate::db::projects::{IngestRunLogInput, ProjectsRepoError, ProjectsStore};
 use crate::pipeline::runtime::{
     default_app_root_from_manifest_dir, CommandOutput, CommandSpec, PipelineCommandRunner,
     PipelineRuntimeError, StdPipelineCommandRunner,
@@ -48,7 +49,7 @@ impl BackendCommandResult {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BackendIngestRunResponse {
     pub ok: bool,
     pub project_slug: String,
@@ -91,6 +92,27 @@ pub trait PipelineBackendOps: Send + Sync + 'static {
 }
 
 pub type SharedPipelineBackendOps = Arc<dyn PipelineBackendOps>;
+
+#[derive(Clone)]
+pub struct NativeIngestScriptSyncBackendOps<R> {
+    projects_store: Arc<ProjectsStore>,
+    script_sync_ops: ScriptPipelineBackendOps<R>,
+}
+
+impl<R> NativeIngestScriptSyncBackendOps<R>
+where
+    R: PipelineCommandRunner,
+{
+    pub fn new(
+        projects_store: Arc<ProjectsStore>,
+        script_sync_ops: ScriptPipelineBackendOps<R>,
+    ) -> Self {
+        Self {
+            projects_store,
+            script_sync_ops,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ScriptPipelineBackendOps<R> {
@@ -264,6 +286,55 @@ where
     }
 }
 
+impl<R> PipelineBackendOps for NativeIngestScriptSyncBackendOps<R>
+where
+    R: PipelineCommandRunner,
+{
+    fn ingest_run(
+        &self,
+        request: &BackendIngestRunRequest,
+    ) -> Result<BackendCommandResult, BackendOpsError> {
+        validate_project_slug(request.project_slug.as_str())?;
+        let result = self
+            .projects_store
+            .ingest_run_log(IngestRunLogInput {
+                run_log_path: request.run_log_path.clone(),
+                project_slug: request.project_slug.clone(),
+                project_name: request.project_name.clone(),
+                create_project_if_missing: request.create_project_if_missing,
+                compute_hashes: request.compute_hashes,
+            })
+            .map_err(BackendOpsError::ProjectsRepo)?;
+
+        let payload = serde_json::to_value(BackendIngestRunResponse {
+            ok: true,
+            project_slug: result.project_slug,
+            run_id: result.run_id,
+            run_log_path: result.run_log_path,
+            jobs: result.jobs,
+            candidates: result.candidates,
+            assets_upserted: result.assets_upserted,
+            quality_reports_written: result.quality_reports_written,
+            cost_events_written: result.cost_events_written,
+            status: result.status,
+        })
+        .map_err(BackendOpsError::JsonEncode)?;
+
+        Ok(BackendCommandResult {
+            stdout: payload.to_string(),
+            stderr: String::new(),
+            json: Some(payload),
+        })
+    }
+
+    fn sync_project_s3(
+        &self,
+        request: &BackendSyncProjectS3Request,
+    ) -> Result<BackendCommandResult, BackendOpsError> {
+        self.script_sync_ops.sync_project_s3(request)
+    }
+}
+
 fn parse_backend_command_result(output: CommandOutput) -> BackendCommandResult {
     let json = serde_json::from_str::<Value>(output.stdout.as_str()).ok();
     BackendCommandResult {
@@ -291,6 +362,10 @@ pub enum BackendOpsError {
     MissingJsonOutput,
     #[error("backend command JSON decode failed: {0}")]
     JsonDecode(#[source] serde_json::Error),
+    #[error("backend command JSON encode failed: {0}")]
+    JsonEncode(#[source] serde_json::Error),
+    #[error("backend projects repo error: {0}")]
+    ProjectsRepo(#[source] ProjectsRepoError),
 }
 
 fn validate_project_slug(value: &str) -> Result<(), BackendOpsError> {
@@ -313,6 +388,12 @@ pub fn default_script_backend_ops() -> ScriptPipelineBackendOps<StdPipelineComma
         default_app_root_from_manifest_dir(),
         StdPipelineCommandRunner,
     )
+}
+
+pub fn default_backend_ops_with_native_ingest(
+    projects_store: Arc<ProjectsStore>,
+) -> NativeIngestScriptSyncBackendOps<StdPipelineCommandRunner> {
+    NativeIngestScriptSyncBackendOps::new(projects_store, default_script_backend_ops())
 }
 
 #[cfg(test)]

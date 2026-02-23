@@ -10,6 +10,7 @@ use uuid::Uuid;
 mod analytics_exports;
 mod bootstrap;
 mod chat_instructions;
+mod pipeline_ingest;
 mod prompt_templates;
 mod provider_style_character;
 mod reference_sets;
@@ -26,6 +27,7 @@ pub use chat_instructions::{
     ChatMessageSummary, ChatSessionSummary, CreateAgentInstructionInput, CreateChatMessageInput,
     CreateChatSessionInput,
 };
+pub use pipeline_ingest::{IngestRunLogInput, IngestRunLogResult};
 pub use prompt_templates::{
     CreatePromptTemplateInput, PromptTemplateSummary, UpdatePromptTemplateInput,
 };

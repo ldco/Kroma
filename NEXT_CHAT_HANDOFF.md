@@ -36,6 +36,19 @@ Worktree: dirty (local uncommitted changes)
    - a script deprecation/removal milestone
 5. Phase 1 is not complete until core runtime/orchestration, worker flows, and active backend integrations are owned by Rust modules.
 
+## Runtime Consolidation Update (Newest)
+
+1. Native Rust run-log ingest is now implemented in `src-tauri/src/db/projects/pipeline_ingest.rs` (`ProjectsStore::ingest_run_log`).
+2. Default typed `runs/trigger` post-run path now uses:
+   - Rust post-run wrapper (`pipeline::runtime`)
+   - Rust post-run service (`pipeline::post_run`)
+   - native Rust ingest (via `pipeline::backend_ops` hybrid adapter)
+3. `backend.py ingest-run` is no longer used on the default Rust `runs/trigger` path.
+4. Remaining post-run script dependency on that path is `backend.py sync-project-s3` only.
+5. Script handoff hardening is in place:
+   - `scripts/image-lab.mjs` emits `KROMA_PIPELINE_SUMMARY_JSON: {...}`
+   - Rust parser prefers the structured marker and keeps text-line fallback during migration
+
 ## What Landed (Latest Relevant Backend Work)
 
 Latest backend commit on `master`: `a620df7`  

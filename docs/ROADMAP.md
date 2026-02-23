@@ -94,6 +94,8 @@ Status:
 - Script parity validation enforced for input source (`input` xor `scene_refs`)
 - Typed script-backed backend ops boundary added for pipeline post-run operations (`pipeline::backend_ops`)
 - Typed post-run service added for backend ingest / S3 sync orchestration (`pipeline::post_run`)
+- Native Rust run-log ingest (`ProjectsStore::ingest_run_log`) added and wired into the typed trigger post-run path
+  - `backend.py ingest-run` is no longer used for the default Rust `runs/trigger` path
 
 ### Scope Cleanup / Legacy Removal (Pushed)
 
@@ -116,7 +118,8 @@ Status:
   - `RustPostRunPipelineOrchestrator` wrapper now owns backend ingest for typed HTTP trigger path
     - disables script-side backend ingest (`--backend-db-ingest false`) to avoid duplicate ingestion
     - keeps script-side S3 sync disabled (`--storage-sync-s3 false`) until Rust path owns sync policy/options
-    - current run-log handoff uses script stdout `Run log:` line parsing (transitional, brittle)
+    - Rust post-run ingest now uses native DB transaction path (`ProjectsStore::ingest_run_log`)
+    - structured script summary marker is emitted and parsed (`KROMA_PIPELINE_SUMMARY_JSON`) with text fallback retained during migration
 
 #### 2. Rust Pipeline Trigger Service (WIP)
 
@@ -170,9 +173,9 @@ Status:
 3. Keep script runtime behind explicit Rust interfaces only
    - no new direct script calls from handlers/routes
 4. Continue replacing script-backed orchestration behavior inside the runtime boundary (without widening the HTTP contract)
-   - current default runtime path now routes backend ingest through Rust `pipeline::post_run` + `pipeline::backend_ops`
-   - next: replace stdout `Run log:` parsing with structured handoff (script JSON or full Rust orchestration)
-   - target: remove script-owned post-run ingest/sync behavior entirely from `scripts/image-lab.mjs`
+   - current default runtime path routes post-run ingest through Rust `pipeline::post_run` + native `ProjectsStore::ingest_run_log`
+   - remaining script dependency in post-run path: `sync-project-s3`
+   - next: replace `backend.py sync-project-s3` with native Rust implementation and remove script-owned post-run sync behavior from `scripts/image-lab.mjs`
 
 ### Near-Term Backend / Bootstrap Work
 
@@ -189,7 +192,7 @@ Status:
 ### Phase 1 Remaining (Larger Milestones)
 
 1. Replace `scripts/image-lab.mjs` orchestration with Rust pipeline orchestration modules (desktop app owns generation/post-process flow)
-2. Move run trigger + ingest + sync parity fully into Rust services/endpoints (no script-owned post-run steps)
+2. Move run trigger + ingest + sync parity fully into Rust services/endpoints (ingest is in progress; sync still script-backed)
 3. Replace Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust worker/service modules
 4. Build typed Rust adapters for external tools/integrations (called from Rust, not shell scripts)
    - OpenAI image calls

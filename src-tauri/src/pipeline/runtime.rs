@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::pipeline::backend_ops::default_script_backend_ops;
+use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
 };
@@ -528,8 +528,14 @@ pub fn default_script_pipeline_orchestrator() -> ScriptPipelineOrchestrator<StdP
 }
 
 pub fn default_pipeline_orchestrator_with_rust_post_run() -> RustPostRunPipelineOrchestrator {
+    let backend_ops: SharedPipelineBackendOps = Arc::new(default_script_backend_ops());
+    default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops)
+}
+
+pub fn default_pipeline_orchestrator_with_rust_post_run_backend_ops(
+    backend_ops: SharedPipelineBackendOps,
+) -> RustPostRunPipelineOrchestrator {
     let inner: SharedPipelineOrchestrator = Arc::new(default_script_pipeline_orchestrator());
-    let backend_ops = Arc::new(default_script_backend_ops());
     let post_run = PipelinePostRunService::new(backend_ops);
     RustPostRunPipelineOrchestrator::new(inner, post_run)
 }
