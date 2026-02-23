@@ -255,6 +255,12 @@ pub struct ExecutionPlannedGenerationRecord {
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExecutionPlannedRunLogGenerationRecord {
+    pub candidates: u64,
+    pub max_candidates: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ExecutionPlannedPostprocessRecord {
     pub upscale: bool,
     pub upscale_backend: Option<String>,
@@ -287,6 +293,42 @@ pub struct ExecutionPlannedRunLogJobRecord {
     pub planned_generation: ExecutionPlannedGenerationRecord,
     pub planned_postprocess: ExecutionPlannedPostprocessRecord,
     pub planned_output_guard: ExecutionPlannedOutputGuardRecord,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExecutionPlannedRunLogStorageRecord {
+    pub project_root: String,
+    pub resolved_from_backend: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionPlannedRunLogRecord {
+    pub timestamp: String,
+    pub project: String,
+    pub mode: String,
+    pub stage: String,
+    pub time: String,
+    pub weather: String,
+    pub model: String,
+    pub size: String,
+    pub quality: String,
+    pub generation: ExecutionPlannedRunLogGenerationRecord,
+    pub postprocess: ExecutionPlannedPostprocessRecord,
+    pub output_guard: ExecutionPlannedOutputGuardRecord,
+    pub storage: ExecutionPlannedRunLogStorageRecord,
+    pub jobs: Vec<ExecutionPlannedRunLogJobRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionPlannedRunLogContext {
+    pub timestamp: String,
+    pub project_slug: String,
+    pub stage: String,
+    pub time: String,
+    pub weather: String,
+    pub project_root: String,
+    pub resolved_from_backend: bool,
+    pub candidate_count: u64,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -720,23 +762,65 @@ pub fn build_planned_run_log_job_record(
         planned_generation: ExecutionPlannedGenerationRecord {
             candidates: candidate_count,
         },
-        planned_postprocess: ExecutionPlannedPostprocessRecord {
-            upscale: false,
-            upscale_backend: None,
-            color: false,
-            color_profile: None,
-            bg_remove: false,
-            bg_remove_backends: Vec::new(),
-            bg_refine_openai: false,
-            bg_refine_openai_required: false,
-            pipeline_order: vec![String::from("generate")],
+        planned_postprocess: default_planned_postprocess_record(),
+        planned_output_guard: default_planned_output_guard_record(),
+    }
+}
+
+pub fn default_planned_postprocess_record() -> ExecutionPlannedPostprocessRecord {
+    ExecutionPlannedPostprocessRecord {
+        upscale: false,
+        upscale_backend: None,
+        color: false,
+        color_profile: None,
+        bg_remove: false,
+        bg_remove_backends: Vec::new(),
+        bg_refine_openai: false,
+        bg_refine_openai_required: false,
+        pipeline_order: vec![String::from("generate")],
+    }
+}
+
+pub fn default_planned_output_guard_record() -> ExecutionPlannedOutputGuardRecord {
+    ExecutionPlannedOutputGuardRecord {
+        enabled: true,
+        enforce_grayscale: false,
+        max_chroma_delta: 2.0,
+        fail_on_chroma_exceed: false,
+    }
+}
+
+pub fn build_planned_run_log_record(
+    ctx: ExecutionPlannedRunLogContext,
+    jobs: &[ExecutionPlannedJob],
+) -> ExecutionPlannedRunLogRecord {
+    let candidate_count = ctx.candidate_count;
+    let job_records = jobs
+        .iter()
+        .map(|job| build_planned_run_log_job_record(job, candidate_count))
+        .collect::<Vec<_>>();
+
+    ExecutionPlannedRunLogRecord {
+        timestamp: ctx.timestamp,
+        project: ctx.project_slug,
+        mode: String::from("dry"),
+        stage: ctx.stage,
+        time: ctx.time,
+        weather: ctx.weather,
+        model: String::new(),
+        size: String::new(),
+        quality: String::new(),
+        generation: ExecutionPlannedRunLogGenerationRecord {
+            candidates: candidate_count,
+            max_candidates: candidate_count,
         },
-        planned_output_guard: ExecutionPlannedOutputGuardRecord {
-            enabled: true,
-            enforce_grayscale: false,
-            max_chroma_delta: 2.0,
-            fail_on_chroma_exceed: false,
+        postprocess: default_planned_postprocess_record(),
+        output_guard: default_planned_output_guard_record(),
+        storage: ExecutionPlannedRunLogStorageRecord {
+            project_root: ctx.project_root,
+            resolved_from_backend: ctx.resolved_from_backend,
         },
+        jobs: job_records,
     }
 }
 
@@ -1051,6 +1135,39 @@ mod tests {
         assert!(!record.planned_output_guard.enforce_grayscale);
         assert_eq!(record.planned_output_guard.max_chroma_delta, 2.0);
         assert!(!record.planned_output_guard.fail_on_chroma_exceed);
+    }
+
+    #[test]
+    fn build_planned_run_log_record_shapes_dry_run_top_level_fields() {
+        let record = build_planned_run_log_record(
+            ExecutionPlannedRunLogContext {
+                timestamp: String::from("2026-02-23T10:00:00Z"),
+                project_slug: String::from("demo"),
+                stage: String::from("style"),
+                time: String::from("day"),
+                weather: String::from("clear"),
+                project_root: String::from("var/projects/demo"),
+                resolved_from_backend: true,
+                candidate_count: 2,
+            },
+            &[ExecutionPlannedJob {
+                id: String::from("job_1"),
+                mode: String::from("style"),
+                time: String::from("day"),
+                weather: String::from("clear"),
+                input_images: vec![String::from("var/projects/demo/scenes/a.png")],
+                prompt: String::from("prompt"),
+            }],
+        );
+
+        assert_eq!(record.project, "demo");
+        assert_eq!(record.mode, "dry");
+        assert_eq!(record.generation.candidates, 2);
+        assert_eq!(record.generation.max_candidates, 2);
+        assert_eq!(record.storage.project_root, "var/projects/demo");
+        assert!(record.storage.resolved_from_backend);
+        assert_eq!(record.jobs.len(), 1);
+        assert_eq!(record.jobs[0].status, "planned");
     }
 
     #[test]

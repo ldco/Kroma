@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
 use crate::pipeline::execution::{
-    build_planned_run_log_job_record, ensure_generation_mode_dirs, execution_project_dirs,
-    ExecutionPlannedJob,
+    build_planned_run_log_record, ensure_generation_mode_dirs, execution_project_dirs,
+    ExecutionPlannedJob, ExecutionPlannedRunLogContext,
 };
 use crate::pipeline::planning::{
     build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
@@ -559,51 +559,25 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
         let run_log_display = path_for_output(self.app_root.as_path(), run_log_path_abs.as_path());
         let timestamp = iso_like_timestamp();
 
-        let planned_job_records = planned
+        let execution_jobs = planned
             .jobs
             .iter()
             .cloned()
             .map(ExecutionPlannedJob::from)
-            .map(|job| build_planned_run_log_job_record(&job, candidate_count))
             .collect::<Vec<_>>();
-
-        let run_meta = serde_json::json!({
-            "timestamp": timestamp,
-            "project": request.project_slug,
-            "mode": "dry",
-            "stage": stage.as_str(),
-            "time": time.as_str(),
-            "weather": weather.as_str(),
-            "model": "",
-            "size": "",
-            "quality": "",
-            "generation": {
-                "candidates": candidate_count,
-                "max_candidates": candidate_count
+        let run_meta = build_planned_run_log_record(
+            ExecutionPlannedRunLogContext {
+                timestamp,
+                project_slug: request.project_slug.clone(),
+                stage: stage.as_str().to_string(),
+                time: time.as_str().to_string(),
+                weather: weather.as_str().to_string(),
+                project_root: project_root_display.clone(),
+                resolved_from_backend: request.options.project_root.is_some(),
+                candidate_count,
             },
-            "postprocess": {
-                "upscale": false,
-                "upscale_backend": serde_json::Value::Null,
-                "color": false,
-                "color_profile": serde_json::Value::Null,
-                "bg_remove": false,
-                "bg_remove_backends": [],
-                "bg_refine_openai": false,
-                "bg_refine_openai_required": false,
-                "pipeline_order": ["generate"]
-            },
-            "output_guard": {
-                "enabled": true,
-                "enforce_grayscale": false,
-                "max_chroma_delta": 2,
-                "fail_on_chroma_exceed": false
-            },
-            "storage": {
-                "project_root": project_root_display,
-                "resolved_from_backend": request.options.project_root.is_some()
-            },
-            "jobs": planned_job_records
-        });
+            execution_jobs.as_slice(),
+        );
 
         write_pretty_json_with_newline(run_log_path_abs.as_path(), &run_meta)
             .map_err(|e| PipelineRuntimeError::Io(std::io::Error::other(e.to_string())))?;

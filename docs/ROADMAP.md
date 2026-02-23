@@ -196,6 +196,7 @@ Status:
    - next: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules
   - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, project directory layout, candidate post-process output path planning, per-job candidate loop expansion into ordered typed plans, output-guard rank summarization, job outcome resolution/finalization, and typed run-log candidate/job/output-guard/planned-job record assembly
   - runtime cleanup: Rust dry-run run-log job JSON shaping now reuses typed `pipeline::execution` builders (removes duplicated inline JSON shape in `pipeline::runtime`)
+  - follow-up cleanup: Rust dry-run top-level run-log record shaping (generation/postprocess/output-guard/storage/jobs envelope) now also uses typed `pipeline::execution` builder structs; `pipeline::runtime` no longer hand-builds the dry-run log schema
 
 ### Near-Term Backend / Bootstrap Work
 

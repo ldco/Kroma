@@ -56,6 +56,31 @@ Worktree: dirty (local uncommitted changes)
 
 Result: passing.
 
+## Next Phase Started (2026-02-23, typed dry-run log envelope extraction)
+
+### Scope
+
+1. `src-tauri/src/pipeline/execution.rs`
+2. `src-tauri/src/pipeline/runtime.rs`
+
+### What Landed
+
+1. `pipeline::execution` now defines typed dry-run run-log envelope structs/builders:
+   - `ExecutionPlannedRunLogRecord`
+   - `ExecutionPlannedRunLogContext`
+   - `build_planned_run_log_record(...)`
+   - shared defaults for planned postprocess/output-guard fields
+2. `pipeline::runtime::RustDryRunPipelineOrchestrator` now serializes the typed dry-run run-log record directly instead of hand-assembling the top-level JSON envelope.
+3. Added unit coverage for the new top-level typed dry-run run-log builder.
+
+### Validation
+
+1. `cargo fmt`
+2. `cargo test pipeline::execution --lib`
+3. `cargo test pipeline::runtime --lib`
+
+Result: passing.
+
 ## Latest Patch (2026-02-23, runtime/execution extraction)
 
 ### Scope Reviewed
