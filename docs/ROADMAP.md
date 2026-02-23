@@ -98,6 +98,8 @@ Status:
   - `backend.py ingest-run` is no longer used for the default Rust `runs/trigger` path
 - Rust-owned S3 sync prechecks + AWS CLI execution added in `pipeline::backend_ops`
   - `backend.py sync-project-s3` is no longer used for the default Rust `runs/trigger` post-run path
+- Removed script-owned post-run backend ingest/sync calls from `scripts/image-lab.mjs`
+  - script run path now emits run log + summary marker only; Rust runtime owns post-run backend operations
 
 ### Scope Cleanup / Legacy Removal (Pushed)
 
@@ -177,7 +179,8 @@ Status:
 4. Continue replacing script-backed orchestration behavior inside the runtime boundary (without widening the HTTP contract)
    - current default runtime path routes post-run ingest through Rust `pipeline::post_run` + native `ProjectsStore::ingest_run_log`
    - post-run backend operations for typed trigger path are now Rust-owned (ingest + S3 sync)
-   - next: remove script-owned post-run backend calls from `scripts/image-lab.mjs` (currently suppressed via flags) and continue replacing generation/orchestration itself
+   - `scripts/image-lab.mjs` post-run backend calls removed; remaining script responsibility is generation/post-process orchestration
+   - next: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules
 
 ### Near-Term Backend / Bootstrap Work
 

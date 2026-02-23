@@ -1177,108 +1177,6 @@ function pickBestCandidate(candidates) {
   return viable[0];
 }
 
-function resolveBackendIngestConfig() {
-  const enabled = parseBoolArg("--backend-db-ingest", true);
-  const required = parseBoolArg("--backend-db-required", false);
-  const backend = resolveBackendCommonConfig();
-  return {
-    enabled,
-    required,
-    ...backend
-  };
-}
-
-function maybeIngestRunToBackend({ backendCfg, projectCtx, runLogPath }) {
-  if (!backendCfg.enabled) {
-    return { enabled: false, attempted: false, ok: true, reason: "disabled" };
-  }
-  if (!fs.existsSync(backendCfg.scriptPath)) {
-    const msg = `Backend ingest script missing: ${toRel(backendCfg.scriptPath)}`;
-    if (backendCfg.required) throw new Error(msg);
-    console.warn(msg);
-    return { enabled: true, attempted: false, ok: false, reason: "missing_script" };
-  }
-
-  const cmdArgs = [
-    backendCfg.scriptPath,
-    "--db",
-    backendCfg.dbPath,
-    "ingest-run",
-    "--run-log",
-    resolvePath(runLogPath),
-    "--project-slug",
-    projectCtx.id,
-    "--project-name",
-    projectCtx.id
-  ];
-
-  try {
-    const proc = runCommand(backendCfg.pythonBin, cmdArgs, "Backend run ingest");
-    let payload = null;
-    try {
-      payload = JSON.parse(proc.stdout || "{}");
-    } catch {
-      payload = null;
-    }
-    return { enabled: true, attempted: true, ok: true, payload };
-  } catch (err) {
-    const msg = err?.message || String(err);
-    if (backendCfg.required) throw err;
-    console.warn(`Backend ingest skipped: ${msg}`);
-    return { enabled: true, attempted: true, ok: false, reason: msg };
-  }
-}
-
-function resolveStorageSyncConfig() {
-  return {
-    enabled: parseBoolArg("--storage-sync-s3", false),
-    required: parseBoolArg("--storage-sync-required", false),
-    dryRun: parseBoolArg("--storage-sync-dry-run", false),
-    delete: parseBoolArg("--storage-sync-delete", false),
-    allowMissingLocal: parseBoolArg("--storage-sync-allow-missing-local", true)
-  };
-}
-
-function maybeSyncProjectS3({ backendCfg, projectCtx, syncCfg }) {
-  if (!syncCfg.enabled) {
-    return { enabled: false, attempted: false, ok: true, reason: "disabled" };
-  }
-  if (!fs.existsSync(backendCfg.scriptPath)) {
-    const msg = `Backend S3 sync script missing: ${toRel(backendCfg.scriptPath)}`;
-    if (syncCfg.required) throw new Error(msg);
-    console.warn(msg);
-    return { enabled: true, attempted: false, ok: false, reason: msg };
-  }
-
-  const cmdArgs = [
-    backendCfg.scriptPath,
-    "--db",
-    backendCfg.dbPath,
-    "sync-project-s3",
-    "--project-slug",
-    projectCtx.id
-  ];
-  if (syncCfg.dryRun) cmdArgs.push("--dry-run");
-  if (syncCfg.delete) cmdArgs.push("--delete");
-  if (syncCfg.allowMissingLocal) cmdArgs.push("--allow-missing-local");
-
-  try {
-    const proc = runCommand(backendCfg.pythonBin, cmdArgs, "Backend S3 sync");
-    let payload = null;
-    try {
-      payload = JSON.parse(proc.stdout || "{}");
-    } catch {
-      payload = null;
-    }
-    return { enabled: true, attempted: true, ok: true, payload };
-  } catch (err) {
-    const msg = err?.message || String(err);
-    if (syncCfg.required) throw err;
-    console.warn(`S3 sync skipped: ${msg}`);
-    return { enabled: true, attempted: true, ok: false, reason: msg };
-  }
-}
-
 function usage() {
   return [
     "Usage:",
@@ -1300,8 +1198,7 @@ function usage() {
     "  project_root: required via --project-root or backend project storage",
     "  scenes: required via --input or --scene-refs",
     "  output guard: enabled",
-    "  backend run ingest: enabled",
-    "  s3 sync after run: disabled",
+    "  post-run backend ingest/s3 sync: handled by Rust desktop runtime (not this script)",
     "  auto-archive on overwrite: enabled (disable with --no-archive-replaced)"
   ].join("\n");
 }
@@ -1381,9 +1278,6 @@ async function runGenerationMode(mode) {
   const colorOutputDir = resolvePath(readArg("--color-output", projectDirs.color));
   const bgRemoveOutputDir = resolvePath(readArg("--bg-remove-output", projectDirs.bgRemove));
   const candidateCfg = parseCandidateCount(manifest, dry);
-  const backendCfg = resolveBackendIngestConfig();
-  const storageSyncCfg = resolveStorageSyncConfig();
-
   const stamp = makeStamp();
   const runLogPath = path.join(runsDir, `run_${stamp}.json`);
 
@@ -1418,15 +1312,9 @@ async function runGenerationMode(mode) {
       max_chroma_delta: outputGuardCfg.maxChromaDelta,
       fail_on_chroma_exceed: outputGuardCfg.failOnChromaExceed
     },
-    backend: {
-      ingest_enabled: backendCfg.enabled,
-      db: toRel(backendCfg.dbPath)
-    },
     storage: {
       project_root: toRel(projectDirs.root),
-      resolved_from_backend: Boolean(projectCtx.storage_resolved_from_backend),
-      s3_sync_enabled: storageSyncCfg.enabled,
-      s3_sync_dry_run: storageSyncCfg.dryRun
+      resolved_from_backend: Boolean(projectCtx.storage_resolved_from_backend)
     },
     jobs: []
   };
@@ -1615,16 +1503,6 @@ async function runGenerationMode(mode) {
   }
 
   fs.writeFileSync(runLogPath, `${JSON.stringify(runMeta, null, 2)}\n`);
-  const backendIngest = maybeIngestRunToBackend({
-    backendCfg,
-    projectCtx,
-    runLogPath
-  });
-  const storageSync = maybeSyncProjectS3({
-    backendCfg,
-    projectCtx,
-    syncCfg: storageSyncCfg
-  });
   console.log(`Run log: ${path.relative(root, runLogPath)}`);
   console.log(`Project: ${projectCtx.id}`);
   console.log(`Project root: ${toRel(projectDirs.root)}`);
@@ -1636,12 +1514,6 @@ async function runGenerationMode(mode) {
     jobsCount: jobs.length,
     dry
   });
-  if (backendIngest.enabled && backendIngest.attempted) {
-    console.log(`Backend ingest: ${backendIngest.ok ? "ok" : "failed"}`);
-  }
-  if (storageSync.enabled && storageSync.attempted) {
-    console.log(`S3 sync: ${storageSync.ok ? "ok" : "failed"}`);
-  }
   if (failedOutputGuardJobs > 0) {
     throw new Error(
       `Output guard failed for ${failedOutputGuardJobs} job(s). Bad outputs moved to ${toRel(projectCtx.dirs.archiveBad)}`
