@@ -55,6 +55,7 @@ Worktree: dirty (local uncommitted changes)
    - `pipeline::execution::plan_job_candidate_output_paths(...)` now ports the per-job candidate loop expansion into ordered typed plans
    - `pipeline::execution::summarize_output_guard_report(...)` now ports script output-guard ranking math (`summarizeGuardReport`) with rounding parity tests
    - `pipeline::execution::resolve_job_outcome_from_candidates(...)` now ports script winner/failure job outcome shaping (`selected_candidate`, `final_output`/`output`, failure reason) with strict missing-output validation
+   - `pipeline::execution::finalize_job_from_candidates(...)` now ports script `jobMeta` final field shaping and failed-output-guard counter increment behavior
 
 ### Validation (latest patch)
 

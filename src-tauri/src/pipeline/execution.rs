@@ -149,6 +149,34 @@ pub enum ExecutionOutcomeError {
     WinningCandidateMissingFinalOutput,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionJobStatus {
+    Done,
+    FailedOutputGuard,
+}
+
+impl ExecutionJobStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Done => "done",
+            Self::FailedOutputGuard => "failed_output_guard",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionJobFinalization {
+    pub status: ExecutionJobStatus,
+    pub selected_candidate: Option<u8>,
+    pub final_output: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+    pub bg_remove: Option<PathBuf>,
+    pub upscale: Option<PathBuf>,
+    pub color: Option<PathBuf>,
+    pub failure_reason: Option<&'static str>,
+    pub failed_output_guard_jobs_increment: u64,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ExecutionPlanningError {
     #[error("candidate index must be >= 1")]
@@ -451,6 +479,35 @@ pub fn resolve_job_outcome_from_candidates(
         upscale: winner.outputs.upscale.clone(),
         color: winner.outputs.color.clone(),
     }))
+}
+
+pub fn finalize_job_from_candidates(
+    candidates: &[ExecutionCandidateJobResult],
+) -> Result<ExecutionJobFinalization, ExecutionOutcomeError> {
+    match resolve_job_outcome_from_candidates(candidates)? {
+        ExecutionJobOutcome::Done(done) => Ok(ExecutionJobFinalization {
+            status: ExecutionJobStatus::Done,
+            selected_candidate: Some(done.selected_candidate),
+            output: Some(done.output),
+            final_output: Some(done.final_output),
+            bg_remove: done.bg_remove,
+            upscale: done.upscale,
+            color: done.color,
+            failure_reason: None,
+            failed_output_guard_jobs_increment: 0,
+        }),
+        ExecutionJobOutcome::FailedOutputGuard { failure_reason } => Ok(ExecutionJobFinalization {
+            status: ExecutionJobStatus::FailedOutputGuard,
+            selected_candidate: None,
+            output: None,
+            final_output: None,
+            bg_remove: None,
+            upscale: None,
+            color: None,
+            failure_reason: Some(failure_reason),
+            failed_output_guard_jobs_increment: 1,
+        }),
+    }
 }
 
 fn sanitize_id(value: &str) -> String {
@@ -949,5 +1006,70 @@ mod tests {
             err,
             ExecutionOutcomeError::WinningCandidateMissingFinalOutput
         );
+    }
+
+    #[test]
+    fn finalize_job_from_candidates_matches_script_done_job_fields() {
+        let finalized = finalize_job_from_candidates(&[ExecutionCandidateJobResult {
+            candidate: ExecutionCandidateResult {
+                candidate_index: 3,
+                status: ExecutionCandidateStatus::Done,
+                rank: ExecutionCandidateRank {
+                    hard_failures: 0,
+                    soft_warnings: 0,
+                    avg_chroma_exceed: 0.0,
+                },
+            },
+            outputs: ExecutionCandidateJobOutputs {
+                final_output: Some(PathBuf::from("color_corrected/job__c3.png")),
+                bg_remove: Some(PathBuf::from("background_removed/job__c3.webp")),
+                upscale: Some(PathBuf::from("upscaled/job__c3.png")),
+                color: Some(PathBuf::from("color_corrected/job__c3.png")),
+            },
+        }])
+        .expect("finalization should succeed");
+
+        assert_eq!(finalized.status, ExecutionJobStatus::Done);
+        assert_eq!(finalized.status.as_str(), "done");
+        assert_eq!(finalized.selected_candidate, Some(3));
+        assert_eq!(
+            finalized.final_output,
+            Some(PathBuf::from("color_corrected/job__c3.png"))
+        );
+        assert_eq!(finalized.output, finalized.final_output);
+        assert_eq!(finalized.failure_reason, None);
+        assert_eq!(finalized.failed_output_guard_jobs_increment, 0);
+    }
+
+    #[test]
+    fn finalize_job_from_candidates_matches_script_failed_output_guard_fields() {
+        let finalized = finalize_job_from_candidates(&[ExecutionCandidateJobResult {
+            candidate: ExecutionCandidateResult {
+                candidate_index: 1,
+                status: ExecutionCandidateStatus::FailedOutputGuard,
+                rank: ExecutionCandidateRank {
+                    hard_failures: 2,
+                    soft_warnings: 0,
+                    avg_chroma_exceed: 0.0,
+                },
+            },
+            outputs: ExecutionCandidateJobOutputs {
+                final_output: None,
+                bg_remove: None,
+                upscale: None,
+                color: None,
+            },
+        }])
+        .expect("failed finalization should still succeed");
+
+        assert_eq!(finalized.status, ExecutionJobStatus::FailedOutputGuard);
+        assert_eq!(finalized.status.as_str(), "failed_output_guard");
+        assert_eq!(finalized.selected_candidate, None);
+        assert_eq!(finalized.final_output, None);
+        assert_eq!(
+            finalized.failure_reason,
+            Some("all_candidates_failed_output_guard")
+        );
+        assert_eq!(finalized.failed_output_guard_jobs_increment, 1);
     }
 }
