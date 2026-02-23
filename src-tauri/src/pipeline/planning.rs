@@ -46,6 +46,8 @@ pub enum PlanningManifestError {
     RootMustBeObject,
     #[error("planning manifest field '{field}' must be an array of strings")]
     ArrayOfStrings { field: String },
+    #[error("planning manifest field '{field}' must not contain empty strings")]
+    EmptyStringInArray { field: String },
     #[error("planning manifest field '{field}' must be a string")]
     StringField { field: String },
     #[error("planning manifest field '{field}' must be an object")]
@@ -273,9 +275,12 @@ fn parse_string_array_field(
                 .ok_or_else(|| PlanningManifestError::ArrayOfStrings {
                     field: field.to_string(),
                 })?;
-        if !item_str.is_empty() {
-            out.push(item_str.to_string());
+        if item_str.is_empty() {
+            return Err(PlanningManifestError::EmptyStringInArray {
+                field: field.to_string(),
+            });
         }
+        out.push(item_str.to_string());
     }
     Ok(out)
 }
@@ -456,6 +461,21 @@ mod tests {
             err,
             PlanningManifestError::BoolField {
                 field: String::from("policy.default_no_invention")
+            }
+        );
+    }
+
+    #[test]
+    fn parse_planning_manifest_json_rejects_empty_array_entries() {
+        let err = parse_planning_manifest_json(&serde_json::json!({
+            "scene_refs": ["a.png", "   "]
+        }))
+        .expect_err("empty scene ref entry should fail");
+
+        assert_eq!(
+            err,
+            PlanningManifestError::EmptyStringInArray {
+                field: String::from("scene_refs")
             }
         );
     }

@@ -515,8 +515,8 @@ where
         &self,
         request: &PipelineRunRequest,
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        let planned_jobs = self.run_rust_planning_preflight(request)?;
         let spec = self.build_command(request)?;
+        let planned_jobs = self.run_rust_planning_preflight(request)?;
         let output = self.runner.run(&spec)?;
         if output.status_code != 0 {
             return Err(PipelineRuntimeError::CommandFailed {
@@ -879,6 +879,31 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+        assert!(runner.take_seen().is_empty());
+
+        let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
+    fn execute_preserves_invalid_project_slug_precedence_over_manifest_preflight() {
+        let runner = FakeRunner::default();
+        let orchestrator = test_orchestrator(runner.clone());
+        let manifest_path = temp_manifest_file(r#"{"prompts":{"style_base":123}}"#);
+
+        let err = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("bad slug"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(manifest_path.to_string_lossy().to_string()),
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect_err("invalid slug should be rejected before preflight");
+
+        assert!(matches!(err, PipelineRuntimeError::InvalidProjectSlug));
         assert!(runner.take_seen().is_empty());
 
         let _ = fs::remove_file(manifest_path);

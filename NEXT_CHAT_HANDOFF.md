@@ -63,6 +63,37 @@ Result: passing.
 2. Test verifies second ingest replaces the prior run state cleanly (single run row, refreshed job/candidate state, refreshed quality/cost rows).
 3. File: `src-tauri/src/db/projects/pipeline_ingest.rs`
 
+### Review Follow-up (2026-02-23, planning/runtime preflight)
+
+Scope reviewed:
+1. `src-tauri/src/pipeline/planning.rs` (typed planning manifest parsing/defaults)
+2. `src-tauri/src/pipeline/runtime.rs` (Rust planning preflight + parity warning integration)
+3. `src-tauri/src/api/runs_assets.rs` / `src-tauri/src/pipeline/trigger.rs` fallout from new runtime error variants/options
+
+Issues discovered (fixed):
+1. Regression: `ScriptPipelineOrchestrator::execute` ran Rust manifest planning preflight before `build_command`.
+   - Impact: invalid manifest payloads could mask earlier validation/infrastructure errors (e.g. invalid project slug) and change error precedence.
+2. Typed parser issue: planning manifest `scene_refs` / `style_refs` silently dropped empty-string entries.
+   - Impact: Rust preflight could pass malformed arrays that the script would later fail on, weakening migration parity and early validation.
+
+Fixes implemented:
+1. Restored error precedence by building/validating the command (`build_command`) before running Rust planning preflight.
+2. Added runtime regression test asserting invalid project slug is returned before manifest preflight errors.
+3. Tightened planning manifest parser to reject empty-string entries in string arrays (new explicit error).
+4. Added planning parser regression test for empty array entries.
+
+Validation (review follow-up):
+1. `cargo test pipeline::planning --lib`
+2. `cargo test pipeline::runtime --lib`
+3. `cargo test --test pipeline_trigger_endpoints --test http_contract_surface`
+
+Result: passing.
+
+Remaining risks / TODO (review follow-up):
+1. Rust preflight still duplicates manifest parsing/planning work already performed by `image-lab.mjs` (temporary migration cost).
+2. Rust preflight skips scene expansion parity for `input_source = InputPath(...)`; file/dir expansion is still script-owned.
+3. Next migration step remains to make Rust planning output the execution source (not just preflight/parity checks).
+
 ### Current Status / Open Tasks (updated)
 
 1. Typed trigger post-run backend ops are Rust-owned end-to-end (Rust ingest + Rust S3 sync execution).
