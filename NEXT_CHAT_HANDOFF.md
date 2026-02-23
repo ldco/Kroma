@@ -26,6 +26,36 @@ Worktree: dirty (local uncommitted changes)
 6. Product-scope cleanup is now committed on `master`: voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`) were removed; active pipeline/runtime script dependencies remain.
 7. `docs/ROADMAP.md` is now tracked on `master` as the day-to-day progress board (kept alongside the larger spec doc).
 
+## Latest Patch (2026-02-23, runtime dry-run log shaping cleanup)
+
+### Scope Reviewed
+
+1. `src-tauri/src/pipeline/runtime.rs` (Rust dry-run run-log JSON assembly)
+2. `src-tauri/src/pipeline/execution.rs` (typed planned run-log job record builders)
+
+### Issues Discovered
+
+1. Design debt (fixed): `RustDryRunPipelineOrchestrator` still hand-built script-shaped planned job JSON inline.
+   - Impact: duplicate schema defaults in `runtime.rs`; drift risk vs typed `pipeline::execution` helpers during migration off `image-lab.mjs`.
+
+### Fixes Implemented
+
+1. Added typed planned run-log job record builder in `pipeline::execution`:
+   - `build_planned_run_log_job_record(...)`
+   - script-parity defaults for planned generation/postprocess/output-guard fields centralized in Rust
+2. `RustDryRunPipelineOrchestrator` now maps planned jobs through the typed builder instead of inline `serde_json::json!` object shaping.
+3. Added regression coverage:
+   - `pipeline::execution` unit test for planned-job default fields
+   - `pipeline::runtime` dry-run test reads generated run log and asserts planned job JSON fields (`planned_generation`, `planned_postprocess.pipeline_order`, `planned_output_guard`)
+
+### Validation (latest patch)
+
+1. `cargo fmt`
+2. `cargo test pipeline::execution --lib`
+3. `cargo test pipeline::runtime --lib`
+
+Result: passing.
+
 ## Latest Patch (2026-02-23, runtime/execution extraction)
 
 ### Scope Reviewed

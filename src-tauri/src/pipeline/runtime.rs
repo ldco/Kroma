@@ -8,7 +8,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
-use crate::pipeline::execution::{ensure_generation_mode_dirs, execution_project_dirs};
+use crate::pipeline::execution::{
+    build_planned_run_log_job_record, ensure_generation_mode_dirs, execution_project_dirs,
+    ExecutionPlannedJob,
+};
 use crate::pipeline::planning::{
     build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
     PlannedGenerationJob,
@@ -556,38 +559,12 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
         let run_log_display = path_for_output(self.app_root.as_path(), run_log_path_abs.as_path());
         let timestamp = iso_like_timestamp();
 
-        let jobs_json = planned
+        let planned_job_records = planned
             .jobs
             .iter()
-            .map(|job| {
-                serde_json::json!({
-                    "id": job.id,
-                    "mode": job.mode,
-                    "time": job.time,
-                    "weather": job.weather,
-                    "input_images": job.input_images,
-                    "prompt": job.prompt,
-                    "status": "planned",
-                    "planned_generation": { "candidates": candidate_count },
-                    "planned_postprocess": {
-                        "upscale": false,
-                        "upscale_backend": serde_json::Value::Null,
-                        "color": false,
-                        "color_profile": serde_json::Value::Null,
-                        "bg_remove": false,
-                        "bg_remove_backends": [],
-                        "bg_refine_openai": false,
-                        "bg_refine_openai_required": false,
-                        "pipeline_order": ["generate"]
-                    },
-                    "planned_output_guard": {
-                        "enabled": true,
-                        "enforce_grayscale": false,
-                        "max_chroma_delta": 2,
-                        "fail_on_chroma_exceed": false
-                    }
-                })
-            })
+            .cloned()
+            .map(ExecutionPlannedJob::from)
+            .map(|job| build_planned_run_log_job_record(&job, candidate_count))
             .collect::<Vec<_>>();
 
         let run_meta = serde_json::json!({
@@ -625,7 +602,7 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
                 "project_root": project_root_display,
                 "resolved_from_backend": request.options.project_root.is_some()
             },
-            "jobs": jobs_json
+            "jobs": planned_job_records
         });
 
         write_pretty_json_with_newline(run_log_path_abs.as_path(), &run_meta)
@@ -1614,6 +1591,69 @@ mod tests {
             .expect("summary should parse");
         let run_log_abs = app_root.join(summary.run_log_path);
         assert!(run_log_abs.is_file());
+
+        let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn rust_dry_run_wrapper_writes_planned_job_fields_from_typed_builder() {
+        let app_root = temp_app_root();
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("should-not-run"));
+        let wrapper = RustDryRunPipelineOrchestrator::new(inner, app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    candidates: Some(2),
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from(
+                        "var/projects/demo/scenes/a.png",
+                    )])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("rust dry run should succeed");
+
+        let summary = parse_script_run_summary_from_stdout(result.stdout.as_str())
+            .expect("summary should parse");
+        let run_log_abs = app_root.join(summary.run_log_path);
+        let raw = fs::read_to_string(run_log_abs.as_path()).expect("run log should be readable");
+        let run_log: serde_json::Value =
+            serde_json::from_str(raw.as_str()).expect("run log should parse as json");
+        let jobs = run_log
+            .get("jobs")
+            .and_then(|v| v.as_array())
+            .expect("jobs should be an array");
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(
+            jobs[0].get("status").and_then(|v| v.as_str()),
+            Some("planned")
+        );
+        assert_eq!(
+            jobs[0]
+                .get("planned_generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            jobs[0]
+                .get("planned_postprocess")
+                .and_then(|v| v.get("pipeline_order"))
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.as_str()),
+            Some("generate")
+        );
+        assert_eq!(
+            jobs[0]
+                .get("planned_output_guard")
+                .and_then(|v| v.get("max_chroma_delta"))
+                .and_then(|v| v.as_f64()),
+            Some(2.0)
+        );
 
         let _ = fs::remove_dir_all(app_root);
     }

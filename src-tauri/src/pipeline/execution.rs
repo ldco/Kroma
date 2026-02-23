@@ -249,6 +249,46 @@ pub struct ExecutionRunLogJobRecord {
     pub candidates: Vec<ExecutionRunLogCandidateRecord>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExecutionPlannedGenerationRecord {
+    pub candidates: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExecutionPlannedPostprocessRecord {
+    pub upscale: bool,
+    pub upscale_backend: Option<String>,
+    pub color: bool,
+    pub color_profile: Option<String>,
+    pub bg_remove: bool,
+    pub bg_remove_backends: Vec<String>,
+    pub bg_refine_openai: bool,
+    pub bg_refine_openai_required: bool,
+    pub pipeline_order: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionPlannedOutputGuardRecord {
+    pub enabled: bool,
+    pub enforce_grayscale: bool,
+    pub max_chroma_delta: f64,
+    pub fail_on_chroma_exceed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionPlannedRunLogJobRecord {
+    pub id: String,
+    pub mode: String,
+    pub time: String,
+    pub weather: String,
+    pub input_images: Vec<String>,
+    pub prompt: String,
+    pub status: String,
+    pub planned_generation: ExecutionPlannedGenerationRecord,
+    pub planned_postprocess: ExecutionPlannedPostprocessRecord,
+    pub planned_output_guard: ExecutionPlannedOutputGuardRecord,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ExecutionPlanningError {
     #[error("candidate index must be >= 1")]
@@ -665,6 +705,41 @@ where
     })
 }
 
+pub fn build_planned_run_log_job_record(
+    job: &ExecutionPlannedJob,
+    candidate_count: u64,
+) -> ExecutionPlannedRunLogJobRecord {
+    ExecutionPlannedRunLogJobRecord {
+        id: job.id.clone(),
+        mode: job.mode.clone(),
+        time: job.time.clone(),
+        weather: job.weather.clone(),
+        input_images: job.input_images.clone(),
+        prompt: job.prompt.clone(),
+        status: String::from("planned"),
+        planned_generation: ExecutionPlannedGenerationRecord {
+            candidates: candidate_count,
+        },
+        planned_postprocess: ExecutionPlannedPostprocessRecord {
+            upscale: false,
+            upscale_backend: None,
+            color: false,
+            color_profile: None,
+            bg_remove: false,
+            bg_remove_backends: Vec::new(),
+            bg_refine_openai: false,
+            bg_refine_openai_required: false,
+            pipeline_order: vec![String::from("generate")],
+        },
+        planned_output_guard: ExecutionPlannedOutputGuardRecord {
+            enabled: true,
+            enforce_grayscale: false,
+            max_chroma_delta: 2.0,
+            fail_on_chroma_exceed: false,
+        },
+    }
+}
+
 fn sanitize_id(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut last_was_sep = false;
@@ -949,6 +1024,33 @@ mod tests {
             record.bad_archive.as_deref(),
             Some("var/projects/demo/archive/bad/a.png")
         );
+    }
+
+    #[test]
+    fn build_planned_run_log_job_record_sets_script_parity_defaults() {
+        let record = build_planned_run_log_job_record(
+            &ExecutionPlannedJob {
+                id: String::from("style_1_scene_01"),
+                mode: String::from("style"),
+                time: String::from("day"),
+                weather: String::from("clear"),
+                input_images: vec![String::from("var/projects/demo/scenes/a.png")],
+                prompt: String::from("prompt"),
+            },
+            2,
+        );
+
+        assert_eq!(record.id, "style_1_scene_01");
+        assert_eq!(record.status, "planned");
+        assert_eq!(record.planned_generation.candidates, 2);
+        assert!(!record.planned_postprocess.upscale);
+        assert!(!record.planned_postprocess.color);
+        assert!(!record.planned_postprocess.bg_remove);
+        assert_eq!(record.planned_postprocess.pipeline_order, vec!["generate"]);
+        assert!(record.planned_output_guard.enabled);
+        assert!(!record.planned_output_guard.enforce_grayscale);
+        assert_eq!(record.planned_output_guard.max_chroma_delta, 2.0);
+        assert!(!record.planned_output_guard.fail_on_chroma_exceed);
     }
 
     #[test]
