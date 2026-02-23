@@ -84,12 +84,14 @@ pub struct ExecutionCandidatePathPlan {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExecutionOutputGuardReportSummary {
+    pub total_files: u64,
     pub hard_failures: u64,
     pub soft_warnings: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionOutputGuardReportFile {
+    pub file: Option<PathBuf>,
     pub chroma_delta: Option<f64>,
 }
 
@@ -205,6 +207,27 @@ pub struct ExecutionRunLogCandidateRecord {
     pub bg_remove: Option<String>,
     pub upscale: Option<String>,
     pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionRunLogOutputGuardFileRecord {
+    pub file: Option<String>,
+    pub chroma_delta: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ExecutionRunLogOutputGuardSummaryRecord {
+    pub total_files: u64,
+    pub hard_failures: u64,
+    pub soft_warnings: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ExecutionRunLogOutputGuardRecord {
+    pub checked_input: String,
+    pub summary: ExecutionRunLogOutputGuardSummaryRecord,
+    pub files: Vec<ExecutionRunLogOutputGuardFileRecord>,
+    pub bad_archive: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -459,6 +482,37 @@ pub fn summarize_output_guard_report(
         hard_failures,
         soft_warnings,
         avg_chroma_exceed,
+    }
+}
+
+pub fn build_run_log_output_guard_record<F>(
+    report: &ExecutionOutputGuardReport,
+    checked_input: &Path,
+    bad_archive: Option<&Path>,
+    path_mapper: F,
+) -> ExecutionRunLogOutputGuardRecord
+where
+    F: Fn(&Path) -> String + Copy,
+{
+    let summary = report.summary.clone().unwrap_or_default();
+    let files = report
+        .files
+        .iter()
+        .map(|file| ExecutionRunLogOutputGuardFileRecord {
+            file: file.file.as_deref().map(path_mapper),
+            chroma_delta: file.chroma_delta,
+        })
+        .collect::<Vec<_>>();
+
+    ExecutionRunLogOutputGuardRecord {
+        checked_input: path_mapper(checked_input),
+        summary: ExecutionRunLogOutputGuardSummaryRecord {
+            total_files: summary.total_files,
+            hard_failures: summary.hard_failures,
+            soft_warnings: summary.soft_warnings,
+        },
+        files,
+        bad_archive: bad_archive.map(path_mapper),
     }
 }
 
@@ -796,20 +850,27 @@ mod tests {
         let rank = summarize_output_guard_report(
             &ExecutionOutputGuardReport {
                 summary: Some(ExecutionOutputGuardReportSummary {
+                    total_files: 4,
                     hard_failures: 2,
                     soft_warnings: 5,
                 }),
                 files: vec![
                     ExecutionOutputGuardReportFile {
+                        file: Some(PathBuf::from("outputs/a.png")),
                         chroma_delta: Some(1.5),
                     },
                     ExecutionOutputGuardReportFile {
+                        file: Some(PathBuf::from("outputs/b.png")),
                         chroma_delta: Some(2.75),
                     },
                     ExecutionOutputGuardReportFile {
+                        file: None,
                         chroma_delta: Some(f64::NAN),
                     },
-                    ExecutionOutputGuardReportFile { chroma_delta: None },
+                    ExecutionOutputGuardReportFile {
+                        file: Some(PathBuf::from("outputs/c.png")),
+                        chroma_delta: None,
+                    },
                 ],
             },
             2.0,
@@ -828,9 +889,11 @@ mod tests {
                 summary: None,
                 files: vec![
                     ExecutionOutputGuardReportFile {
+                        file: None,
                         chroma_delta: Some(2.33333),
                     },
                     ExecutionOutputGuardReportFile {
+                        file: None,
                         chroma_delta: Some(2.66666),
                     },
                 ],
@@ -842,6 +905,50 @@ mod tests {
         assert_eq!(rank.hard_failures, 0);
         assert_eq!(rank.soft_warnings, 0);
         assert!((rank.avg_chroma_exceed - 0.5).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn build_run_log_output_guard_record_shapes_script_parity_fields() {
+        let record = build_run_log_output_guard_record(
+            &ExecutionOutputGuardReport {
+                summary: Some(ExecutionOutputGuardReportSummary {
+                    total_files: 2,
+                    hard_failures: 1,
+                    soft_warnings: 3,
+                }),
+                files: vec![
+                    ExecutionOutputGuardReportFile {
+                        file: Some(PathBuf::from("var/projects/demo/outputs/a.png")),
+                        chroma_delta: Some(3.2),
+                    },
+                    ExecutionOutputGuardReportFile {
+                        file: None,
+                        chroma_delta: None,
+                    },
+                ],
+            },
+            Path::new("var/projects/demo/color_corrected/a.png"),
+            Some(Path::new("var/projects/demo/archive/bad/a.png")),
+            |p| p.to_string_lossy().replace('\\', "/"),
+        );
+
+        assert_eq!(
+            record.checked_input,
+            "var/projects/demo/color_corrected/a.png"
+        );
+        assert_eq!(record.summary.total_files, 2);
+        assert_eq!(record.summary.hard_failures, 1);
+        assert_eq!(record.summary.soft_warnings, 3);
+        assert_eq!(record.files.len(), 2);
+        assert_eq!(
+            record.files[0].file.as_deref(),
+            Some("var/projects/demo/outputs/a.png")
+        );
+        assert_eq!(record.files[0].chroma_delta, Some(3.2));
+        assert_eq!(
+            record.bad_archive.as_deref(),
+            Some("var/projects/demo/archive/bad/a.png")
+        );
     }
 
     #[test]

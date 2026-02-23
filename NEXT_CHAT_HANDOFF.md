@@ -57,6 +57,7 @@ Worktree: dirty (local uncommitted changes)
    - `pipeline::execution::resolve_job_outcome_from_candidates(...)` now ports script winner/failure job outcome shaping (`selected_candidate`, `final_output`/`output`, failure reason) with strict missing-output validation
    - `pipeline::execution::finalize_job_from_candidates(...)` now ports script `jobMeta` final field shaping and failed-output-guard counter increment behavior
    - `pipeline::execution::build_run_log_candidate_record(...)` / `build_run_log_job_record(...)` now assemble typed run-log candidate/job entries from execution results (generated `output` preserved separately from `final_output`)
+   - `pipeline::execution::build_run_log_output_guard_record(...)` now ports `candidateMeta.output_guard` log shaping (checked_input/summary/files/bad_archive)
 
 ### Validation (latest patch)
 
