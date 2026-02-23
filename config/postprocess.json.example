@@ -1,0 +1,17 @@
+{
+  "upscale": {
+    "backend": "python"
+  },
+  "color": {
+    "default_profile": "neutral"
+  },
+  "bg_remove": {
+    "backends": [
+      "rembg"
+    ],
+    "openai": {
+      "enabled": true,
+      "required": true
+    }
+  }
+}

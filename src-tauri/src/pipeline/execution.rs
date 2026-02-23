@@ -319,7 +319,7 @@ pub struct ExecutionPlannedRunLogRecord {
     pub jobs: Vec<ExecutionPlannedRunLogJobRecord>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExecutionPlannedRunLogContext {
     pub timestamp: String,
     pub project_slug: String,
@@ -329,6 +329,9 @@ pub struct ExecutionPlannedRunLogContext {
     pub project_root: String,
     pub resolved_from_backend: bool,
     pub candidate_count: u64,
+    pub max_candidate_count: u64,
+    pub planned_postprocess: ExecutionPlannedPostprocessRecord,
+    pub planned_output_guard: ExecutionPlannedOutputGuardRecord,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -795,9 +798,24 @@ pub fn build_planned_run_log_record(
     jobs: &[ExecutionPlannedJob],
 ) -> ExecutionPlannedRunLogRecord {
     let candidate_count = ctx.candidate_count;
+    let planned_postprocess = ctx.planned_postprocess.clone();
+    let planned_output_guard = ctx.planned_output_guard.clone();
     let job_records = jobs
         .iter()
-        .map(|job| build_planned_run_log_job_record(job, candidate_count))
+        .map(|job| ExecutionPlannedRunLogJobRecord {
+            id: job.id.clone(),
+            mode: job.mode.clone(),
+            time: job.time.clone(),
+            weather: job.weather.clone(),
+            input_images: job.input_images.clone(),
+            prompt: job.prompt.clone(),
+            status: String::from("planned"),
+            planned_generation: ExecutionPlannedGenerationRecord {
+                candidates: candidate_count,
+            },
+            planned_postprocess: planned_postprocess.clone(),
+            planned_output_guard: planned_output_guard.clone(),
+        })
         .collect::<Vec<_>>();
 
     ExecutionPlannedRunLogRecord {
@@ -812,10 +830,10 @@ pub fn build_planned_run_log_record(
         quality: String::new(),
         generation: ExecutionPlannedRunLogGenerationRecord {
             candidates: candidate_count,
-            max_candidates: candidate_count,
+            max_candidates: ctx.max_candidate_count,
         },
-        postprocess: default_planned_postprocess_record(),
-        output_guard: default_planned_output_guard_record(),
+        postprocess: planned_postprocess,
+        output_guard: planned_output_guard,
         storage: ExecutionPlannedRunLogStorageRecord {
             project_root: ctx.project_root,
             resolved_from_backend: ctx.resolved_from_backend,
@@ -1149,6 +1167,9 @@ mod tests {
                 project_root: String::from("var/projects/demo"),
                 resolved_from_backend: true,
                 candidate_count: 2,
+                max_candidate_count: 6,
+                planned_postprocess: default_planned_postprocess_record(),
+                planned_output_guard: default_planned_output_guard_record(),
             },
             &[ExecutionPlannedJob {
                 id: String::from("job_1"),
@@ -1163,7 +1184,7 @@ mod tests {
         assert_eq!(record.project, "demo");
         assert_eq!(record.mode, "dry");
         assert_eq!(record.generation.candidates, 2);
-        assert_eq!(record.generation.max_candidates, 2);
+        assert_eq!(record.generation.max_candidates, 6);
         assert_eq!(record.storage.project_root, "var/projects/demo");
         assert!(record.storage.resolved_from_backend);
         assert_eq!(record.jobs.len(), 1);

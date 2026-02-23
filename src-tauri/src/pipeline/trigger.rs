@@ -135,6 +135,8 @@ impl PipelineTriggerService {
                 mode: mode.to_pipeline_mode(),
                 confirm_spend,
                 options: PipelineRunOptions {
+                    app_settings_path: None,
+                    project_settings_path: None,
                     manifest_path: None,
                     jobs_file: None,
                     project_root,
@@ -144,6 +146,7 @@ impl PipelineTriggerService {
                     time: time.map(TriggerTime::to_pipeline_time),
                     weather: weather.map(TriggerWeather::to_pipeline_weather),
                     candidates,
+                    postprocess: Default::default(),
                     backend_db_ingest: None,
                     storage_sync_s3: None,
                 },

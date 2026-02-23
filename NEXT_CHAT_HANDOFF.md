@@ -2,8 +2,8 @@
 
 Date: 2026-02-23
 Branch: `master`
-HEAD / upstream (`origin/master`): `9f03cc9`
-Worktree: dirty (local uncommitted changes)
+HEAD / upstream (`origin/master`): `c0fa57f`
+Worktree: dirty (local uncommitted changes: `NEXT_CHAT_HANDOFF.md`)
 
 ## Current Status
 
@@ -25,6 +25,73 @@ Worktree: dirty (local uncommitted changes)
 5. Rust pipeline runtime/trigger boundary and Rust-owned typed trigger endpoint (`POST /api/projects/{slug}/runs/trigger`) are now committed on `master` (script-backed execution remains behind the runtime boundary).
 6. Product-scope cleanup is now committed on `master`: voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`) were removed; active pipeline/runtime script dependencies remain.
 7. `docs/ROADMAP.md` is now tracked on `master` as the day-to-day progress board (kept alongside the larger spec doc).
+8. Rust pipeline runtime now has a file-backed layered settings path for pipeline planning/runtime defaults:
+   - app settings (preferred): `config/pipeline.settings.toml`
+   - app settings fallback: `config/pipeline.settings.json`
+   - project settings: `<project_root>/.kroma/pipeline.settings.json`
+   - precedence enforced in Rust: request overrides > project settings > app settings > Rust defaults
+9. Rust now owns additional `image-lab.mjs` planning/runtime configuration logic:
+   - manifest parsing for `generation`, `safe_batch_limit`, and `output_guard`
+   - postprocess planning config parsing/validation + planned postprocess record shaping
+   - Rust dry-run run-log top-level/job planned postprocess + output-guard fields (manifest/settings-aware)
+10. Example config templates now exist under `config/`:
+   - `pipeline.settings.toml.example`
+   - `pipeline.manifest.json.example`
+   - `postprocess.json.example`
+
+## Latest Review Pass (2026-02-23, settings layer + runtime wiring)
+
+### Scope Reviewed
+
+1. `src-tauri/src/pipeline/settings_layer.rs` (new layered config loader/parser)
+2. `src-tauri/src/pipeline/runtime.rs` (effective request merge + settings application in dry/script paths)
+3. `src-tauri/src/pipeline/postprocess_planning.rs` (planning subset parser/resolver)
+4. `README.md` + `config/*.example` templates (new config documentation/examples)
+
+### Issues Discovered (this pass)
+
+1. Bug (fixed): explicit relative project settings paths were resolved from process CWD instead of `project_root`.
+   - Impact: `project_settings_path` overrides could silently miss the intended file depending on launch directory.
+2. Validation bug (fixed): settings parser accepted empty strings for path/profile fields.
+   - Impact: invalid values like `"manifest_path": "   "` flowed into runtime resolution and failed later with less clear errors.
+3. Performance/behavior issue (fixed): `RustDryRunPipelineOrchestrator` resolved layered settings even for `run` mode before delegating to the inner script orchestrator, which also resolves settings.
+   - Impact: duplicated config file reads on run path and unnecessary extra parsing work.
+
+### Fixes Implemented (this pass)
+
+1. `settings_layer`: explicit relative project settings paths now resolve relative to `project_root`.
+2. `settings_layer`: empty-string values are rejected as invalid typed settings fields.
+3. `runtime`: `RustDryRunPipelineOrchestrator` now short-circuits non-dry requests to the inner orchestrator before layered settings resolution (removes duplicate run-path config loads).
+4. Added regression coverage for:
+   - empty-string settings rejection
+   - explicit relative project settings path resolution
+5. Added app-settings TOML support (new) with JSON fallback:
+   - app loader now prefers `config/pipeline.settings.toml`
+   - legacy `config/pipeline.settings.json` remains supported as fallback
+6. Added config examples + README docs for the Rust-owned layered pipeline settings path.
+
+### Validation (this pass)
+
+1. `cargo test pipeline::settings_layer --lib`
+2. `cargo test pipeline::runtime --lib`
+3. `cargo test pipeline::trigger --lib`
+
+Result: passing.
+
+### Remaining Risks / TODO (this pass)
+
+1. Request-level postprocess toggle booleans in `PipelinePostprocessOptions` are not tri-state (`bool` instead of `Option<bool>`).
+   - Impact: runtime can express "enable" via request overrides, but cannot cleanly express an explicit request-level "disable" that overrides a settings-file `true` value.
+   - Current mitigation: not exposed on typed API yet; mostly affects future request-level config override surfaces.
+2. Explicit app/project settings paths are still treated as optional if the file is missing (loader returns defaults).
+   - Could be hardened to fail fast for explicitly provided paths to avoid silent misconfiguration.
+3. Project settings format is JSON-only for now (intentional compatibility choice); TOML support is app-layer only.
+
+### Recommended Next Steps
+
+1. Add a Rust config validation command/path (CLI or endpoint-internal utility) that validates layered app/project settings + manifest + postprocess config together before pipeline runs.
+2. Convert request-level postprocess toggles in the typed runtime/request model to tri-state semantics (`Option<bool>` or equivalent) before exposing them on the API/UI.
+3. Continue run-mode migration: move generation/post-process execution loop from `scripts/image-lab.mjs` into Rust execution services and replace script-owned run-log writing.
 
 ## Latest Patch (2026-02-23, runtime dry-run log shaping cleanup)
 

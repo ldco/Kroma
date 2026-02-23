@@ -1,0 +1,17 @@
+[pipeline]
+# Optional default manifest used by the Rust runtime path when a request does not provide one.
+manifest_path = "config/pipeline.manifest.json"
+
+# Optional default postprocess config consumed by Rust planning/runtime and script fallback.
+postprocess_config_path = "config/postprocess.json"
+
+[pipeline.postprocess]
+# Planning/runtime defaults (request overrides win).
+upscale = false
+upscale_backend = "python" # "python" | "ncnn"
+color = false
+color_profile = "neutral"
+bg_remove = false
+bg_remove_backends = ["rembg"] # allowed: rembg, photoroom, removebg
+bg_refine_openai = true
+bg_refine_openai_required = true

@@ -10,17 +10,26 @@ use uuid::Uuid;
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
 use crate::pipeline::execution::{
     build_planned_run_log_record, ensure_generation_mode_dirs, execution_project_dirs,
-    ExecutionPlannedJob, ExecutionPlannedRunLogContext,
+    ExecutionPlannedJob, ExecutionPlannedOutputGuardRecord, ExecutionPlannedPostprocessRecord,
+    ExecutionPlannedRunLogContext,
 };
 use crate::pipeline::planning::{
     build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
-    PlannedGenerationJob,
+    PipelinePlanningOutputGuard, PlannedGenerationJob,
 };
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
 };
+use crate::pipeline::postprocess_planning::{
+    load_postprocess_planning_config, resolve_planned_postprocess_record,
+    PostprocessPlanningOverrides,
+};
 use crate::pipeline::runlog::{
     format_summary_marker, write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
+};
+use crate::pipeline::settings_layer::{
+    load_app_pipeline_settings, load_project_pipeline_settings, merge_pipeline_settings_overlays,
+    PipelineSettingsLayerPaths, PipelineSettingsOverlay,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,8 +100,38 @@ impl PipelineWeatherFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipelineUpscaleBackend {
+    Ncnn,
+    Python,
+}
+
+impl PipelineUpscaleBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ncnn => "ncnn",
+            Self::Python => "python",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PipelinePostprocessOptions {
+    pub config_path: Option<String>,
+    pub upscale: bool,
+    pub upscale_backend: Option<PipelineUpscaleBackend>,
+    pub color: bool,
+    pub color_profile: Option<String>,
+    pub bg_remove: bool,
+    pub bg_remove_backends: Vec<String>,
+    pub bg_refine_openai: Option<bool>,
+    pub bg_refine_openai_required: Option<bool>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PipelineRunOptions {
+    pub app_settings_path: Option<String>,
+    pub project_settings_path: Option<String>,
     pub manifest_path: Option<String>,
     pub jobs_file: Option<String>,
     pub project_root: Option<String>,
@@ -102,6 +141,7 @@ pub struct PipelineRunOptions {
     pub time: Option<PipelineTimeFilter>,
     pub weather: Option<PipelineWeatherFilter>,
     pub candidates: Option<u8>,
+    pub postprocess: PipelinePostprocessOptions,
     pub backend_db_ingest: Option<bool>,
     pub storage_sync_s3: Option<bool>,
 }
@@ -300,9 +340,43 @@ fn build_rust_planning_preflight_summary(
             "manifest planning preflight failed: {error}"
         ))
     })?;
+    if (jobs.len() as u64) > manifest.safe_batch_limit {
+        return Err(PipelineRuntimeError::PlanningPreflight(format!(
+            "Batch exceeds safety limit ({}). Use --allow-large-batch to override.",
+            manifest.safe_batch_limit
+        )));
+    }
+
+    let postprocess_cfg = load_postprocess_planning_config(
+        app_root,
+        request.options.postprocess.config_path.as_deref(),
+    )
+    .map_err(|error| PipelineRuntimeError::PlanningPreflight(error.to_string()))?;
+    let planned_postprocess = resolve_planned_postprocess_record(
+        &postprocess_cfg,
+        &PostprocessPlanningOverrides {
+            post_upscale: request.options.postprocess.upscale,
+            post_color: request.options.postprocess.color,
+            post_bg_remove: request.options.postprocess.bg_remove,
+            upscale_backend: request
+                .options
+                .postprocess
+                .upscale_backend
+                .map(|v| v.as_str().to_string()),
+            color_profile: request.options.postprocess.color_profile.clone(),
+            bg_remove_backends: request.options.postprocess.bg_remove_backends.clone(),
+            bg_refine_openai: request.options.postprocess.bg_refine_openai,
+            bg_refine_openai_required: request.options.postprocess.bg_refine_openai_required,
+        },
+    )
+    .map_err(|error| PipelineRuntimeError::PlanningPreflight(error.to_string()))?;
 
     Ok(Some(RustPlanningPreflightSummary {
         job_ids: jobs.iter().map(|job| job.id.clone()).collect(),
+        manifest_output_guard: manifest.output_guard.clone(),
+        planned_postprocess,
+        manifest_candidate_count: manifest.generation.candidates,
+        manifest_max_candidates: manifest.generation.max_candidates,
         jobs,
     }))
 }
@@ -395,6 +469,40 @@ fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOpt
     if let Some(candidates) = options.candidates {
         args.push(String::from("--candidates"));
         args.push(candidates.to_string());
+    }
+
+    if let Some(config_path) = options.postprocess.config_path.as_ref() {
+        args.push(String::from("--postprocess-config"));
+        args.push(config_path.clone());
+    }
+    if options.postprocess.upscale {
+        args.push(String::from("--post-upscale"));
+    }
+    if let Some(backend) = options.postprocess.upscale_backend {
+        args.push(String::from("--upscale-backend"));
+        args.push(backend.as_str().to_string());
+    }
+    if options.postprocess.color {
+        args.push(String::from("--post-color"));
+    }
+    if let Some(profile) = options.postprocess.color_profile.as_ref() {
+        args.push(String::from("--post-color-profile"));
+        args.push(profile.clone());
+    }
+    if options.postprocess.bg_remove {
+        args.push(String::from("--post-bg-remove"));
+    }
+    if !options.postprocess.bg_remove_backends.is_empty() {
+        args.push(String::from("--bg-remove-backends"));
+        args.push(options.postprocess.bg_remove_backends.join(","));
+    }
+    if let Some(enabled) = options.postprocess.bg_refine_openai {
+        args.push(String::from("--bg-refine-openai"));
+        args.push(enabled.to_string());
+    }
+    if let Some(enabled) = options.postprocess.bg_refine_openai_required {
+        args.push(String::from("--bg-refine-openai-required"));
+        args.push(enabled.to_string());
     }
 
     if let Some(enabled) = options.backend_db_ingest {
@@ -523,12 +631,13 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
         if !matches!(request.mode, PipelineRunMode::Dry) {
             return self.inner.execute(request);
         }
-
         validate_project_slug(request.project_slug.as_str())?;
+        let request =
+            effective_pipeline_request_with_layered_settings(self.app_root.as_path(), request)?;
         let Some(planned) =
-            build_rust_planning_preflight_summary(self.app_root.as_path(), request)?
+            build_rust_planning_preflight_summary(self.app_root.as_path(), &request)?
         else {
-            return self.inner.execute(request);
+            return self.inner.execute(&request);
         };
 
         let project_root_abs = request
@@ -553,7 +662,11 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
             .options
             .weather
             .unwrap_or(PipelineWeatherFilter::Clear);
-        let candidate_count = u64::from(request.options.candidates.unwrap_or(1));
+        let candidate_count = request
+            .options
+            .candidates
+            .map(u64::from)
+            .unwrap_or(planned.manifest_candidate_count);
         let project_root_display =
             path_for_output(self.app_root.as_path(), project_dirs.root.as_path());
         let run_log_display = path_for_output(self.app_root.as_path(), run_log_path_abs.as_path());
@@ -575,6 +688,11 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
                 project_root: project_root_display.clone(),
                 resolved_from_backend: request.options.project_root.is_some(),
                 candidate_count,
+                max_candidate_count: planned.manifest_max_candidates,
+                planned_postprocess: planned.planned_postprocess.clone(),
+                planned_output_guard: map_manifest_output_guard_to_planned_record(
+                    &planned.manifest_output_guard,
+                ),
             },
             execution_jobs.as_slice(),
         );
@@ -615,9 +733,13 @@ struct PipelineScriptRunSummary {
     jobs: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct RustPlanningPreflightSummary {
     job_ids: Vec<String>,
+    manifest_output_guard: PipelinePlanningOutputGuard,
+    planned_postprocess: ExecutionPlannedPostprocessRecord,
+    manifest_candidate_count: u64,
+    manifest_max_candidates: u64,
     jobs: Vec<PlannedGenerationJob>,
 }
 
@@ -633,6 +755,17 @@ impl RustPlanningPreflightSummary {
             .cloned()
             .collect::<Vec<_>>()
             .join(", ")
+    }
+}
+
+fn map_manifest_output_guard_to_planned_record(
+    cfg: &PipelinePlanningOutputGuard,
+) -> ExecutionPlannedOutputGuardRecord {
+    ExecutionPlannedOutputGuardRecord {
+        enabled: true,
+        enforce_grayscale: cfg.enforce_grayscale,
+        max_chroma_delta: cfg.max_chroma_delta,
+        fail_on_chroma_exceed: cfg.fail_on_chroma_exceed,
     }
 }
 
@@ -726,12 +859,14 @@ where
         &self,
         request: &PipelineRunRequest,
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        let mut script_request = request.clone();
+        let _ = self.build_command(request)?;
+        let mut script_request =
+            effective_pipeline_request_with_layered_settings(self.app_root.as_path(), request)?;
         let mut temp_jobs_file = None::<PathBuf>;
-        let mut spec = self.build_command(request)?;
-        let planned_jobs = self.run_rust_planning_preflight(request)?;
+        let mut spec = self.build_command(&script_request)?;
+        let planned_jobs = self.run_rust_planning_preflight(&script_request)?;
         if let Some(planned) = planned_jobs.as_ref() {
-            if request.options.manifest_path.is_some() && !planned.jobs.is_empty() {
+            if script_request.options.manifest_path.is_some() && !planned.jobs.is_empty() {
                 let jobs_file =
                     write_planned_jobs_temp_file(self.app_root.as_path(), &planned.jobs)?;
                 script_request.options.jobs_file = Some(jobs_file.to_string_lossy().to_string());
@@ -841,6 +976,110 @@ fn resolve_under_app_root(app_root: &Path, value: &str) -> PathBuf {
         path
     } else {
         app_root.join(path)
+    }
+}
+
+fn default_project_root_for_request(app_root: &Path, request: &PipelineRunRequest) -> PathBuf {
+    request
+        .options
+        .project_root
+        .as_deref()
+        .map(|v| resolve_under_app_root(app_root, v))
+        .unwrap_or_else(|| {
+            app_root
+                .join("var/projects")
+                .join(request.project_slug.as_str())
+        })
+}
+
+fn effective_pipeline_request_with_layered_settings(
+    app_root: &Path,
+    request: &PipelineRunRequest,
+) -> Result<PipelineRunRequest, PipelineRuntimeError> {
+    let layer_paths = PipelineSettingsLayerPaths {
+        app_settings_path: request.options.app_settings_path.clone(),
+        project_settings_path: request.options.project_settings_path.clone(),
+    };
+    let app_settings =
+        load_app_pipeline_settings(app_root, layer_paths.app_settings_path.as_deref())
+            .map_err(|error| PipelineRuntimeError::PlanningPreflight(error.to_string()))?;
+    let project_root = default_project_root_for_request(app_root, request);
+    let project_settings = load_project_pipeline_settings(
+        Some(project_root.as_path()),
+        layer_paths.project_settings_path.as_deref(),
+    )
+    .map_err(|error| PipelineRuntimeError::PlanningPreflight(error.to_string()))?;
+    let explicit = request_options_to_settings_overlay(&request.options);
+    let merged = merge_pipeline_settings_overlays(&app_settings, &project_settings, &explicit);
+    Ok(apply_settings_overlay_to_request(request, &merged))
+}
+
+fn request_options_to_settings_overlay(options: &PipelineRunOptions) -> PipelineSettingsOverlay {
+    PipelineSettingsOverlay {
+        manifest_path: options.manifest_path.clone(),
+        postprocess_config_path: options.postprocess.config_path.clone(),
+        post_upscale: options.postprocess.upscale.then_some(true),
+        upscale_backend: options
+            .postprocess
+            .upscale_backend
+            .map(|v| v.as_str().to_string()),
+        post_color: options.postprocess.color.then_some(true),
+        color_profile: options.postprocess.color_profile.clone(),
+        post_bg_remove: options.postprocess.bg_remove.then_some(true),
+        bg_remove_backends: (!options.postprocess.bg_remove_backends.is_empty())
+            .then(|| options.postprocess.bg_remove_backends.clone()),
+        bg_refine_openai: options.postprocess.bg_refine_openai,
+        bg_refine_openai_required: options.postprocess.bg_refine_openai_required,
+    }
+}
+
+fn apply_settings_overlay_to_request(
+    request: &PipelineRunRequest,
+    overlay: &PipelineSettingsOverlay,
+) -> PipelineRunRequest {
+    let mut out = request.clone();
+    if out.options.manifest_path.is_none() {
+        out.options.manifest_path = overlay.manifest_path.clone();
+    }
+    if out.options.postprocess.config_path.is_none() {
+        out.options.postprocess.config_path = overlay.postprocess_config_path.clone();
+    }
+    if !out.options.postprocess.upscale {
+        out.options.postprocess.upscale = overlay.post_upscale.unwrap_or(false);
+    }
+    if out.options.postprocess.upscale_backend.is_none() {
+        out.options.postprocess.upscale_backend = overlay
+            .upscale_backend
+            .as_deref()
+            .and_then(parse_pipeline_upscale_backend);
+    }
+    if !out.options.postprocess.color {
+        out.options.postprocess.color = overlay.post_color.unwrap_or(false);
+    }
+    if out.options.postprocess.color_profile.is_none() {
+        out.options.postprocess.color_profile = overlay.color_profile.clone();
+    }
+    if !out.options.postprocess.bg_remove {
+        out.options.postprocess.bg_remove = overlay.post_bg_remove.unwrap_or(false);
+    }
+    if out.options.postprocess.bg_remove_backends.is_empty() {
+        out.options.postprocess.bg_remove_backends =
+            overlay.bg_remove_backends.clone().unwrap_or_default();
+    }
+    if out.options.postprocess.bg_refine_openai.is_none() {
+        out.options.postprocess.bg_refine_openai = overlay.bg_refine_openai;
+    }
+    if out.options.postprocess.bg_refine_openai_required.is_none() {
+        out.options.postprocess.bg_refine_openai_required = overlay.bg_refine_openai_required;
+    }
+    out
+}
+
+fn parse_pipeline_upscale_backend(value: &str) -> Option<PipelineUpscaleBackend> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "ncnn" => Some(PipelineUpscaleBackend::Ncnn),
+        "python" => Some(PipelineUpscaleBackend::Python),
+        _ => None,
     }
 }
 
@@ -1149,6 +1388,64 @@ mod tests {
     }
 
     #[test]
+    fn build_command_includes_typed_postprocess_flags_when_set() {
+        let orchestrator = test_orchestrator(FakeRunner::default());
+        let cmd = orchestrator
+            .build_command(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Run,
+                confirm_spend: true,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    postprocess: PipelinePostprocessOptions {
+                        config_path: Some(String::from("cfg/post.json")),
+                        upscale: true,
+                        upscale_backend: Some(PipelineUpscaleBackend::Ncnn),
+                        color: true,
+                        color_profile: Some(String::from("cinematic-v2")),
+                        bg_remove: true,
+                        bg_remove_backends: vec![
+                            String::from("removebg"),
+                            String::from("photoroom"),
+                        ],
+                        bg_refine_openai: Some(false),
+                        bg_refine_openai_required: Some(false),
+                    },
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("command should build");
+
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--postprocess-config", "cfg/post.json"]));
+        assert!(cmd.args.iter().any(|arg| arg == "--post-upscale"));
+        assert!(cmd.args.iter().any(|arg| arg == "--post-color"));
+        assert!(cmd.args.iter().any(|arg| arg == "--post-bg-remove"));
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--upscale-backend", "ncnn"]));
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--post-color-profile", "cinematic-v2"]));
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--bg-remove-backends", "removebg,photoroom"]));
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--bg-refine-openai", "false"]));
+        assert!(cmd
+            .args
+            .windows(2)
+            .any(|w| w == ["--bg-refine-openai-required", "false"]));
+    }
+
+    #[test]
     fn build_command_includes_manifest_path_when_set() {
         let orchestrator = test_orchestrator(FakeRunner::default());
         let cmd = orchestrator
@@ -1257,6 +1554,41 @@ mod tests {
     }
 
     #[test]
+    fn execute_rejects_manifest_safe_batch_limit_before_runner() {
+        let runner = FakeRunner::default();
+        let orchestrator = test_orchestrator(runner.clone());
+        let manifest_path = temp_manifest_file(
+            r#"{
+  "safe_batch_limit": 1,
+  "scene_refs": ["a.png", "b.png"],
+  "prompts": { "style_base": "ok" }
+}"#,
+        );
+
+        let err = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(manifest_path.to_string_lossy().to_string()),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect_err("safe batch limit should fail in Rust preflight");
+
+        match err {
+            PipelineRuntimeError::PlanningPreflight(message) => {
+                assert!(message.contains("Batch exceeds safety limit (1)"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert!(runner.take_seen().is_empty());
+
+        let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
     fn execute_injects_jobs_file_when_rust_planning_produces_jobs() {
         let runner = FakeRunner::with_next(Ok(CommandOutput {
             status_code: 0,
@@ -1317,6 +1649,81 @@ mod tests {
         assert_eq!(runner.take_seen().len(), 1);
 
         let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
+    fn execute_applies_app_settings_layer_to_script_request_flags() {
+        let app_root = temp_app_root();
+        fs::create_dir_all(app_root.join("scripts")).expect("scripts dir should exist");
+        fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
+        fs::write(app_root.join("scripts/image-lab.mjs"), b"// stub")
+            .expect("stub script should exist");
+        fs::write(
+            app_root.join("config/pipeline.settings.toml"),
+            r#"[pipeline]
+manifest_path = "config/manifest.json"
+postprocess_config_path = "config/post.json"
+
+[pipeline.postprocess]
+upscale = true
+upscale_backend = "ncnn"
+color = true
+color_profile = "studio"
+bg_remove = true
+bg_remove_backends = ["rembg"]
+bg_refine_openai = false
+bg_refine_openai_required = false
+"#,
+        )
+        .expect("app settings should be written");
+        fs::write(
+            app_root.join("config/manifest.json"),
+            r#"{"prompts":{"style_base":"ok"}}"#,
+        )
+        .expect("manifest should be written");
+        fs::write(app_root.join("config/post.json"), r#"{}"#)
+            .expect("postprocess config should be written");
+
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        let orchestrator = ScriptPipelineOrchestrator::new(app_root.clone(), runner.clone());
+
+        let _ = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("execution should succeed");
+
+        let seen = runner.take_seen();
+        assert_eq!(seen.len(), 1);
+        let args = &seen[0].args;
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--manifest", "config/manifest.json"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--postprocess-config", "config/post.json"]));
+        assert!(args.iter().any(|arg| arg == "--post-upscale"));
+        assert!(args.windows(2).any(|w| w == ["--upscale-backend", "ncnn"]));
+        assert!(args.iter().any(|arg| arg == "--post-color"));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--post-color-profile", "studio"]));
+        assert!(args.iter().any(|arg| arg == "--post-bg-remove"));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--bg-remove-backends", "rembg"]));
+
+        let _ = fs::remove_dir_all(app_root);
     }
 
     #[derive(Default)]
@@ -1600,6 +2007,20 @@ mod tests {
             .get("jobs")
             .and_then(|v| v.as_array())
             .expect("jobs should be an array");
+        assert_eq!(
+            run_log
+                .get("generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(2)
+        );
+        assert_eq!(
+            run_log
+                .get("generation")
+                .and_then(|v| v.get("max_candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(6)
+        );
         assert_eq!(jobs.len(), 1);
         assert_eq!(
             jobs[0].get("status").and_then(|v| v.as_str()),
@@ -1633,6 +2054,173 @@ mod tests {
     }
 
     #[test]
+    fn rust_dry_run_wrapper_uses_manifest_generation_defaults_when_candidates_omitted() {
+        let app_root = temp_app_root();
+        let manifest_path = app_root.join("manifest.json");
+        let postprocess_path = app_root.join("postprocess.json");
+        fs::write(
+            manifest_path.as_path(),
+            r#"{
+  "scene_refs": ["var/projects/demo/scenes/a.png"],
+  "generation": { "candidates": 3, "max_candidates": 9 },
+  "output_guard": {
+    "enforce_grayscale": true,
+    "max_chroma_delta": 1.5,
+    "fail_on_chroma_exceed": true
+  }
+}
+"#,
+        )
+        .expect("manifest should be written");
+        fs::write(
+            postprocess_path.as_path(),
+            r#"{
+  "upscale": { "backend": "ncnn" },
+  "color": { "default_profile": "studio" },
+  "bg_remove": {
+    "backends": ["photoroom"],
+    "openai": { "enabled": false, "required": false }
+  }
+}
+"#,
+        )
+        .expect("postprocess config should be written");
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("should-not-run"));
+        let wrapper = RustDryRunPipelineOrchestrator::new(inner.clone(), app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(String::from("manifest.json")),
+                    postprocess: PipelinePostprocessOptions {
+                        config_path: Some(String::from("postprocess.json")),
+                        upscale: true,
+                        color: true,
+                        bg_remove: true,
+                        ..PipelinePostprocessOptions::default()
+                    },
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("rust dry run should succeed");
+
+        let summary = parse_script_run_summary_from_stdout(result.stdout.as_str())
+            .expect("summary should parse");
+        let run_log_abs = app_root.join(summary.run_log_path);
+        let raw = fs::read_to_string(run_log_abs.as_path()).expect("run log should be readable");
+        let run_log: serde_json::Value =
+            serde_json::from_str(raw.as_str()).expect("run log should parse as json");
+        let jobs = run_log
+            .get("jobs")
+            .and_then(|v| v.as_array())
+            .expect("jobs should be an array");
+
+        assert_eq!(
+            run_log
+                .get("generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(3)
+        );
+        assert_eq!(
+            run_log
+                .get("generation")
+                .and_then(|v| v.get("max_candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(9)
+        );
+        assert_eq!(
+            run_log
+                .get("output_guard")
+                .and_then(|v| v.get("enforce_grayscale"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            run_log
+                .get("output_guard")
+                .and_then(|v| v.get("max_chroma_delta"))
+                .and_then(|v| v.as_f64()),
+            Some(1.5)
+        );
+        assert_eq!(
+            run_log
+                .get("output_guard")
+                .and_then(|v| v.get("fail_on_chroma_exceed"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            run_log
+                .get("postprocess")
+                .and_then(|v| v.get("upscale"))
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            run_log
+                .get("postprocess")
+                .and_then(|v| v.get("upscale_backend"))
+                .and_then(|v| v.as_str()),
+            Some("ncnn")
+        );
+        assert_eq!(
+            run_log
+                .get("postprocess")
+                .and_then(|v| v.get("color_profile"))
+                .and_then(|v| v.as_str()),
+            Some("studio")
+        );
+        assert_eq!(
+            run_log
+                .get("postprocess")
+                .and_then(|v| v.get("bg_remove_backends"))
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.as_str()),
+            Some("photoroom")
+        );
+        assert_eq!(
+            run_log
+                .get("postprocess")
+                .and_then(|v| v.get("bg_refine_openai"))
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            jobs[0]
+                .get("planned_generation")
+                .and_then(|v| v.get("candidates"))
+                .and_then(|v| v.as_u64()),
+            Some(3)
+        );
+        assert_eq!(
+            jobs[0]
+                .get("planned_output_guard")
+                .and_then(|v| v.get("max_chroma_delta"))
+                .and_then(|v| v.as_f64()),
+            Some(1.5)
+        );
+        assert_eq!(
+            jobs[0]
+                .get("planned_postprocess")
+                .and_then(|v| v.get("upscale_backend"))
+                .and_then(|v| v.as_str()),
+            Some("ncnn")
+        );
+        assert!(inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .is_empty());
+
+        let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
     fn rust_dry_run_wrapper_handles_input_path_without_inner_script_call() {
         let app_root = temp_app_root();
         let input_dir = app_root.join("inputs");
@@ -1659,6 +2247,93 @@ mod tests {
         assert!(app_root.join("var/projects/demo/outputs").is_dir());
         assert!(app_root.join("var/projects/demo/archive/bad").is_dir());
         assert!(app_root.join("var/projects/demo/archive/replaced").is_dir());
+        assert!(inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .is_empty());
+
+        let _ = fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn rust_dry_run_wrapper_applies_project_settings_layer_for_postprocess_defaults() {
+        let app_root = temp_app_root();
+        let project_settings_dir = app_root.join("var/projects/demo/.kroma");
+        fs::create_dir_all(project_settings_dir.as_path())
+            .expect("project settings dir should exist");
+        fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
+        fs::write(
+            project_settings_dir.join("pipeline.settings.json"),
+            r#"{
+  "pipeline": {
+    "postprocess_config_path": "config/post.json",
+    "postprocess": {
+      "upscale": true,
+      "upscale_backend": "ncnn",
+      "color": true,
+      "color_profile": "project-profile",
+      "bg_remove": true,
+      "bg_remove_backends": ["photoroom"],
+      "bg_refine_openai": false,
+      "bg_refine_openai_required": false
+    }
+  }
+}"#,
+        )
+        .expect("project settings should be written");
+        fs::write(app_root.join("config/post.json"), r#"{}"#)
+            .expect("postprocess config should be written");
+
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout("should-not-run"));
+        let wrapper = RustDryRunPipelineOrchestrator::new(inner.clone(), app_root.clone());
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from(
+                        "var/projects/demo/scenes/a.png",
+                    )])),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("rust dry run should succeed");
+
+        let summary = parse_script_run_summary_from_stdout(result.stdout.as_str())
+            .expect("summary should parse");
+        let run_log_abs = app_root.join(summary.run_log_path);
+        let raw = fs::read_to_string(run_log_abs.as_path()).expect("run log should be readable");
+        let run_log: serde_json::Value =
+            serde_json::from_str(raw.as_str()).expect("run log should parse");
+        let post = run_log
+            .get("postprocess")
+            .expect("postprocess should exist");
+
+        assert_eq!(post.get("upscale").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            post.get("upscale_backend").and_then(|v| v.as_str()),
+            Some("ncnn")
+        );
+        assert_eq!(post.get("color").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            post.get("color_profile").and_then(|v| v.as_str()),
+            Some("project-profile")
+        );
+        assert_eq!(post.get("bg_remove").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            post.get("bg_remove_backends")
+                .and_then(|v| v.as_array())
+                .and_then(|v| v.first())
+                .and_then(|v| v.as_str()),
+            Some("photoroom")
+        );
+        assert_eq!(
+            post.get("bg_refine_openai").and_then(|v| v.as_bool()),
+            Some(false)
+        );
         assert!(inner
             .seen
             .lock()

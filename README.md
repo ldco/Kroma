@@ -186,10 +186,73 @@ console.log(data);
 | `IAT_AGENT_API_URL` | Optional agent dispatch target URL | None | No |
 | `IAT_AGENT_API_TOKEN` | Optional agent dispatch bearer token | None | No |
 
+### Pipeline Runtime Settings (Layered, Rust-Owned)
+
+Pipeline runtime settings are now resolved in Rust (not ad hoc in scripts) with layered precedence:
+
+1. Request/runtime overrides
+2. Project settings file
+3. App settings file
+4. Rust built-in defaults
+
+Current file formats:
+- App settings: `TOML` (preferred) at `config/pipeline.settings.toml`
+- App settings fallback (legacy): `JSON` at `config/pipeline.settings.json`
+- Project settings: `JSON` at `<project_root>/.kroma/pipeline.settings.json`
+
+What this currently controls on the Rust runtime path:
+- default `manifest_path`
+- default `postprocess_config_path`
+- postprocess planning defaults (`upscale`, `upscale_backend`, `color`, `color_profile`, `bg_remove`, `bg_remove_backends`, `bg_refine_openai`, `bg_refine_openai_required`)
+
+Start from:
+- `config/pipeline.settings.toml.example`
+- `config/pipeline.manifest.json.example`
+- `config/postprocess.json.example`
+
+Typical setup:
+1. Create `config/pipeline.settings.toml` from the example.
+2. Create `config/pipeline.manifest.json` and `config/postprocess.json` from the example files (or point the TOML file at your own paths).
+
+Example app settings (`TOML`):
+
+```toml
+[pipeline]
+manifest_path = "config/pipeline.manifest.json"
+postprocess_config_path = "config/postprocess.json"
+
+[pipeline.postprocess]
+upscale = true
+upscale_backend = "ncnn"
+color = true
+color_profile = "studio"
+bg_remove = true
+bg_remove_backends = ["rembg"]
+bg_refine_openai = false
+bg_refine_openai_required = false
+```
+
+Example project overrides (`JSON`):
+
+```json
+{
+  "pipeline": {
+    "postprocess": {
+      "color_profile": "project-profile",
+      "bg_remove_backends": ["photoroom"]
+    }
+  }
+}
+```
+
 ## Project Structure
 
 ```text
 app/
+├─ config/
+│  ├─ pipeline.settings.toml.example
+│  ├─ pipeline.manifest.json.example
+│  └─ postprocess.json.example
 ├─ package.json
 ├─ .env.example
 ├─ openapi/

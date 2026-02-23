@@ -13,11 +13,46 @@ pub struct PipelinePlanningPolicy {
     pub default_no_invention: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelinePlanningGeneration {
+    pub candidates: u64,
+    pub max_candidates: u64,
+}
+
+impl Default for PipelinePlanningGeneration {
+    fn default() -> Self {
+        Self {
+            candidates: 1,
+            max_candidates: 6,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PipelinePlanningOutputGuard {
+    pub enforce_grayscale: bool,
+    pub max_chroma_delta: f64,
+    pub fail_on_chroma_exceed: bool,
+}
+
+impl Default for PipelinePlanningOutputGuard {
+    fn default() -> Self {
+        Self {
+            enforce_grayscale: false,
+            max_chroma_delta: 2.0,
+            fail_on_chroma_exceed: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct PipelinePlanningManifest {
     pub prompts: HashMap<String, String>,
     pub scene_refs: Vec<String>,
     pub style_refs: Vec<String>,
+    pub safe_batch_limit: u64,
+    pub generation: PipelinePlanningGeneration,
+    pub output_guard: PipelinePlanningOutputGuard,
     pub policy: PipelinePlanningPolicy,
 }
 
@@ -55,6 +90,10 @@ pub enum PlanningManifestError {
     ObjectField { field: String },
     #[error("planning manifest field '{field}' must be a boolean")]
     BoolField { field: String },
+    #[error("planning manifest field '{field}' must be an integer >= 1")]
+    PositiveIntegerField { field: String },
+    #[error("planning manifest field '{field}' must be a non-negative number")]
+    NonNegativeNumberField { field: String },
     #[error("failed to read planning manifest '{path}': {message}")]
     ReadFile { path: String, message: String },
     #[error("failed to parse planning manifest JSON '{path}': {message}")]
@@ -92,6 +131,9 @@ pub fn default_planning_manifest() -> PipelinePlanningManifest {
         prompts,
         scene_refs: Vec::new(),
         style_refs: Vec::new(),
+        safe_batch_limit: 20,
+        generation: PipelinePlanningGeneration::default(),
+        output_guard: PipelinePlanningOutputGuard::default(),
         policy: PipelinePlanningPolicy {
             default_no_invention: true,
         },
@@ -111,6 +153,53 @@ pub fn parse_planning_manifest_json(
     }
     if let Some(style_refs) = root.get("style_refs") {
         manifest.style_refs = parse_string_array_field(style_refs, "style_refs")?;
+    }
+    if let Some(safe_batch_limit) = root.get("safe_batch_limit") {
+        manifest.safe_batch_limit =
+            parse_positive_integer_field(safe_batch_limit, "safe_batch_limit")?;
+    }
+    if let Some(generation) = root.get("generation") {
+        let generation_obj =
+            generation
+                .as_object()
+                .ok_or_else(|| PlanningManifestError::ObjectField {
+                    field: String::from("generation"),
+                })?;
+        if let Some(candidates) = generation_obj.get("candidates") {
+            manifest.generation.candidates =
+                parse_positive_integer_field(candidates, "generation.candidates")?;
+        }
+        if let Some(max_candidates) = generation_obj.get("max_candidates") {
+            manifest.generation.max_candidates =
+                parse_positive_integer_field(max_candidates, "generation.max_candidates")?;
+        }
+    }
+    if let Some(output_guard) = root.get("output_guard") {
+        let output_guard_obj =
+            output_guard
+                .as_object()
+                .ok_or_else(|| PlanningManifestError::ObjectField {
+                    field: String::from("output_guard"),
+                })?;
+        if let Some(enforce_grayscale) = output_guard_obj.get("enforce_grayscale") {
+            manifest.output_guard.enforce_grayscale =
+                enforce_grayscale
+                    .as_bool()
+                    .ok_or_else(|| PlanningManifestError::BoolField {
+                        field: String::from("output_guard.enforce_grayscale"),
+                    })?;
+        }
+        if let Some(max_chroma_delta) = output_guard_obj.get("max_chroma_delta") {
+            manifest.output_guard.max_chroma_delta =
+                parse_non_negative_number_field(max_chroma_delta, "output_guard.max_chroma_delta")?;
+        }
+        if let Some(fail_on_chroma_exceed) = output_guard_obj.get("fail_on_chroma_exceed") {
+            manifest.output_guard.fail_on_chroma_exceed = fail_on_chroma_exceed
+                .as_bool()
+                .ok_or_else(|| PlanningManifestError::BoolField {
+                    field: String::from("output_guard.fail_on_chroma_exceed"),
+                })?;
+        }
     }
     if let Some(policy) = root.get("policy") {
         let policy_obj = policy
@@ -286,6 +375,27 @@ fn parse_string_array_field(
     Ok(out)
 }
 
+fn parse_positive_integer_field(value: &Value, field: &str) -> Result<u64, PlanningManifestError> {
+    value
+        .as_u64()
+        .filter(|v| *v >= 1)
+        .ok_or_else(|| PlanningManifestError::PositiveIntegerField {
+            field: field.to_string(),
+        })
+}
+
+fn parse_non_negative_number_field(
+    value: &Value,
+    field: &str,
+) -> Result<f64, PlanningManifestError> {
+    value
+        .as_f64()
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .ok_or_else(|| PlanningManifestError::NonNegativeNumberField {
+            field: field.to_string(),
+        })
+}
+
 fn sanitize_id(value: &str) -> Option<String> {
     let mut out = String::new();
     let mut last_was_underscore = false;
@@ -419,6 +529,13 @@ mod tests {
         let parsed = parse_planning_manifest_json(&serde_json::json!({
             "scene_refs": ["a.png", " b.png "],
             "style_refs": ["style.png"],
+            "safe_batch_limit": 33,
+            "generation": { "candidates": 3, "max_candidates": 8 },
+            "output_guard": {
+                "enforce_grayscale": true,
+                "max_chroma_delta": 1.25,
+                "fail_on_chroma_exceed": true
+            },
             "policy": { "default_no_invention": false },
             "prompts": {
                 "style_base": "Custom base",
@@ -429,6 +546,12 @@ mod tests {
 
         assert_eq!(parsed.scene_refs, vec!["a.png", "b.png"]);
         assert_eq!(parsed.style_refs, vec!["style.png"]);
+        assert_eq!(parsed.safe_batch_limit, 33);
+        assert_eq!(parsed.generation.candidates, 3);
+        assert_eq!(parsed.generation.max_candidates, 8);
+        assert!(parsed.output_guard.enforce_grayscale);
+        assert!((parsed.output_guard.max_chroma_delta - 1.25).abs() < 0.000_001);
+        assert!(parsed.output_guard.fail_on_chroma_exceed);
         assert!(!parsed.policy.default_no_invention);
         assert_eq!(
             parsed.prompts.get("style_base").map(String::as_str),
@@ -462,6 +585,28 @@ mod tests {
             err,
             PlanningManifestError::BoolField {
                 field: String::from("policy.default_no_invention")
+            }
+        );
+
+        let err = parse_planning_manifest_json(&serde_json::json!({
+            "generation": { "candidates": 0 }
+        }))
+        .expect_err("zero generation candidates should fail");
+        assert_eq!(
+            err,
+            PlanningManifestError::PositiveIntegerField {
+                field: String::from("generation.candidates")
+            }
+        );
+
+        let err = parse_planning_manifest_json(&serde_json::json!({
+            "output_guard": { "max_chroma_delta": -1 }
+        }))
+        .expect_err("negative chroma delta should fail");
+        assert_eq!(
+            err,
+            PlanningManifestError::NonNegativeNumberField {
+                field: String::from("output_guard.max_chroma_delta")
             }
         );
     }
