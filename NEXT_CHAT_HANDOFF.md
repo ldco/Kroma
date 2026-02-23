@@ -1,8 +1,8 @@
 # Next Chat Handoff
 
-Date: 2026-02-22
+Date: 2026-02-23
 Branch: `master`
-HEAD / upstream (`origin/master`): `9f972e0`
+HEAD / upstream (`origin/master`): `9f03cc9`
 Worktree: dirty (local uncommitted changes)
 
 ## Current Status
@@ -25,6 +25,49 @@ Worktree: dirty (local uncommitted changes)
 5. Rust pipeline runtime/trigger boundary and Rust-owned typed trigger endpoint (`POST /api/projects/{slug}/runs/trigger`) are now committed on `master` (script-backed execution remains behind the runtime boundary).
 6. Product-scope cleanup is now committed on `master`: voice feature code and the old Python HTTP backend entrypoint (`scripts/backend_api.py`) were removed; active pipeline/runtime script dependencies remain.
 7. `docs/ROADMAP.md` is now tracked on `master` as the day-to-day progress board (kept alongside the larger spec doc).
+
+## Latest Review Pass (2026-02-23)
+
+### Scope (newly added Rust migration code reviewed)
+
+1. `src-tauri/src/db/projects/pipeline_ingest.rs` (native Rust run-log ingest)
+2. `src-tauri/src/pipeline/backend_ops.rs` (native ingest + Rust S3 sync backend ops)
+3. Endpoint/runtime regression surface after recent trigger/runtime consolidation commits
+
+### Issues Discovered (this pass)
+
+1. Bug (fixed): fallback `candidate_index` generation in native ingest used a run-global counter instead of a per-job counter.
+   - Impact: jobs with missing `candidate_index` fields could get incorrect candidate numbering (e.g. second job starting at `2` instead of `1`).
+2. Edge-case bug (fixed): Rust S3 sync precheck only validated `project_root.exists()`.
+   - Impact: a file at the configured `project_root` path would incorrectly pass precheck and fail later in `aws s3 sync` with a less clear runtime error.
+
+### Fixes Implemented (this pass)
+
+1. `pipeline_ingest`: fallback `candidate_index` now resets per job (`enumerate()` within each job candidate list).
+2. Added ingest regression test covering two jobs with missing candidate indexes (`candidate_index` must start at `1` for each job).
+3. `backend_ops`: Rust S3 sync precheck now requires `project_root` to be a directory (`is_dir()`).
+4. Added backend ops regression test asserting file-backed `project_root` fails precheck without invoking AWS CLI.
+
+### Validation (this pass)
+
+1. `cargo test pipeline_ingest --lib`
+2. `cargo test pipeline::backend_ops --lib`
+3. `cargo fmt`
+4. `cargo test --test pipeline_trigger_endpoints --test http_contract_surface`
+
+Result: passing.
+
+### Current Status / Open Tasks (updated)
+
+1. Typed trigger post-run backend ops are Rust-owned end-to-end (Rust ingest + Rust S3 sync execution).
+2. Remaining major script dependency on the app trigger path is `scripts/image-lab.mjs` generation/orchestration itself.
+3. Next phase: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback.
+
+### Recommended Next Steps
+
+1. Start a Rust orchestration module for run planning + job expansion currently handled in `scripts/image-lab.mjs`.
+2. Move script stdout/run-log ownership into Rust (structured in-memory result + Rust log writer), then delete script summary parsing fallback.
+3. Add re-ingest/idempotency tests for native Rust ingest (especially changed candidate/output paths across repeated `run_log_path` imports).
 
 ## Architecture Direction (Non-Negotiable)
 

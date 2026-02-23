@@ -245,11 +245,12 @@ fn ingest_run_tx(
             }));
         }
 
-        for candidate in candidates {
+        for (candidate_pos, candidate) in candidates.into_iter().enumerate() {
             let Some(candidate_obj) = candidate.as_object() else {
                 continue;
             };
 
+            let next_job_candidate_index = (candidate_pos + 1) as i64;
             let candidate_id = Uuid::new_v4().to_string();
             let rank_obj = candidate_obj
                 .get("rank")
@@ -259,7 +260,7 @@ fn ingest_run_tx(
             let candidate_index = candidate_obj
                 .get("candidate_index")
                 .and_then(as_i64_checked)
-                .unwrap_or((inserted_candidates + 1) as i64);
+                .unwrap_or(next_job_candidate_index);
             let output_path = candidate_obj
                 .get("output")
                 .and_then(Value::as_str)
@@ -1001,6 +1002,71 @@ mod tests {
             .list_cost_events("demo", 20)
             .expect("cost events should list");
         assert_eq!(cost.len(), 1);
+
+        let _ = fs::remove_dir_all(repo_root);
+    }
+
+    #[test]
+    fn fallback_candidate_index_resets_per_job() {
+        let repo_root = test_root();
+        let db_path = repo_root.join("var/backend/app.db");
+        let project_root = repo_root.join("var/projects/demo");
+        fs::create_dir_all(project_root.join("outputs")).expect("project outputs dir should exist");
+        fs::write(project_root.join("outputs/a.png"), b"a").expect("output a should exist");
+        fs::write(project_root.join("outputs/b.png"), b"b").expect("output b should exist");
+
+        let run_log_path = project_root.join("runs/run_2.json");
+        fs::create_dir_all(run_log_path.parent().expect("run log parent"))
+            .expect("runs dir should exist");
+        fs::write(
+            run_log_path.as_path(),
+            serde_json::to_vec_pretty(&json!({
+                "mode": "run",
+                "jobs": [
+                    {
+                        "id": "job_a",
+                        "status": "done",
+                        "candidates": [{
+                            "status": "done",
+                            "output": "var/projects/demo/outputs/a.png",
+                            "final_output": "var/projects/demo/outputs/a.png"
+                        }]
+                    },
+                    {
+                        "id": "job_b",
+                        "status": "done",
+                        "candidates": [{
+                            "status": "done",
+                            "output": "var/projects/demo/outputs/b.png",
+                            "final_output": "var/projects/demo/outputs/b.png"
+                        }]
+                    }
+                ]
+            }))
+            .expect("run log json should serialize"),
+        )
+        .expect("run log should be written");
+
+        let store = ProjectsStore::new(db_path, repo_root.clone());
+        store.initialize().expect("schema should initialize");
+        let ingest = store
+            .ingest_run_log(IngestRunLogInput {
+                run_log_path: PathBuf::from("var/projects/demo/runs/run_2.json"),
+                project_slug: String::from("demo"),
+                project_name: String::from("Demo"),
+                create_project_if_missing: true,
+                compute_hashes: false,
+            })
+            .expect("ingest should succeed");
+
+        let jobs = store
+            .list_run_jobs("demo", ingest.run_id.as_str())
+            .expect("run jobs should list");
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].candidates.len(), 1);
+        assert_eq!(jobs[1].candidates.len(), 1);
+        assert_eq!(jobs[0].candidates[0].candidate_index, 1);
+        assert_eq!(jobs[1].candidates[0].candidate_index, 1);
 
         let _ = fs::remove_dir_all(repo_root);
     }

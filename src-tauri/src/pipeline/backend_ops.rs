@@ -393,6 +393,12 @@ where
                 local_root.display()
             )));
         }
+        if !local_root.is_dir() {
+            return Err(BackendOpsError::SyncPrecheck(format!(
+                "Local project root is not a directory: {}",
+                local_root.display()
+            )));
+        }
 
         Ok(SyncPrecheckOutcome::Ready(SyncReadyContext {
             project_slug: payload.project.slug,
@@ -908,6 +914,59 @@ mod tests {
         assert!(cmd.args.iter().any(|arg| arg == "test-profile"));
         assert!(cmd.args.iter().any(|arg| arg == "--endpoint-url"));
         assert!(cmd.args.iter().any(|arg| arg == "http://localhost:9000"));
+
+        let _ = fs::remove_dir_all(repo_root);
+    }
+
+    #[test]
+    fn hybrid_sync_precheck_rejects_file_project_root_without_calling_aws() {
+        let repo_root = temp_repo_root();
+        let db_path = repo_root.join("var/backend/app.db");
+        let store = Arc::new(ProjectsStore::new(db_path, repo_root.clone()));
+        store.initialize().expect("schema should initialize");
+        store
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Demo"),
+                slug: Some(String::from("demo")),
+                ..UpsertProjectInput::default()
+            })
+            .expect("project should be created");
+        store
+            .update_project_storage_s3(
+                "demo",
+                UpdateStorageS3Input {
+                    enabled: Some(true),
+                    bucket: Some(String::from("bucket")),
+                    ..UpdateStorageS3Input::default()
+                },
+            )
+            .expect("s3 storage should be configured");
+
+        let project_root_file = repo_root.join("var/projects/demo");
+        fs::create_dir_all(project_root_file.parent().expect("project root parent"))
+            .expect("parent dir should exist");
+        fs::write(project_root_file.as_path(), b"not-a-dir")
+            .expect("file project root should exist");
+
+        let runner = FakeRunner::default();
+        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+
+        let err = hybrid
+            .sync_project_s3(&BackendSyncProjectS3Request {
+                project_slug: String::from("demo"),
+                dry_run: false,
+                delete: false,
+                allow_missing_local: false,
+            })
+            .expect_err("file project root should fail precheck");
+
+        match err {
+            BackendOpsError::SyncPrecheck(message) => {
+                assert!(message.contains("not a directory"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+        assert!(runner.take_seen().is_empty());
 
         let _ = fs::remove_dir_all(repo_root);
     }
