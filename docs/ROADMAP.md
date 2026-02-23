@@ -84,6 +84,7 @@ Status:
 - `scripts/` documented as transitional, not end state
 - Phase 1 explicitly includes runtime consolidation into Rust (not just CRUD endpoint work)
 - Desktop-app principle reaffirmed: move active runtime/workers/integrations into Rust; reduce and delete script paths as replacements land
+- Script removal rule: when a script responsibility is fully migrated to Rust, delete the script path in the same phase/patch (do not keep dormant legacy script code)
 
 ### Runtime Consolidation Foundation (Pushed)
 
@@ -188,7 +189,7 @@ Status:
    - post-run backend operations for typed trigger path are now Rust-owned (ingest + S3 sync)
    - `scripts/image-lab.mjs` post-run backend calls removed; remaining script responsibility is generation/post-process orchestration
    - next: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules
-   - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, project directory layout, candidate post-process output path planning, and per-job candidate loop expansion into ordered typed plans
+   - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, project directory layout, candidate post-process output path planning, per-job candidate loop expansion into ordered typed plans, and output-guard rank summarization
 
 ### Near-Term Backend / Bootstrap Work
 
@@ -213,6 +214,7 @@ Status:
    - ESRGAN
    - S3 sync
 5. Add parity tests plus explicit deprecation/removal milestones for script paths
+6. Delete each script (or migrated script subcommand/path) immediately after Rust parity lands for that responsibility; no "kept just in case" script retention
 6. Remove remaining production runtime dependencies on `scripts/` (retain only dev/setup utilities if still needed)
 
 ## Later (Phase 2+)

@@ -75,6 +75,23 @@ pub struct ExecutionCandidatePathPlan {
     pub final_output: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ExecutionOutputGuardReportSummary {
+    pub hard_failures: u64,
+    pub soft_warnings: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecutionOutputGuardReportFile {
+    pub chroma_delta: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExecutionOutputGuardReport {
+    pub summary: Option<ExecutionOutputGuardReportSummary>,
+    pub files: Vec<ExecutionOutputGuardReportFile>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionCandidateStatus {
     Generated,
@@ -292,6 +309,46 @@ pub fn ensure_generation_mode_dirs(dirs: &ExecutionProjectDirs) -> io::Result<()
     Ok(())
 }
 
+pub fn summarize_output_guard_report(
+    report: &ExecutionOutputGuardReport,
+    threshold: f64,
+) -> ExecutionCandidateRank {
+    let hard_failures = report
+        .summary
+        .as_ref()
+        .map(|s| s.hard_failures)
+        .unwrap_or(0);
+    let soft_warnings = report
+        .summary
+        .as_ref()
+        .map(|s| s.soft_warnings)
+        .unwrap_or(0);
+
+    let mut exceeds = Vec::new();
+    for file in &report.files {
+        let Some(value) = file.chroma_delta else {
+            continue;
+        };
+        if !value.is_finite() {
+            continue;
+        }
+        exceeds.push((value - threshold).max(0.0));
+    }
+
+    let avg_chroma_exceed = if exceeds.is_empty() {
+        0.0
+    } else {
+        let avg = exceeds.iter().sum::<f64>() / exceeds.len() as f64;
+        (avg * 10_000.0).round() / 10_000.0
+    };
+
+    ExecutionCandidateRank {
+        hard_failures,
+        soft_warnings,
+        avg_chroma_exceed,
+    }
+}
+
 pub fn pick_best_candidate(
     candidates: &[ExecutionCandidateResult],
 ) -> Option<&ExecutionCandidateResult> {
@@ -492,6 +549,59 @@ mod tests {
 
         let winner = pick_best_candidate(&candidates).expect("winner should exist");
         assert_eq!(winner.candidate_index, 1);
+    }
+
+    #[test]
+    fn summarize_output_guard_report_matches_script_behavior() {
+        let rank = summarize_output_guard_report(
+            &ExecutionOutputGuardReport {
+                summary: Some(ExecutionOutputGuardReportSummary {
+                    hard_failures: 2,
+                    soft_warnings: 5,
+                }),
+                files: vec![
+                    ExecutionOutputGuardReportFile {
+                        chroma_delta: Some(1.5),
+                    },
+                    ExecutionOutputGuardReportFile {
+                        chroma_delta: Some(2.75),
+                    },
+                    ExecutionOutputGuardReportFile {
+                        chroma_delta: Some(f64::NAN),
+                    },
+                    ExecutionOutputGuardReportFile { chroma_delta: None },
+                ],
+            },
+            2.0,
+        );
+
+        assert_eq!(rank.hard_failures, 2);
+        assert_eq!(rank.soft_warnings, 5);
+        // exceeds = [0, 0.75] => avg = 0.375
+        assert!((rank.avg_chroma_exceed - 0.375).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn summarize_output_guard_report_rounds_to_four_decimals_like_script() {
+        let rank = summarize_output_guard_report(
+            &ExecutionOutputGuardReport {
+                summary: None,
+                files: vec![
+                    ExecutionOutputGuardReportFile {
+                        chroma_delta: Some(2.33333),
+                    },
+                    ExecutionOutputGuardReportFile {
+                        chroma_delta: Some(2.66666),
+                    },
+                ],
+            },
+            2.0,
+        );
+
+        // exceeds = [0.33333, 0.66666] => avg = 0.499995 => rounded = 0.5 (toFixed(4))
+        assert_eq!(rank.hard_failures, 0);
+        assert_eq!(rank.soft_warnings, 0);
+        assert!((rank.avg_chroma_exceed - 0.5).abs() < 0.000_001);
     }
 
     #[test]

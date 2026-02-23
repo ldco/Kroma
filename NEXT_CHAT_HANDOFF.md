@@ -53,6 +53,7 @@ Worktree: dirty (local uncommitted changes)
 4. Next-phase starter landed after this patch:
    - `pipeline::execution::plan_candidate_output_paths(...)` now ports script path planning for generate/bg-remove/upscale/color pass order and naming (typed + unit tested)
    - `pipeline::execution::plan_job_candidate_output_paths(...)` now ports the per-job candidate loop expansion into ordered typed plans
+   - `pipeline::execution::summarize_output_guard_report(...)` now ports script output-guard ranking math (`summarizeGuardReport`) with rounding parity tests
 
 ### Validation (latest patch)
 
@@ -185,6 +186,7 @@ Review follow-up (2026-02-23, latest runtime slice):
 4. Every script-backed runtime path should have:
    - a Rust replacement milestone
    - a script deprecation/removal milestone
+   - script deletion in the same phase once Rust parity lands (no dormant legacy script retention)
 5. Phase 1 is not complete until core runtime/orchestration, worker flows, and active backend integrations are owned by Rust modules.
 
 ## Runtime Consolidation Update (Newest)
