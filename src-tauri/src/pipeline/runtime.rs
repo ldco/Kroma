@@ -217,9 +217,9 @@ where
     fn run_rust_planning_preflight(
         &self,
         request: &PipelineRunRequest,
-    ) -> Result<(), PipelineRuntimeError> {
+    ) -> Result<Option<u64>, PipelineRuntimeError> {
         let Some(manifest_path_raw) = request.options.manifest_path.as_deref() else {
-            return Ok(());
+            return Ok(None);
         };
 
         let manifest_path = resolve_under_app_root(self.app_root.as_path(), manifest_path_raw);
@@ -237,7 +237,7 @@ where
             }
             Some(PipelineInputSource::InputPath(_)) => {
                 // File/dir expansion is still script-owned; typed manifest parsing still runs above.
-                return Ok(());
+                return Ok(None);
             }
             None => {}
         }
@@ -252,13 +252,13 @@ where
             .options
             .weather
             .unwrap_or(PipelineWeatherFilter::Clear);
-        build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
+        let jobs = build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
             PipelineRuntimeError::PlanningPreflight(format!(
                 "manifest planning preflight failed: {error}"
             ))
         })?;
 
-        Ok(())
+        Ok(Some(jobs.len() as u64))
     }
 }
 
@@ -515,7 +515,7 @@ where
         &self,
         request: &PipelineRunRequest,
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        self.run_rust_planning_preflight(request)?;
+        let planned_jobs = self.run_rust_planning_preflight(request)?;
         let spec = self.build_command(request)?;
         let output = self.runner.run(&spec)?;
         if output.status_code != 0 {
@@ -527,11 +527,27 @@ where
             });
         }
 
-        Ok(PipelineRunResult {
+        let mut result = PipelineRunResult {
             status_code: output.status_code,
             stdout: output.stdout,
             stderr: output.stderr,
-        })
+        };
+        if let Some(expected_jobs) = planned_jobs {
+            if let Some(summary) = parse_script_run_summary_from_stdout(result.stdout.as_str()) {
+                if let Some(actual_jobs) = summary.jobs {
+                    if actual_jobs != expected_jobs {
+                        append_stderr_line(
+                            &mut result.stderr,
+                            format!(
+                                "Rust planning preflight warning: planned {expected_jobs} jobs but script reported {actual_jobs}"
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -893,6 +909,39 @@ mod tests {
             .expect("execution should succeed");
 
         assert_eq!(result.status_code, 0);
+        assert_eq!(runner.take_seen().len(), 1);
+
+        let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
+    fn execute_warns_when_manifest_planned_jobs_mismatch_script_summary() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::from(
+                "KROMA_PIPELINE_SUMMARY_JSON: {\"run_log_path\":\"var/projects/demo/runs/run_1.json\",\"project_slug\":\"demo\",\"jobs\":2}\n",
+            ),
+            stderr: String::new(),
+        }));
+        let orchestrator = test_orchestrator(runner.clone());
+        let manifest_path =
+            temp_manifest_file(r#"{"scene_refs":["a.png"],"prompts":{"style_base":"ok"}}"#);
+
+        let result = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(manifest_path.to_string_lossy().to_string()),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("execution should succeed with warning");
+
+        assert!(result
+            .stderr
+            .contains("Rust planning preflight warning: planned 1 jobs but script reported 2"));
         assert_eq!(runner.take_seen().len(), 1);
 
         let _ = fs::remove_file(manifest_path);

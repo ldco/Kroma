@@ -70,7 +70,8 @@ Result: passing.
 3. Next phase started: Rust `pipeline::planning` module now ports `image-lab` prompt composition + generation job planning.
 4. Follow-up landed: typed planning manifest defaults + JSON parser (`scene_refs`, `style_refs`, `policy.default_no_invention`, `prompts`) with tests for script-subset parity.
 5. Follow-up landed: `pipeline::runtime` now supports typed `manifest_path` and runs Rust planning preflight (manifest parse + job planning) before script execution when a manifest is provided.
-6. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: feed Rust planning results into execution/logging instead of using script-side planning only).
+6. Follow-up landed: runtime now compares Rust planned job count vs script summary job count (when available) and emits a warning on mismatch (parity signal during migration).
+7. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: use Rust planning output as the execution source instead of script-side planning).
 
 ### Recommended Next Steps
 
