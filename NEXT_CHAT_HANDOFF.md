@@ -117,7 +117,8 @@ Review follow-up (2026-02-23, latest runtime slice):
 10. Major follow-up landed: typed dry runs with `scene_refs` now execute in Rust (planning + run-log writing + summary marker) via `RustDryRunPipelineOrchestrator` and no longer require Node/script execution on that path.
 11. Review+follow-up landed: typed dry runs with `input` path (file/dir) now also execute in Rust using Rust image-file discovery (recursive image scan parity) and no longer delegate to the script path.
 12. Next phase starter landed: `pipeline::execution` Rust module (run-mode execution foundation) with script-parity candidate output filename logic and tests.
-13. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: move candidate generation/post-process loop pieces into `pipeline::execution` and reuse `pipeline::runlog` for final log output).
+13. Follow-up landed: `pipeline::execution` now owns script-parity project directory layout conventions (`outputs`, `runs`, `upscaled`, `color_corrected`, `background_removed`, `archive/*`) with tests.
+14. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: move candidate generation/post-process loop pieces into `pipeline::execution` and reuse `pipeline::runlog` for final log output).
 
 ### Recommended Next Steps
 
