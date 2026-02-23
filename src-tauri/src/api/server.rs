@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{OriginalUri, State};
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::routing::{delete, get, head, options, patch, post, put, MethodRouter};
 use axum::{Extension, Json, Router};
 use serde_json::json;
@@ -30,6 +31,7 @@ pub struct AppState {
     pub service_version: &'static str,
     pub started_unix_ms: u128,
     pub route_count: usize,
+    pub auth_dev_bypass: bool,
     pub projects_store: Arc<ProjectsStore>,
     pub pipeline_trigger: PipelineTriggerService,
 }
@@ -58,6 +60,7 @@ impl AppState {
             service_version: env!("CARGO_PKG_VERSION"),
             started_unix_ms: now_unix_ms(),
             route_count,
+            auth_dev_bypass: auth_dev_bypass_enabled(),
             projects_store,
             pipeline_trigger,
         }
@@ -103,7 +106,13 @@ fn build_router_with_catalog(catalog: Vec<RouteDefinition>, state: AppState) -> 
         router = router.route(axum_path.as_str(), method_router);
     }
 
-    router.layer(TraceLayer::new_for_http()).with_state(state)
+    router
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::api::auth::auth_middleware,
+        ))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }
 
 pub async fn serve(addr: SocketAddr) -> std::io::Result<()> {
@@ -118,6 +127,11 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
     let path = route.spec.path.clone();
 
     match (method, path.as_str()) {
+        (HttpMethod::Post, "/auth/token") => post(crate::api::auth::create_auth_token_handler),
+        (HttpMethod::Get, "/auth/tokens") => get(crate::api::auth::list_auth_tokens_handler),
+        (HttpMethod::Delete, "/auth/tokens/{tokenId}") => {
+            delete(crate::api::auth::revoke_auth_token_handler)
+        }
         (HttpMethod::Get, "/api/projects") => get(crate::api::projects::list_projects_handler),
         (HttpMethod::Post, "/api/projects") => post(crate::api::projects::upsert_project_handler),
         (HttpMethod::Get, "/api/projects/{slug}") => get(crate::api::projects::get_project_handler),
@@ -329,6 +343,18 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
             }
         }
     }
+}
+
+fn auth_dev_bypass_enabled() -> bool {
+    std::env::var("KROMA_API_AUTH_DEV_BYPASS")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(true)
 }
 
 fn default_repo_root() -> PathBuf {

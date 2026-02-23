@@ -78,6 +78,9 @@ fn materialize_path(path_template: &str) -> String {
 fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
     match (method, path) {
         (HttpMethod::Get, "/health") => StatusCode::OK,
+        (HttpMethod::Post, "/auth/token") => StatusCode::OK,
+        (HttpMethod::Get, "/auth/tokens") => StatusCode::OK,
+        (HttpMethod::Delete, "/auth/tokens/{tokenId}") => StatusCode::NOT_FOUND,
         (HttpMethod::Get, "/api/projects") => StatusCode::OK,
         (HttpMethod::Post, "/api/projects") => StatusCode::BAD_REQUEST,
         (HttpMethod::Get, "/api/projects/{slug}") => StatusCode::NOT_FOUND,

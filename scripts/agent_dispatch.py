@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 import json
+import os
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+if os.environ.get("KROMA_ENABLE_LEGACY_SCRIPTS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+    raise SystemExit(
+        "Legacy dispatch script disabled. Use the Rust backend/runtime (src-tauri). "
+        "Set KROMA_ENABLE_LEGACY_SCRIPTS=1 only for explicit migration fallback."
+    )
 
 
 def dispatch_instruction_http(

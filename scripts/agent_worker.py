@@ -6,6 +6,12 @@ import os
 import time
 from pathlib import Path
 
+if os.environ.get("KROMA_ENABLE_LEGACY_SCRIPTS", "").strip().lower() not in {"1", "true", "yes", "on"}:
+    raise SystemExit(
+        "Legacy worker disabled. Use the Rust backend/runtime (src-tauri). "
+        "Set KROMA_ENABLE_LEGACY_SCRIPTS=1 only for explicit migration fallback."
+    )
+
 import backend as be
 from agent_dispatch import dispatch_instruction_http
 

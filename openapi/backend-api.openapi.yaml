@@ -11,6 +11,39 @@ paths:
       responses:
         "200":
           description: OK
+  /auth/token:
+    post:
+      summary: Create API token for local user (dev bootstrap / local single-user mode)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+                project_slug: { type: string }
+                expires_at: { type: string }
+      responses:
+        "200": { description: Auth token created }
+        "401": { description: Unauthorized }
+  /auth/tokens:
+    get:
+      summary: List API tokens (hashed tokens only; secret values not returned)
+      responses:
+        "200": { description: Auth token list }
+        "401": { description: Unauthorized }
+  /auth/tokens/{tokenId}:
+    delete:
+      summary: Revoke API token
+      parameters:
+        - in: path
+          name: tokenId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Auth token revoked }
+        "401": { description: Unauthorized }
   /api/projects:
     get:
       summary: List projects
@@ -1233,3 +1266,9 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque

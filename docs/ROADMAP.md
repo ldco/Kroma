@@ -40,6 +40,10 @@ Status:
 ### Backend Core / API Foundation
 
 - Rust backend (`axum` + SQLite) is the primary local API
+- Auth/audit foundation started in Rust:
+  - hashed `api_tokens` table + `/auth/token(s)` routes
+  - Bearer middleware with local dev bypass flag (`KROMA_API_AUTH_DEV_BYPASS`)
+  - `audit_events` table + initial audit writes for key mutating endpoints
 - Contract-first route catalog + parity tests + HTTP mount checks
 - Most metadata CRUD/read endpoints implemented in Rust:
   - projects
@@ -85,6 +89,7 @@ Status:
 - Phase 1 explicitly includes runtime consolidation into Rust (not just CRUD endpoint work)
 - Desktop-app principle reaffirmed: move active runtime/workers/integrations into Rust; reduce and delete script paths as replacements land
 - Script removal rule: when a script responsibility is fully migrated to Rust, delete the script path in the same phase/patch (do not keep dormant legacy script code)
+- Legacy script safety gate: remaining Python fallback scripts are opt-in only (`KROMA_ENABLE_LEGACY_SCRIPTS=1`) to prevent accidental production/runtime drift during migration
 
 ### Runtime Consolidation Foundation (Pushed)
 

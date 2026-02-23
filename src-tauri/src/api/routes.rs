@@ -5,6 +5,7 @@ use crate::contract::{HttpMethod, RouteSpec};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RouteDomain {
     System,
+    Auth,
     Projects,
     Storage,
     Runs,
@@ -25,6 +26,9 @@ impl RouteDomain {
     pub fn from_path(path: &str) -> Self {
         if path == "/health" {
             return Self::System;
+        }
+        if path.starts_with("/auth/") {
+            return Self::Auth;
         }
         if path.contains("/storage") {
             return Self::Storage;
@@ -125,6 +129,9 @@ fn handler_id_for(method: HttpMethod, path: &str) -> String {
 
 const CONTRACT_ROUTES: &[(HttpMethod, &str)] = &[
     (HttpMethod::Get, "/health"),
+    (HttpMethod::Post, "/auth/token"),
+    (HttpMethod::Get, "/auth/tokens"),
+    (HttpMethod::Delete, "/auth/tokens/{tokenId}"),
     (HttpMethod::Get, "/api/projects"),
     (HttpMethod::Post, "/api/projects"),
     (HttpMethod::Get, "/api/projects/{slug}"),
@@ -287,7 +294,7 @@ mod tests {
 
     #[test]
     fn contract_route_count_is_stable() {
-        assert_eq!(CONTRACT_ROUTES.len(), 68);
+        assert_eq!(CONTRACT_ROUTES.len(), 71);
     }
 
     #[test]

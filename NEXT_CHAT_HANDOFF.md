@@ -78,6 +78,36 @@ Result: passing.
    - output-guard evaluation + candidate ranking/winner selection
 3. Replace script run-log writing for run-mode with `pipeline::runlog` and remove `image-lab.mjs` run-mode ownership.
 
+## Security / Audit Foundation Update (2026-02-23)
+
+### Completed
+
+1. Added Rust DB schema support for `api_tokens` (hashed bearer tokens) and `audit_events` (spec-aligned target columns).
+2. Added auth token APIs:
+   - `POST /auth/token`
+   - `GET /auth/tokens`
+   - `DELETE /auth/tokens/{tokenId}`
+3. Added Bearer auth middleware in the Rust router:
+   - enforces auth on mutating endpoints and `/auth/*`
+   - keeps local dev bypass via `KROMA_API_AUTH_DEV_BYPASS` (default enabled)
+4. Added audit writes and `audit_id` response fields for mutating handlers in scope:
+   - `provider_accounts`
+   - `secrets`
+   - `projects` (project/storage upserts)
+   - `agent_instructions` create/confirm/cancel
+5. Added legacy script safety gates (`KROMA_ENABLE_LEGACY_SCRIPTS=1`) to:
+   - `scripts/backend.py`
+   - `scripts/agent_worker.py`
+   - `scripts/agent_dispatch.py`
+6. Added `scripts/README.md` deprecation note pointing to Rust runtime as the only supported backend/runtime.
+
+### Remaining (Important)
+
+1. Full removal of `scripts/image-lab.mjs` from the HTTP pipeline path is still not complete.
+   - Rust owns more execution/planning/log shaping logic, but run-mode generation/post-process orchestration still uses script fallback.
+2. Audit writes for export mutations are not implemented because the Rust HTTP surface currently has no export mutation endpoints.
+3. OpenAPI security docs are only partially annotated (auth routes + bearer scheme added; endpoint-level security metadata still needs full pass).
+
 ## Latest Review Pass (2026-02-23)
 
 ### Scope (newly added Rust migration code reviewed)

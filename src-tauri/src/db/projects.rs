@@ -8,6 +8,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 mod analytics_exports;
+mod auth_audit;
 mod bootstrap;
 mod chat_instructions;
 mod pipeline_ingest;
@@ -18,6 +19,10 @@ mod runs_assets;
 mod secrets;
 
 pub use analytics_exports::{CostEventSummary, ProjectExportSummary, QualityReportSummary};
+pub use auth_audit::{
+    ApiTokenAuthContext, ApiTokenSummary, AppendAuditEventInput, CreateApiTokenInput,
+    CreateApiTokenResult,
+};
 pub use bootstrap::{
     ImportProjectBootstrapInput, ProjectBootstrapExport, ProjectBootstrapImportResult,
     ProjectBootstrapProject, ProjectBootstrapSettings,
@@ -925,6 +930,32 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           s3_endpoint_url TEXT,
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS api_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          project_id TEXT,
+          token_hash TEXT NOT NULL UNIQUE,
+          token_prefix TEXT NOT NULL,
+          label TEXT NOT NULL DEFAULT '',
+          expires_at TEXT,
+          revoked_at TEXT,
+          last_used_at TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(user_id) REFERENCES app_users(id) ON DELETE CASCADE,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_events (
+          id TEXT PRIMARY KEY,
+          project_id TEXT,
+          actor_user_id TEXT,
+          event_code TEXT NOT NULL,
+          payload_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL,
+          FOREIGN KEY(actor_user_id) REFERENCES app_users(id) ON DELETE SET NULL
+        );
     ",
     )?;
 
@@ -954,6 +985,40 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
     ensure_column(conn, "project_storage", "s3_region", "TEXT")?;
     ensure_column(conn, "project_storage", "s3_profile", "TEXT")?;
     ensure_column(conn, "project_storage", "s3_endpoint_url", "TEXT")?;
+    ensure_column(conn, "api_tokens", "user_id", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(conn, "api_tokens", "project_id", "TEXT")?;
+    ensure_column(conn, "api_tokens", "token_hash", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(
+        conn,
+        "api_tokens",
+        "token_prefix",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(conn, "api_tokens", "label", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(conn, "api_tokens", "expires_at", "TEXT")?;
+    ensure_column(conn, "api_tokens", "revoked_at", "TEXT")?;
+    ensure_column(conn, "api_tokens", "last_used_at", "TEXT")?;
+    ensure_column(conn, "api_tokens", "created_at", "TEXT NOT NULL DEFAULT ''")?;
+    ensure_column(conn, "audit_events", "project_id", "TEXT")?;
+    ensure_column(conn, "audit_events", "actor_user_id", "TEXT")?;
+    ensure_column(
+        conn,
+        "audit_events",
+        "event_code",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+    ensure_column(
+        conn,
+        "audit_events",
+        "payload_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )?;
+    ensure_column(
+        conn,
+        "audit_events",
+        "created_at",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
 
     ensure_column(conn, "runs", "run_log_path", "TEXT")?;
     ensure_column(conn, "runs", "run_mode", "TEXT")?;
@@ -1498,6 +1563,13 @@ fn normalize_required_text(value: &str, field_name: &str) -> Result<String, Proj
     } else {
         Ok(trimmed.to_string())
     }
+}
+
+fn normalize_optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
 }
 
 fn normalize_provider_code(value: &str) -> Result<String, ProjectsRepoError> {
