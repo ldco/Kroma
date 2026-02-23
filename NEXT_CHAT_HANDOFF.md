@@ -57,6 +57,12 @@ Worktree: dirty (local uncommitted changes)
 
 Result: passing.
 
+### Follow-up Hardening (2026-02-23)
+
+1. Added native Rust ingest re-ingest/idempotency regression coverage for the same `run_log_path`.
+2. Test verifies second ingest replaces the prior run state cleanly (single run row, refreshed job/candidate state, refreshed quality/cost rows).
+3. File: `src-tauri/src/db/projects/pipeline_ingest.rs`
+
 ### Current Status / Open Tasks (updated)
 
 1. Typed trigger post-run backend ops are Rust-owned end-to-end (Rust ingest + Rust S3 sync execution).
@@ -70,6 +76,7 @@ Result: passing.
    - Started: `src-tauri/src/pipeline/planning.rs` (prompt composition + generation job planning parity helpers/tests)
 2. Move script stdout/run-log ownership into Rust (structured in-memory result + Rust log writer), then delete script summary parsing fallback.
 3. Add re-ingest/idempotency tests for native Rust ingest (especially changed candidate/output paths across repeated `run_log_path` imports).
+   - Started: same `run_log_path` replacement coverage added in `pipeline_ingest` tests; still expand for multi-job/missing-path edge cases
 
 ## Architecture Direction (Non-Negotiable)
 

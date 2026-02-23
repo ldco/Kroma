@@ -1070,4 +1070,117 @@ mod tests {
 
         let _ = fs::remove_dir_all(repo_root);
     }
+
+    #[test]
+    fn reingest_same_run_log_path_replaces_run_state_idempotently() {
+        let repo_root = test_root();
+        let db_path = repo_root.join("var/backend/app.db");
+        let project_root = repo_root.join("var/projects/demo");
+        fs::create_dir_all(project_root.join("outputs")).expect("project outputs dir should exist");
+        fs::write(project_root.join("outputs/v1.png"), b"v1").expect("output v1 should exist");
+        fs::write(project_root.join("outputs/v2.png"), b"v2").expect("output v2 should exist");
+
+        let run_log_path = project_root.join("runs/run_reingest.json");
+        fs::create_dir_all(run_log_path.parent().expect("run log parent"))
+            .expect("runs dir should exist");
+
+        let write_run_log = |final_output: &str, cost_usd: f64| {
+            fs::write(
+                run_log_path.as_path(),
+                serde_json::to_vec_pretty(&json!({
+                    "mode": "run",
+                    "stage": "style",
+                    "time": "day",
+                    "weather": "clear",
+                    "model": "gpt-image-1",
+                    "jobs": [{
+                        "id": "job_a",
+                        "status": "done",
+                        "selected_candidate": 1,
+                        "final_output": final_output,
+                        "candidates": [{
+                            "status": "done",
+                            "output": final_output,
+                            "final_output": final_output,
+                            "rank": {
+                                "hard_failures": 0,
+                                "soft_warnings": 0,
+                                "avg_chroma_exceed": 0.0
+                            }
+                        }]
+                    }],
+                    "generation": {
+                        "provider_code": "openai",
+                        "operation_code": "image_generation",
+                        "units": 1,
+                        "cost_usd": cost_usd,
+                        "currency": "USD"
+                    }
+                }))
+                .expect("run log json should serialize"),
+            )
+            .expect("run log should be written");
+        };
+
+        let store = ProjectsStore::new(db_path, repo_root.clone());
+        store.initialize().expect("schema should initialize");
+
+        write_run_log("var/projects/demo/outputs/v1.png", 0.04);
+        let first = store
+            .ingest_run_log(IngestRunLogInput {
+                run_log_path: PathBuf::from("var/projects/demo/runs/run_reingest.json"),
+                project_slug: String::from("demo"),
+                project_name: String::from("Demo"),
+                create_project_if_missing: true,
+                compute_hashes: false,
+            })
+            .expect("first ingest should succeed");
+
+        write_run_log("var/projects/demo/outputs/v2.png", 0.07);
+        let second = store
+            .ingest_run_log(IngestRunLogInput {
+                run_log_path: PathBuf::from("var/projects/demo/runs/run_reingest.json"),
+                project_slug: String::from("demo"),
+                project_name: String::from("Demo"),
+                create_project_if_missing: true,
+                compute_hashes: false,
+            })
+            .expect("second ingest should succeed");
+
+        assert_ne!(first.run_id, second.run_id);
+
+        let runs = store.list_runs("demo", 10).expect("runs should list");
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].id, second.run_id);
+        assert_eq!(
+            runs[0].run_log_path,
+            "var/projects/demo/runs/run_reingest.json"
+        );
+
+        let jobs = store
+            .list_run_jobs("demo", second.run_id.as_str())
+            .expect("run jobs should list");
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].candidates.len(), 1);
+        assert_eq!(jobs[0].candidates[0].candidate_index, 1);
+        assert_eq!(
+            jobs[0].candidates[0].final_output_path,
+            "var/projects/demo/outputs/v2.png"
+        );
+
+        let quality = store
+            .list_quality_reports("demo", 20)
+            .expect("quality reports should list");
+        assert_eq!(quality.len(), 1);
+        assert_eq!(quality[0].run_id, second.run_id);
+
+        let cost = store
+            .list_cost_events("demo", 20)
+            .expect("cost events should list");
+        assert_eq!(cost.len(), 1);
+        assert_eq!(cost[0].run_id, second.run_id);
+        assert!((cost[0].total_cost_usd - 0.07).abs() < f64::EPSILON);
+
+        let _ = fs::remove_dir_all(repo_root);
+    }
 }
