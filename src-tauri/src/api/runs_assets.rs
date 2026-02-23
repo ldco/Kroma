@@ -496,6 +496,9 @@ fn map_pipeline_trigger_error(error: PipelineTriggerError) -> ApiObject<Value> {
         PipelineTriggerError::Runtime(PipelineRuntimeError::Io(source)) => {
             internal_error(format!("pipeline command execution error: {source}"))
         }
+        PipelineTriggerError::Runtime(PipelineRuntimeError::PlannedJobsTempFile(message)) => {
+            internal_error(format!("pipeline planned-jobs temp file error: {message}"))
+        }
     }
 }
 

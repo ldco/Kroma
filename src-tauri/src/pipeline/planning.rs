@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -20,7 +21,7 @@ pub struct PipelinePlanningManifest {
     pub policy: PipelinePlanningPolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct PlannedGenerationJob {
     pub id: String,
     pub mode: String,

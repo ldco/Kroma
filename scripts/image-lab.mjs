@@ -145,6 +145,43 @@ function loadManifestIfExists() {
   return loadJson(manifestPath);
 }
 
+function loadJobsFileIfExists() {
+  const jobsArg = readArg("--jobs-file", "").trim();
+  if (!jobsArg) return null;
+  const jobsPath = resolvePath(jobsArg);
+  if (!fs.existsSync(jobsPath)) {
+    throw new Error(`Jobs file not found: ${jobsArg}`);
+  }
+  const parsed = loadJson(jobsPath);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Jobs file must contain a JSON array: ${jobsArg}`);
+  }
+  return parsed.map((job, idx) => {
+    if (!job || typeof job !== "object" || Array.isArray(job)) {
+      throw new Error(`Jobs file entry ${idx + 1} must be an object`);
+    }
+    const id = String(job.id || "").trim();
+    const prompt = String(job.prompt || "").trim();
+    const mode = String(job.mode || "").trim();
+    const time = String(job.time || "").trim();
+    const weather = String(job.weather || "").trim();
+    const inputImages = Array.isArray(job.input_images)
+      ? job.input_images.map((v) => String(v || "").trim()).filter(Boolean)
+      : [];
+    if (!id) throw new Error(`Jobs file entry ${idx + 1} missing 'id'`);
+    if (!prompt) throw new Error(`Jobs file entry ${idx + 1} missing 'prompt'`);
+    if (!inputImages.length) throw new Error(`Jobs file entry ${idx + 1} missing 'input_images'`);
+    return {
+      id,
+      prompt,
+      mode: mode || "style",
+      time: time || "day",
+      weather: weather || "clear",
+      input_images: inputImages
+    };
+  });
+}
+
 function mustExist(relativePath, label = "file") {
   const abs = path.resolve(root, relativePath);
   if (!fs.existsSync(abs)) {
@@ -1237,7 +1274,7 @@ async function runGenerationMode(mode) {
 
   const manifest = resolveGenerationConfig();
 
-  const jobs = buildJobs({ manifest, stage, time, weather });
+  const jobs = loadJobsFileIfExists() || buildJobs({ manifest, stage, time, weather });
   const safeBatchLimit = Number(manifest.safe_batch_limit || 20);
   if (jobs.length > safeBatchLimit && !hasFlag("--allow-large-batch")) {
     throw new Error(`Batch exceeds safety limit (${safeBatchLimit}). Use --allow-large-batch to override.`);

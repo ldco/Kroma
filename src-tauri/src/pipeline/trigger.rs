@@ -136,6 +136,7 @@ impl PipelineTriggerService {
                 confirm_spend,
                 options: PipelineRunOptions {
                     manifest_path: None,
+                    jobs_file: None,
                     project_root,
                     input_source,
                     style_refs,

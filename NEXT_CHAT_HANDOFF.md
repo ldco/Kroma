@@ -92,7 +92,8 @@ Result: passing.
 Remaining risks / TODO (review follow-up):
 1. Rust preflight still duplicates manifest parsing/planning work already performed by `image-lab.mjs` (temporary migration cost).
 2. Rust preflight skips scene expansion parity for `input_source = InputPath(...)`; file/dir expansion is still script-owned.
-3. Next migration step remains to make Rust planning output the execution source (not just preflight/parity checks).
+3. Next migration step remains to replace script-owned generation/post-process execution with Rust execution modules.
+4. Rust now passes planned jobs via `--jobs-file`, but `image-lab.mjs` still owns the execution loop and run-log writing.
 
 ### Current Status / Open Tasks (updated)
 
@@ -103,7 +104,8 @@ Remaining risks / TODO (review follow-up):
 5. Follow-up landed: `pipeline::runtime` now supports typed `manifest_path` and runs Rust planning preflight (manifest parse + job planning) before script execution when a manifest is provided.
 6. Follow-up landed: runtime now compares Rust planned job count vs script summary job count (when available) and emits a warning on mismatch (parity signal during migration).
 7. Next phase starter landed: runtime preflight now retains Rust-planned job IDs (not only count) and includes IDs in parity mismatch warnings.
-8. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: use Rust planning output as the execution source instead of script-side planning).
+8. Follow-up landed: Rust runtime now writes planned jobs to a temp JSON file and passes `--jobs-file` to `image-lab.mjs` for manifest-backed scene-ref runs, bypassing script-side planning on the typed app path.
+9. Continue extracting generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules and remove the script fallback (next: replace script-owned generation/post-process execution loop with Rust execution modules).
 
 ### Recommended Next Steps
 

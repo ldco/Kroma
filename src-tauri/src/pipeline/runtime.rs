@@ -1,12 +1,16 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
 use serde::Deserialize;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
-use crate::pipeline::planning::{build_generation_jobs, load_planning_manifest_file};
+use crate::pipeline::planning::{
+    build_generation_jobs, load_planning_manifest_file, PlannedGenerationJob,
+};
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
 };
@@ -82,6 +86,7 @@ impl PipelineWeatherFilter {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PipelineRunOptions {
     pub manifest_path: Option<String>,
+    pub jobs_file: Option<String>,
     pub project_root: Option<String>,
     pub input_source: Option<PipelineInputSource>,
     pub style_refs: Vec<String>,
@@ -259,7 +264,8 @@ where
         })?;
 
         Ok(Some(RustPlanningPreflightSummary {
-            job_ids: jobs.into_iter().map(|job| job.id).collect(),
+            job_ids: jobs.iter().map(|job| job.id.clone()).collect(),
+            jobs,
         }))
     }
 }
@@ -268,6 +274,10 @@ fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOpt
     if let Some(manifest_path) = options.manifest_path.as_ref() {
         args.push(String::from("--manifest"));
         args.push(manifest_path.clone());
+    }
+    if let Some(jobs_file) = options.jobs_file.as_ref() {
+        args.push(String::from("--jobs-file"));
+        args.push(jobs_file.clone());
     }
 
     if let Some(project_root) = options.project_root.as_ref() {
@@ -430,6 +440,7 @@ struct PipelineScriptRunSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RustPlanningPreflightSummary {
     job_ids: Vec<String>,
+    jobs: Vec<PlannedGenerationJob>,
 }
 
 impl RustPlanningPreflightSummary {
@@ -537,9 +548,31 @@ where
         &self,
         request: &PipelineRunRequest,
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        let spec = self.build_command(request)?;
+        let mut script_request = request.clone();
+        let mut temp_jobs_file = None::<PathBuf>;
+        let mut spec = self.build_command(request)?;
         let planned_jobs = self.run_rust_planning_preflight(request)?;
-        let output = self.runner.run(&spec)?;
+        if let Some(planned) = planned_jobs.as_ref() {
+            if request.options.manifest_path.is_some() && !planned.jobs.is_empty() {
+                let jobs_file =
+                    write_planned_jobs_temp_file(self.app_root.as_path(), &planned.jobs)?;
+                script_request.options.jobs_file = Some(jobs_file.to_string_lossy().to_string());
+                spec = self.build_command(&script_request)?;
+                temp_jobs_file = Some(jobs_file);
+            }
+        }
+        let output = match self.runner.run(&spec) {
+            Ok(output) => output,
+            Err(error) => {
+                if let Some(path) = temp_jobs_file.take() {
+                    let _ = fs::remove_file(path);
+                }
+                return Err(error);
+            }
+        };
+        if let Some(path) = temp_jobs_file.take() {
+            let _ = fs::remove_file(path);
+        }
         if output.status_code != 0 {
             return Err(PipelineRuntimeError::CommandFailed {
                 program: spec.program,
@@ -597,6 +630,8 @@ pub enum PipelineRuntimeError {
     },
     #[error("{0}")]
     PlanningPreflight(String),
+    #[error("failed to write planned jobs temp file: {0}")]
+    PlannedJobsTempFile(String),
 }
 
 fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
@@ -621,6 +656,33 @@ fn resolve_under_app_root(app_root: &Path, value: &str) -> PathBuf {
     } else {
         app_root.join(path)
     }
+}
+
+fn write_planned_jobs_temp_file(
+    app_root: &Path,
+    jobs: &[PlannedGenerationJob],
+) -> Result<PathBuf, PipelineRuntimeError> {
+    let dir = app_root.join("var/tmp");
+    fs::create_dir_all(dir.as_path()).map_err(|error| {
+        PipelineRuntimeError::PlannedJobsTempFile(format!(
+            "create dir '{}': {error}",
+            dir.display()
+        ))
+    })?;
+    let path = dir.join(format!("pipeline_jobs_{}.json", Uuid::new_v4()));
+    let payload = serde_json::to_vec_pretty(jobs).map_err(|error| {
+        PipelineRuntimeError::PlannedJobsTempFile(format!(
+            "serialize planned jobs '{}': {error}",
+            path.display()
+        ))
+    })?;
+    fs::write(path.as_path(), payload).map_err(|error| {
+        PipelineRuntimeError::PlannedJobsTempFile(format!(
+            "write file '{}': {error}",
+            path.display()
+        ))
+    })?;
+    Ok(path)
 }
 
 pub fn default_app_root_from_manifest_dir() -> PathBuf {
@@ -964,6 +1026,36 @@ mod tests {
 
         assert_eq!(result.status_code, 0);
         assert_eq!(runner.take_seen().len(), 1);
+
+        let _ = fs::remove_file(manifest_path);
+    }
+
+    #[test]
+    fn execute_injects_jobs_file_when_rust_planning_produces_jobs() {
+        let runner = FakeRunner::with_next(Ok(CommandOutput {
+            status_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        }));
+        let orchestrator = test_orchestrator(runner.clone());
+        let manifest_path =
+            temp_manifest_file(r#"{"scene_refs":["a.png"],"prompts":{"style_base":"ok"}}"#);
+
+        let _ = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions {
+                    manifest_path: Some(manifest_path.to_string_lossy().to_string()),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("execution should succeed");
+
+        let seen = runner.take_seen();
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].args.windows(2).any(|w| w[0] == "--jobs-file"));
 
         let _ = fs::remove_file(manifest_path);
     }
