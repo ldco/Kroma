@@ -113,6 +113,42 @@ pub struct ExecutionCandidateResult {
     pub rank: ExecutionCandidateRank,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionCandidateJobOutputs {
+    pub final_output: Option<PathBuf>,
+    pub bg_remove: Option<PathBuf>,
+    pub upscale: Option<PathBuf>,
+    pub color: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecutionCandidateJobResult {
+    pub candidate: ExecutionCandidateResult,
+    pub outputs: ExecutionCandidateJobOutputs,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutionJobDoneOutcome {
+    pub selected_candidate: u8,
+    pub final_output: PathBuf,
+    pub output: PathBuf,
+    pub bg_remove: Option<PathBuf>,
+    pub upscale: Option<PathBuf>,
+    pub color: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionJobOutcome {
+    Done(ExecutionJobDoneOutcome),
+    FailedOutputGuard { failure_reason: &'static str },
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ExecutionOutcomeError {
+    #[error("winning candidate missing final_output")]
+    WinningCandidateMissingFinalOutput,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ExecutionPlanningError {
     #[error("candidate index must be >= 1")]
@@ -359,16 +395,62 @@ pub fn pick_best_candidate(
 }
 
 fn compare_candidate_rank(a: &ExecutionCandidateResult, b: &ExecutionCandidateResult) -> Ordering {
-    a.rank
+    compare_candidate_rank_fields(&a.rank, a.candidate_index, &b.rank, b.candidate_index)
+}
+
+fn compare_candidate_rank_fields(
+    a_rank: &ExecutionCandidateRank,
+    a_index: u8,
+    b_rank: &ExecutionCandidateRank,
+    b_index: u8,
+) -> Ordering {
+    a_rank
         .hard_failures
-        .cmp(&b.rank.hard_failures)
-        .then_with(|| a.rank.soft_warnings.cmp(&b.rank.soft_warnings))
+        .cmp(&b_rank.hard_failures)
+        .then_with(|| a_rank.soft_warnings.cmp(&b_rank.soft_warnings))
         .then_with(|| {
-            a.rank
+            a_rank
                 .avg_chroma_exceed
-                .total_cmp(&b.rank.avg_chroma_exceed)
+                .total_cmp(&b_rank.avg_chroma_exceed)
         })
-        .then_with(|| a.candidate_index.cmp(&b.candidate_index))
+        .then_with(|| a_index.cmp(&b_index))
+}
+
+pub fn resolve_job_outcome_from_candidates(
+    candidates: &[ExecutionCandidateJobResult],
+) -> Result<ExecutionJobOutcome, ExecutionOutcomeError> {
+    let winner = candidates
+        .iter()
+        .filter(|candidate| matches!(candidate.candidate.status, ExecutionCandidateStatus::Done))
+        .min_by(|a, b| {
+            compare_candidate_rank_fields(
+                &a.candidate.rank,
+                a.candidate.candidate_index,
+                &b.candidate.rank,
+                b.candidate.candidate_index,
+            )
+        });
+
+    let Some(winner) = winner else {
+        return Ok(ExecutionJobOutcome::FailedOutputGuard {
+            failure_reason: "all_candidates_failed_output_guard",
+        });
+    };
+
+    let final_output = winner
+        .outputs
+        .final_output
+        .clone()
+        .ok_or(ExecutionOutcomeError::WinningCandidateMissingFinalOutput)?;
+
+    Ok(ExecutionJobOutcome::Done(ExecutionJobDoneOutcome {
+        selected_candidate: winner.candidate.candidate_index,
+        output: final_output.clone(),
+        final_output,
+        bg_remove: winner.outputs.bg_remove.clone(),
+        upscale: winner.outputs.upscale.clone(),
+        color: winner.outputs.color.clone(),
+    }))
 }
 
 fn sanitize_id(value: &str) -> String {
@@ -745,6 +827,127 @@ mod tests {
         assert_eq!(
             plans[2].generated,
             PathBuf::from("/tmp/demo/outputs/job__c3.png")
+        );
+    }
+
+    #[test]
+    fn resolve_job_outcome_picks_script_parity_winner_and_copies_outputs() {
+        let outcome = resolve_job_outcome_from_candidates(&[
+            ExecutionCandidateJobResult {
+                candidate: ExecutionCandidateResult {
+                    candidate_index: 2,
+                    status: ExecutionCandidateStatus::Done,
+                    rank: ExecutionCandidateRank {
+                        hard_failures: 0,
+                        soft_warnings: 1,
+                        avg_chroma_exceed: 0.2,
+                    },
+                },
+                outputs: ExecutionCandidateJobOutputs {
+                    final_output: Some(PathBuf::from("outputs/job__c2.png")),
+                    bg_remove: None,
+                    upscale: None,
+                    color: None,
+                },
+            },
+            ExecutionCandidateJobResult {
+                candidate: ExecutionCandidateResult {
+                    candidate_index: 1,
+                    status: ExecutionCandidateStatus::Done,
+                    rank: ExecutionCandidateRank {
+                        hard_failures: 0,
+                        soft_warnings: 0,
+                        avg_chroma_exceed: 0.1,
+                    },
+                },
+                outputs: ExecutionCandidateJobOutputs {
+                    final_output: Some(PathBuf::from("color_corrected/job__c1_nobg_x4_cinema.png")),
+                    bg_remove: Some(PathBuf::from("background_removed/job__c1_nobg.webp")),
+                    upscale: Some(PathBuf::from("upscaled/job__c1_nobg_x4.png")),
+                    color: Some(PathBuf::from("color_corrected/job__c1_nobg_x4_cinema.png")),
+                },
+            },
+        ])
+        .expect("job outcome should resolve");
+
+        match outcome {
+            ExecutionJobOutcome::Done(done) => {
+                assert_eq!(done.selected_candidate, 1);
+                assert_eq!(
+                    done.final_output,
+                    PathBuf::from("color_corrected/job__c1_nobg_x4_cinema.png")
+                );
+                assert_eq!(done.output, done.final_output);
+                assert_eq!(
+                    done.bg_remove,
+                    Some(PathBuf::from("background_removed/job__c1_nobg.webp"))
+                );
+                assert_eq!(
+                    done.upscale,
+                    Some(PathBuf::from("upscaled/job__c1_nobg_x4.png"))
+                );
+                assert_eq!(
+                    done.color,
+                    Some(PathBuf::from("color_corrected/job__c1_nobg_x4_cinema.png"))
+                );
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_job_outcome_returns_failed_output_guard_when_no_done_candidates() {
+        let outcome = resolve_job_outcome_from_candidates(&[ExecutionCandidateJobResult {
+            candidate: ExecutionCandidateResult {
+                candidate_index: 1,
+                status: ExecutionCandidateStatus::FailedOutputGuard,
+                rank: ExecutionCandidateRank {
+                    hard_failures: 1,
+                    soft_warnings: 0,
+                    avg_chroma_exceed: 0.0,
+                },
+            },
+            outputs: ExecutionCandidateJobOutputs {
+                final_output: None,
+                bg_remove: None,
+                upscale: None,
+                color: None,
+            },
+        }])
+        .expect("failed outcome should resolve");
+
+        assert_eq!(
+            outcome,
+            ExecutionJobOutcome::FailedOutputGuard {
+                failure_reason: "all_candidates_failed_output_guard"
+            }
+        );
+    }
+
+    #[test]
+    fn resolve_job_outcome_rejects_done_winner_missing_final_output() {
+        let err = resolve_job_outcome_from_candidates(&[ExecutionCandidateJobResult {
+            candidate: ExecutionCandidateResult {
+                candidate_index: 1,
+                status: ExecutionCandidateStatus::Done,
+                rank: ExecutionCandidateRank {
+                    hard_failures: 0,
+                    soft_warnings: 0,
+                    avg_chroma_exceed: 0.0,
+                },
+            },
+            outputs: ExecutionCandidateJobOutputs {
+                final_output: None,
+                bg_remove: None,
+                upscale: None,
+                color: None,
+            },
+        }])
+        .expect_err("done winner missing final output should fail");
+
+        assert_eq!(
+            err,
+            ExecutionOutcomeError::WinningCandidateMissingFinalOutput
         );
     }
 }

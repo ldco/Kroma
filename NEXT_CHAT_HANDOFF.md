@@ -54,6 +54,7 @@ Worktree: dirty (local uncommitted changes)
    - `pipeline::execution::plan_candidate_output_paths(...)` now ports script path planning for generate/bg-remove/upscale/color pass order and naming (typed + unit tested)
    - `pipeline::execution::plan_job_candidate_output_paths(...)` now ports the per-job candidate loop expansion into ordered typed plans
    - `pipeline::execution::summarize_output_guard_report(...)` now ports script output-guard ranking math (`summarizeGuardReport`) with rounding parity tests
+   - `pipeline::execution::resolve_job_outcome_from_candidates(...)` now ports script winner/failure job outcome shaping (`selected_candidate`, `final_output`/`output`, failure reason) with strict missing-output validation
 
 ### Validation (latest patch)
 
