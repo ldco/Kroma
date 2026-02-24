@@ -561,12 +561,6 @@ fn map_pipeline_trigger_error(error: PipelineTriggerError) -> ApiObject<Value> {
                 "error": message
             })),
         ),
-        PipelineTriggerError::Runtime(PipelineRuntimeError::ScriptNotFound(path)) => {
-            internal_error(format!(
-                "pipeline script fallback missing: {}",
-                path.display()
-            ))
-        }
         PipelineTriggerError::Runtime(PipelineRuntimeError::Io(source)) => {
             internal_error(format!("pipeline command execution error: {source}"))
         }

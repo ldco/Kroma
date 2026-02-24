@@ -2,7 +2,7 @@
 
 Date: 2026-02-24
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `e41e263` / `c6074ff`
+HEAD (pre-handoff commit) / upstream (`origin/master`): `2ac1f9c` / `a7dfc6f`
 Worktree: dirty (handoff update in progress)
 
 ## Latest Review Pass (2026-02-24, QA adapter cleanup follow-up)
@@ -147,6 +147,40 @@ Result: passing.
 
 1. Legacy script compatibility tests/types still exist in test builds; next step is full deletion (types + tests) once the team decides those regression fixtures are no longer needed.
 
+## Latest Patch (2026-02-24, legacy script orchestrator/adapter deletion)
+
+### Scope
+
+1. `src-tauri/src/pipeline/runtime.rs`
+2. `src-tauri/src/pipeline/tool_adapters.rs`
+3. `src-tauri/src/api/runs_assets.rs`
+
+### What Landed
+
+1. Deleted legacy script compatibility types and their dedicated tests:
+   - `ScriptPipelineOrchestrator` (runtime)
+   - `ScriptPipelineToolAdapters` (tool adapters)
+2. Removed script-only helper functions that existed solely for the deleted compatibility path/tests.
+3. Removed dead `ScriptNotFound` variants from:
+   - `PipelineRuntimeError`
+   - `ToolAdapterError`
+4. Updated API trigger error mapping in `src-tauri/src/api/runs_assets.rs` to stop matching the removed `PipelineRuntimeError::ScriptNotFound`.
+5. Cleaned resulting dead test scaffolding/warnings in `runtime.rs` (unused `FakeRunner`, `ids_preview`).
+
+### Validation
+
+1. `cargo fmt --manifest-path src-tauri/Cargo.toml`
+2. `cargo check -q --manifest-path src-tauri/Cargo.toml`
+3. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+4. `cargo test -q pipeline::runtime:: --manifest-path src-tauri/Cargo.toml`
+
+Result: passing.
+
+### Remaining Risk / Next Step
+
+1. The active Rust path still carries transitional compatibility around script-shaped run summaries/run-log normalization in post-run handling.
+2. Inline Python shims (`rembg`, python-upscale) remain the primary migration debt.
+
 ## Architecture Decisions (2026-02-24, Rust-Only Direction)
 
 1. Default pipeline execution path is now Rust-only for orchestration (`dry`/`run` wrappers + post-run ingest).
@@ -181,17 +215,14 @@ Result: passing.
 1. Replace inline Python shims used by native adapters with Rust-owned execution or cleaner direct-module invocation paths:
    - rembg backend shim
    - python RealESRGAN upscale shim
-2. Remove legacy script orchestration code from the runtime module once no longer used:
-   - `ScriptPipelineOrchestrator`
-   - default script fallback constructors/wiring
-3. Remove `scripts/image-lab.mjs` and script-tool adapter compatibility code after the Rust path covers all required features.
-4. Split `src-tauri/src/pipeline/tool_adapters.rs` into focused modules (generation/bgremove/upscale/color/qa/archive + shared image ops/config).
+2. Reduce remaining script-shape compatibility in runtime/post-run handling as Rust run output ownership expands.
+3. Split `src-tauri/src/pipeline/tool_adapters.rs` into focused modules (generation/bgremove/upscale/color/qa/archive + shared image ops/config).
    - Current file is now a major structural hotspot and should be decomposed after the remaining script dependencies are removed.
 
 ## Next Phase Goals (Immediate)
 
 1. Replace inline python shims in `tool_adapters.rs` (rembg + python upscale) with Rust-owned backend paths or cleaner direct binary/module invocation.
-2. After that, delete `image-lab.mjs` orchestration paths and collapse the remaining compatibility layers.
+2. After that, continue collapsing script-shaped compatibility layers in runtime/post-run handling.
 
 ## Current Status
 
