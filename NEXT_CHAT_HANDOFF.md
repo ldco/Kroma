@@ -2,8 +2,61 @@
 
 Date: 2026-02-24
 Branch: `master`
-HEAD / upstream (`origin/master`): `c6074ff`
-Worktree: dirty (local uncommitted changes in `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/src/pipeline/runtime.rs`, `src-tauri/src/pipeline/tool_adapters.rs`, `src-tauri/src/pipeline/postprocess_planning.rs`, `NEXT_CHAT_HANDOFF.md`)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `e41e263` / `c6074ff`
+Worktree: dirty (handoff update in progress)
+
+## Latest Review Pass (2026-02-24, QA adapter cleanup follow-up)
+
+### Scope Reviewed
+
+1. `38e6308` `refactor(pipeline): drop qa python override from rust adapters`
+2. `e41e263` `chore(rust): scope tool adapter CommandOutput import to tests`
+3. Surrounding QA adapter/runtime flow in:
+   - `src-tauri/src/pipeline/runtime.rs`
+   - `src-tauri/src/pipeline/tool_adapters.rs`
+
+### Issues Discovered (this pass)
+
+1. No new functional regressions found in the reviewed commits.
+2. Compatibility surface change (intentional): `QaCheckRequest` no longer supports request-level `qa_python_bin` override.
+   - Impact: any internal callers attempting to set that field will now fail at compile time (preferred over silent runtime drift).
+
+### Fixes Implemented (this pass)
+
+1. No additional code fix was required during this review pass.
+2. Verified the warning cleanup (`CommandOutput` test-only import) is correct and does not affect non-test builds.
+
+### Validation (this pass)
+
+1. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+2. `cargo test -q pipeline::runtime:: --manifest-path src-tauri/Cargo.toml`
+3. `rg -n "qa_python_bin" src-tauri/src src-tauri/tests` (no remaining matches)
+
+Result: passing.
+
+### Current Status (this pass)
+
+1. QA/output-guard Rust adapter path no longer carries dead `qa_python_bin` request plumbing.
+2. `src-tauri/src/pipeline/tool_adapters.rs` warning cleanup is committed and validated.
+3. Repository was clean before this handoff update (no pending code changes).
+
+### Completed Work (this pass)
+
+1. Reviewed the latest two commits in full diff form and checked surrounding code paths.
+2. Ran targeted regression validation for `tool_adapters` and `pipeline::runtime`.
+3. Confirmed the `qa_python_bin` removal is complete within `src-tauri` and did not leave stale Rust references.
+
+### Open Tasks / Remaining Risks (this pass)
+
+1. Risk (low): downstream script/tooling docs outside `src-tauri` may still mention `--qa-python-bin`; not validated in this pass.
+2. Testing gap: no explicit unit test asserts that `build_qa_command(...)` no longer emits `--qa-python-bin` (behavior is indirectly covered by type removal + grep).
+3. Larger migration risks remain unchanged: `rembg` and python-upscale script wrappers are still active script-era dependencies.
+
+### Recommended Next Steps (updated)
+
+1. Continue the Rust migration cleanup by auditing/removing script wrapper dependencies in `bgremove` (`rembg`) and python upscale paths.
+2. Add one focused regression test for QA command args only if the script adapter path remains long enough to justify the extra coverage.
+3. Run a broader `src-tauri` test subset after the next adapter cleanup to catch cross-module regressions early.
 
 ## Architecture Decisions (2026-02-24, Rust-Only Direction)
 
