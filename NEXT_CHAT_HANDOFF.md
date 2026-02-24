@@ -1,9 +1,56 @@
 # Next Chat Handoff
 
-Date: 2026-02-23
+Date: 2026-02-24
 Branch: `master`
-HEAD / upstream (`origin/master`): `c0fa57f`
-Worktree: dirty (local uncommitted changes: `NEXT_CHAT_HANDOFF.md`)
+HEAD / upstream (`origin/master`): `c6074ff`
+Worktree: dirty (local uncommitted changes in `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/src/pipeline/runtime.rs`, `src-tauri/src/pipeline/tool_adapters.rs`, `src-tauri/src/pipeline/postprocess_planning.rs`, `NEXT_CHAT_HANDOFF.md`)
+
+## Architecture Decisions (2026-02-24, Rust-Only Direction)
+
+1. Default pipeline execution path is now Rust-only for orchestration (`dry`/`run` wrappers + post-run ingest).
+   - No default fallback to `scripts/image-lab.mjs` for unsupported request shapes.
+   - Unsupported shapes now fail fast with a Rust `PlanningPreflight` error.
+2. Compatibility code is no longer treated as a design constraint.
+   - Script-backed behaviors may now fail fast instead of delegating when unsupported in Rust (example: unsupported `bgremove` backend names).
+3. New work should replace script ownership directly, not add more adapter layering.
+   - Priority order for remaining script deletions:
+   - `color` (done in this batch)
+   - `qa/output-guard` (done in this batch)
+   - `bgremove` rembg helper script
+   - `upscale` python helper script
+   - final removal of `image-lab.mjs` legacy orchestration + script tool adapters
+
+## Completed Work (Latest Batch, 2026-02-24)
+
+1. Removed default Node orchestration fallback from the runtime stack.
+   - `default_pipeline_orchestrator_with_rust_post_run_*` now uses a strict Rust-only unsupported-request inner orchestrator.
+2. Hardened Rust-native `bgremove` behavior:
+   - unsupported backend names now fail in Rust instead of falling back to `image-lab.mjs`.
+3. Ported output guard / QA from `scripts/output-guard.py` into Rust (`image` crate based analysis).
+   - direct chroma-delta computation and report shaping now happen in Rust.
+4. Ported color correction from `scripts/apply-color-correction.py` into Rust (`image` crate based pipeline).
+   - file + directory input modes
+   - typed color profile settings parsing
+   - profile transforms (brightness/contrast/saturation/sharpness/gamma/channel multipliers)
+5. Expanded regression tests to assert Rust-native behavior (no subprocess calls for QA/color).
+
+## Remaining Tasks (High Priority)
+
+1. Delete remaining Python-script dependencies from the default path:
+   - `scripts/rembg-remove.py`
+   - `scripts/realesrgan-python-upscale.py`
+2. Remove legacy script orchestration code from the runtime module once no longer used:
+   - `ScriptPipelineOrchestrator`
+   - default script fallback constructors/wiring
+3. Remove `scripts/image-lab.mjs` and script-tool adapter compatibility code after the Rust path covers all required features.
+4. Split `src-tauri/src/pipeline/tool_adapters.rs` into focused modules (generation/bgremove/upscale/color/qa/archive + shared image ops/config).
+   - Current file is now a major structural hotspot and should be decomposed after the remaining script dependencies are removed.
+
+## Next Phase Goals (Immediate)
+
+1. Replace `scripts/rembg-remove.py` usage with a direct Rust-owned backend path (or direct tool invocation without repo script wrappers).
+2. Replace `scripts/realesrgan-python-upscale.py` usage in the python upscale backend with a Rust-owned backend path or direct binary/module invocation.
+3. After those two are removed, delete `image-lab.mjs` orchestration paths and collapse the remaining compatibility layers.
 
 ## Current Status
 

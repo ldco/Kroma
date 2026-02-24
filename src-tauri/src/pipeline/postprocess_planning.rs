@@ -9,7 +9,10 @@ use crate::pipeline::execution::ExecutionPlannedPostprocessRecord;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostprocessPlanningConfig {
     pub upscale_backend: String,
+    pub upscale_scale: u8,
+    pub upscale_format: String,
     pub color_default_profile: String,
+    pub bg_remove_format: String,
     pub bg_remove_backends: Vec<String>,
     pub bg_refine_openai_enabled: bool,
     pub bg_refine_openai_required: bool,
@@ -19,7 +22,10 @@ impl Default for PostprocessPlanningConfig {
     fn default() -> Self {
         Self {
             upscale_backend: String::from("python"),
+            upscale_scale: 2,
+            upscale_format: String::from("png"),
             color_default_profile: String::from("neutral"),
+            bg_remove_format: String::from("png"),
             bg_remove_backends: vec![String::from("rembg")],
             bg_refine_openai_enabled: true,
             bg_refine_openai_required: true,
@@ -105,6 +111,25 @@ pub fn parse_postprocess_planning_config_json(
                     })?;
             cfg.upscale_backend = parse_upscale_backend(raw)?;
         }
+        if let Some(scale) = upscale_obj.get("scale") {
+            let raw = scale
+                .as_u64()
+                .filter(|v| *v >= 1)
+                .and_then(|v| u8::try_from(v).ok())
+                .ok_or_else(|| PostprocessPlanningError::InvalidFieldType {
+                    field: String::from("upscale.scale"),
+                })?;
+            cfg.upscale_scale = raw;
+        }
+        if let Some(format) = upscale_obj.get("format") {
+            let raw =
+                format
+                    .as_str()
+                    .ok_or_else(|| PostprocessPlanningError::InvalidFieldType {
+                        field: String::from("upscale.format"),
+                    })?;
+            cfg.upscale_format = parse_image_format(raw, "upscale.format")?;
+        }
     }
 
     if let Some(color) = root.get("color") {
@@ -134,6 +159,15 @@ pub fn parse_postprocess_planning_config_json(
         if let Some(backends) = bg_remove_obj.get("backends") {
             cfg.bg_remove_backends =
                 parse_bg_remove_backends_value(backends, "bg_remove.backends")?;
+        }
+        if let Some(format) = bg_remove_obj.get("format") {
+            let raw =
+                format
+                    .as_str()
+                    .ok_or_else(|| PostprocessPlanningError::InvalidFieldType {
+                        field: String::from("bg_remove.format"),
+                    })?;
+            cfg.bg_remove_format = parse_image_format(raw, "bg_remove.format")?;
         }
         if let Some(openai) = bg_remove_obj.get("openai") {
             let openai_obj =
@@ -261,6 +295,20 @@ fn parse_upscale_backend(value: &str) -> Result<String, PostprocessPlanningError
     }
 }
 
+fn parse_image_format(value: &str, field: &str) -> Result<String, PostprocessPlanningError> {
+    let normalized = value.trim().to_ascii_lowercase();
+    let normalized = match normalized.as_str() {
+        "jpeg" => String::from("jpg"),
+        "png" | "jpg" | "webp" => normalized,
+        _ => {
+            return Err(PostprocessPlanningError::InvalidFieldType {
+                field: field.to_string(),
+            })
+        }
+    };
+    Ok(normalized)
+}
+
 fn parse_bg_remove_backends_value(
     value: &Value,
     field: &str,
@@ -305,7 +353,10 @@ mod tests {
             .expect("empty config should use defaults");
 
         assert_eq!(cfg.upscale_backend, "python");
+        assert_eq!(cfg.upscale_scale, 2);
+        assert_eq!(cfg.upscale_format, "png");
         assert_eq!(cfg.color_default_profile, "neutral");
+        assert_eq!(cfg.bg_remove_format, "png");
         assert_eq!(cfg.bg_remove_backends, vec!["rembg"]);
         assert!(cfg.bg_refine_openai_enabled);
         assert!(cfg.bg_refine_openai_required);
@@ -314,9 +365,10 @@ mod tests {
     #[test]
     fn parse_config_json_merges_nested_overrides_for_planning_subset() {
         let cfg = parse_postprocess_planning_config_json(&serde_json::json!({
-            "upscale": { "backend": "ncnn" },
+            "upscale": { "backend": "ncnn", "scale": 4, "format": "webp" },
             "color": { "default_profile": "cinematic-v2" },
             "bg_remove": {
+                "format": "jpeg",
                 "backends": ["PhotoRoom", "removebg"],
                 "openai": { "enabled": false, "required": false }
             }
@@ -324,7 +376,10 @@ mod tests {
         .expect("config should parse");
 
         assert_eq!(cfg.upscale_backend, "ncnn");
+        assert_eq!(cfg.upscale_scale, 4);
+        assert_eq!(cfg.upscale_format, "webp");
         assert_eq!(cfg.color_default_profile, "cinematic-v2");
+        assert_eq!(cfg.bg_remove_format, "jpg");
         assert_eq!(cfg.bg_remove_backends, vec!["photoroom", "removebg"]);
         assert!(!cfg.bg_refine_openai_enabled);
         assert!(!cfg.bg_refine_openai_required);
@@ -334,7 +389,10 @@ mod tests {
     fn resolve_planned_postprocess_record_matches_script_ordering_and_toggles() {
         let cfg = PostprocessPlanningConfig {
             upscale_backend: String::from("python"),
+            upscale_scale: 2,
+            upscale_format: String::from("png"),
             color_default_profile: String::from("neutral"),
+            bg_remove_format: String::from("png"),
             bg_remove_backends: vec![String::from("rembg")],
             bg_refine_openai_enabled: true,
             bg_refine_openai_required: true,
