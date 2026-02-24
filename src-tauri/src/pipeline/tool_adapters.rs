@@ -124,7 +124,6 @@ pub struct QaCheckRequest {
     pub enforce_grayscale: Option<bool>,
     pub max_chroma_delta: Option<f64>,
     pub fail_on_chroma_exceed: Option<bool>,
-    pub qa_python_bin: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -416,10 +415,6 @@ where
         if let Some(enabled) = request.fail_on_chroma_exceed {
             args.push(String::from("--fail-on-chroma-exceed"));
             args.push(enabled.to_string());
-        }
-        if let Some(bin) = request.qa_python_bin.as_ref() {
-            args.push(String::from("--qa-python-bin"));
-            args.push(bin.clone());
         }
         args.push(String::from("--json"));
         Ok(CommandSpec {
@@ -2980,7 +2975,6 @@ mod tests {
                 enforce_grayscale: None,
                 max_chroma_delta: None,
                 fail_on_chroma_exceed: None,
-                qa_python_bin: None,
             })
             .expect("qa json should parse");
 
@@ -3081,7 +3075,6 @@ mod tests {
                 enforce_grayscale: Some(true),
                 max_chroma_delta: Some(1.5),
                 fail_on_chroma_exceed: Some(false),
-                qa_python_bin: Some(String::from("python3")),
             })
             .expect("native qa should compute report");
 

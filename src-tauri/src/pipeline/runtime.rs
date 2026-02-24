@@ -1182,7 +1182,6 @@ fn execute_rust_run_mode_with_tool_adapters(
                         enforce_grayscale: Some(output_guard_cfg.enforce_grayscale),
                         max_chroma_delta: Some(output_guard_cfg.max_chroma_delta),
                         fail_on_chroma_exceed: Some(output_guard_cfg.fail_on_chroma_exceed),
-                        qa_python_bin: None,
                     })
                     .map_err(tool_adapter_error_to_runtime)?;
                 let guard_report_value = qa_resp.report.as_ref().ok_or_else(|| {
