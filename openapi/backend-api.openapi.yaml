@@ -390,6 +390,9 @@ paths:
                   type: integer
                   minimum: 1
                   maximum: 6
+                storage_sync_s3:
+                  type: boolean
+                  description: When true in run mode, request Rust post-run S3 sync for this project.
               oneOf:
                 - required: [input]
                 - required: [scene_refs]
@@ -419,6 +422,54 @@ paths:
                         example: script_fallback
         "400":
           description: Invalid payload or trigger request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
+  /api/projects/{slug}/runs/validate-config:
+    post:
+      summary: Validate layered pipeline configuration stack for a project
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_root: { type: string }
+                app_settings_path: { type: string }
+                project_settings_path: { type: string }
+                manifest_path: { type: string }
+                postprocess_config_path: { type: string }
+      responses:
+        "200":
+          description: Validation summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  summary: { type: object }
+        "400":
+          description: Invalid config or payload
           content:
             application/json:
               schema:

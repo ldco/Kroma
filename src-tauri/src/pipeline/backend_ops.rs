@@ -367,9 +367,9 @@ where
 
         let prefix = s3.prefix.trim().trim_matches('/');
         let dst = if prefix.is_empty() {
-            format!("s3://{bucket}/{}/", payload.project.slug)
+            format!("s3://{bucket}/{}/", payload.project.id)
         } else {
-            format!("s3://{bucket}/{prefix}/{}/", payload.project.slug)
+            format!("s3://{bucket}/{prefix}/{}/", payload.project.id)
         };
 
         let local_root = PathBuf::from(payload.storage.local.project_root.clone());

@@ -151,6 +151,7 @@ pub async fn auth_middleware(
     next: Next,
 ) -> Response {
     let path = request.uri().path().to_string();
+    let project_slug = extract_project_slug(path.as_str());
     if state.auth_dev_bypass {
         request.extensions_mut().insert(AuthPrincipal::DevBypass);
         return next.run(request).await;
@@ -161,7 +162,7 @@ pub async fn auth_middleware(
         Method::GET | Method::HEAD | Method::OPTIONS
     );
     let auth_path = path.starts_with("/auth/");
-    let should_require_auth = auth_path || !is_safe_method;
+    let should_require_auth = auth_path || !is_safe_method || project_slug.is_some();
     if !should_require_auth {
         request.extensions_mut().insert(AuthPrincipal::DevBypass);
         return next.run(request).await;
@@ -176,6 +177,31 @@ pub async fn auth_middleware(
         tokio::task::spawn_blocking(move || store.validate_api_token(bearer.as_str())).await;
     match result {
         Ok(Ok(Some(ctx))) => {
+            if let Some(slug) = project_slug.as_deref() {
+                let store = state.projects_store.clone();
+                let slug = slug.to_string();
+                let user_id = ctx.user_id.clone();
+                let project_id = ctx.project_id.clone();
+                let access = tokio::task::spawn_blocking(move || {
+                    store.authorize_project_slug_access(
+                        slug.as_str(),
+                        user_id.as_str(),
+                        project_id.as_deref(),
+                    )
+                })
+                .await;
+
+                match access {
+                    Ok(Ok(true)) => {}
+                    Ok(Ok(false)) => {
+                        return forbidden("Token is not authorized for this project");
+                    }
+                    Ok(Err(_)) | Err(_) => {
+                        return forbidden("Project access check failed");
+                    }
+                }
+            }
+
             request
                 .extensions_mut()
                 .insert(auth_principal_from_token_ctx(ctx));
@@ -198,6 +224,21 @@ fn extract_bearer_token(request: &Request) -> Option<String> {
     Some(token.to_string())
 }
 
+fn extract_project_slug(path: &str) -> Option<String> {
+    let mut segments = path.trim_matches('/').split('/');
+    if segments.next()? != "api" {
+        return None;
+    }
+    if segments.next()? != "projects" {
+        return None;
+    }
+    let slug = segments.next()?;
+    if slug.trim().is_empty() {
+        return None;
+    }
+    Some(slug.to_string())
+}
+
 fn auth_principal_from_token_ctx(ctx: ApiTokenAuthContext) -> AuthPrincipal {
     AuthPrincipal::ApiToken {
         token_id: ctx.token_id,
@@ -212,4 +253,36 @@ fn unauthorized(message: &str) -> Response {
         Json(json!({"ok": false, "error": message})),
     )
         .into_response()
+}
+
+fn forbidden(message: &str) -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Json(json!({"ok": false, "error": message})),
+    )
+        .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_project_slug;
+
+    #[test]
+    fn extract_project_slug_from_project_routes() {
+        assert_eq!(
+            extract_project_slug("/api/projects/demo/runs").as_deref(),
+            Some("demo")
+        );
+        assert_eq!(
+            extract_project_slug("/api/projects/demo").as_deref(),
+            Some("demo")
+        );
+    }
+
+    #[test]
+    fn extract_project_slug_ignores_non_project_routes() {
+        assert!(extract_project_slug("/api/projects").is_none());
+        assert!(extract_project_slug("/api/other/demo").is_none());
+        assert!(extract_project_slug("/health").is_none());
+    }
 }

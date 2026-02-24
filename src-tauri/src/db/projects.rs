@@ -4,6 +4,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -234,7 +235,7 @@ impl ProjectsStore {
             let _ = std::fs::create_dir_all(parent);
         }
         let conn = Connection::open(self.db_path.as_path())?;
-        conn.execute("PRAGMA foreign_keys = ON", [])?;
+        configure_connection(&conn)?;
         ensure_schema(&conn)?;
         func(&conn)
     }
@@ -247,7 +248,7 @@ impl ProjectsStore {
             let _ = std::fs::create_dir_all(parent);
         }
         let mut conn = Connection::open(self.db_path.as_path())?;
-        conn.execute("PRAGMA foreign_keys = ON", [])?;
+        configure_connection(&conn)?;
         ensure_schema(&conn)?;
         func(&mut conn)
     }
@@ -1108,12 +1109,37 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
         "TEXT NOT NULL DEFAULT ''",
     )?;
 
+    conn.execute_batch(
+        "
+        CREATE INDEX IF NOT EXISTS idx_projects_slug ON projects(slug);
+        CREATE INDEX IF NOT EXISTS idx_projects_owner_slug ON projects(owner_user_id, slug);
+        CREATE INDEX IF NOT EXISTS idx_runs_project_created ON runs(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_run_jobs_run_created ON run_jobs(run_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_assets_project_created ON assets(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_api_tokens_user_created ON api_tokens(user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_api_tokens_project_created ON api_tokens(project_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_project_created ON audit_events(project_id, created_at);
+    ",
+    )?;
+
     analytics_exports::ensure_analytics_export_columns(conn)?;
     chat_instructions::ensure_chat_and_instruction_columns(conn)?;
     prompt_templates::ensure_prompt_template_columns(conn)?;
     provider_style_character::ensure_provider_style_character_columns(conn)?;
     reference_sets::ensure_reference_set_columns(conn)?;
     secrets::ensure_secret_columns(conn)?;
+    Ok(())
+}
+
+fn configure_connection(conn: &Connection) -> Result<(), ProjectsRepoError> {
+    conn.busy_timeout(Duration::from_secs(5))?;
+    conn.execute_batch(
+        "
+        PRAGMA foreign_keys = ON;
+        PRAGMA journal_mode = WAL;
+        PRAGMA synchronous = NORMAL;
+    ",
+    )?;
     Ok(())
 }
 
@@ -1180,6 +1206,25 @@ fn fetch_project_by_slug(
     ",
     )?;
     stmt.query_row([slug], row_to_project)
+        .optional()
+        .map_err(ProjectsRepoError::from)
+}
+
+fn fetch_project_by_slug_for_user(
+    conn: &Connection,
+    slug: &str,
+    user_id: &str,
+) -> Result<Option<ProjectRow>, ProjectsRepoError> {
+    let mut stmt = conn.prepare(
+        "
+        SELECT id, slug, name, description, status, settings_json, created_at, updated_at
+        FROM projects
+        WHERE slug = ?1
+          AND COALESCE(owner_user_id, user_id) = ?2
+        LIMIT 1
+    ",
+    )?;
+    stmt.query_row(params![slug, user_id], row_to_project)
         .optional()
         .map_err(ProjectsRepoError::from)
 }
@@ -1356,6 +1401,26 @@ fn ensure_project(
             params![name, description, owner_user_id, now, project_id],
         )?;
         return fetch_project_by_id(conn, project_id.as_str())?.ok_or(ProjectsRepoError::NotFound);
+    }
+
+    let slug_taken_by_other_user = conn
+        .query_row(
+            "
+            SELECT id
+            FROM projects
+            WHERE slug = ?1
+              AND COALESCE(owner_user_id, user_id) != ?2
+            LIMIT 1
+        ",
+            params![safe_slug, owner_user_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .is_some();
+    if slug_taken_by_other_user {
+        return Err(ProjectsRepoError::Validation(String::from(
+            "Project slug is already used by another user. Choose a different slug.",
+        )));
     }
 
     let project_id = Uuid::new_v4().to_string();

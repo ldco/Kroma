@@ -2,8 +2,63 @@
 
 Date: 2026-02-24
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `2ac1f9c` / `a7dfc6f`
+HEAD (pre-handoff commit) / upstream (`origin/master`): `d18510c` / `a7dfc6f`
 Worktree: dirty (handoff update in progress)
+
+## Session Update (2026-02-24, handoff refresh)
+
+### Scope
+
+1. User requested `NEXT_CHAT_HANDOFF.md` refresh.
+2. No source/runtime code changes were made in this session.
+
+### Repo State Snapshot
+
+1. Branch: `master`
+2. HEAD: `d18510c`
+3. Upstream (`origin/master`): `a7dfc6f`
+4. Worktree dirty files: `NEXT_CHAT_HANDOFF.md` only
+
+### Validation
+
+1. Not run (docs-only update).
+
+### Next Chat Starting Point
+
+1. Continue from the existing "Suggested Starting Point For Next Chat" section later in this file.
+2. Prioritize remaining Rust runtime migration debt: replace transitional inline Python shims and reduce script-runtime dependencies.
+
+## Latest Patch (2026-02-24, request-path containment + rembg module invocation)
+
+### Scope
+
+1. `src-tauri/src/pipeline/tool_adapters.rs`
+2. `tool_adapters` unit tests
+
+### What Landed
+
+1. Added strict request-path containment for native tool adapter request fields.
+   - New resolver rejects empty, absolute, and parent-traversal paths (`..`) for request/config paths expected to live under app root.
+   - Applied to `generate_one`, `upscale`, `color`, `bgremove`, `qa`, `archive_bad`, and postprocess config loading.
+2. Replaced inline rembg shim execution with direct module invocation:
+   - `run_bgremove_rembg(...)` now calls `python -m rembg i -m <model> <input> <output>`.
+   - Removed the embedded `REMBG_INLINE_PYTHON` script blob.
+3. Updated rembg command-shape assertions in tests to match module invocation.
+4. Added regression tests for path hardening:
+   - resolver rejects absolute paths and `..` traversal
+   - native QA request rejects traversal input path
+
+### Validation
+
+1. `cargo fmt --manifest-path src-tauri/Cargo.toml`
+2. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+3. `cargo test -q --manifest-path src-tauri/Cargo.toml`
+
+Result: passing.
+
+### Remaining Risk / Next Step
+
+1. Python upscale still uses an embedded inline shim (`REALESRGAN_UPSCALE_INLINE_PYTHON`) and remains the next migration target.
 
 ## Latest Review Pass (2026-02-24, QA adapter cleanup follow-up)
 

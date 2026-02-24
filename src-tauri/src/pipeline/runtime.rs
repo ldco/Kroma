@@ -23,7 +23,7 @@ use crate::pipeline::planning::{
     PipelinePlanningOutputGuard, PlannedGenerationJob,
 };
 use crate::pipeline::post_run::{
-    PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams,
+    PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams, PostRunSyncS3Params,
 };
 use crate::pipeline::postprocess_planning::{
     load_postprocess_planning_config, resolve_planned_postprocess_record,
@@ -521,7 +521,22 @@ impl RustPostRunPipelineOrchestrator {
         script_request
     }
 
-    fn run_post_run_ingest_best_effort(
+    fn build_post_run_sync_s3_params(request: &PipelineRunRequest) -> Option<PostRunSyncS3Params> {
+        if !matches!(request.mode, PipelineRunMode::Run) {
+            return None;
+        }
+        if !request.options.storage_sync_s3.unwrap_or(false) {
+            return None;
+        }
+        Some(PostRunSyncS3Params {
+            project_slug: request.project_slug.clone(),
+            dry_run: false,
+            delete: false,
+            allow_missing_local: false,
+        })
+    }
+
+    fn run_post_run_finalize_best_effort(
         &self,
         request: &PipelineRunRequest,
         stdout: &str,
@@ -530,7 +545,7 @@ impl RustPostRunPipelineOrchestrator {
         let Some(summary) = parse_script_run_summary_from_stdout(stdout) else {
             append_stderr_line(
                 stderr,
-                "Rust post-run ingest skipped: missing 'Run log:' line in pipeline stdout",
+                "Rust post-run finalize skipped: missing summary marker or 'Run log:' line in pipeline stdout",
             );
             return;
         };
@@ -560,11 +575,11 @@ impl RustPostRunPipelineOrchestrator {
                 create_project_if_missing: true,
                 compute_hashes: false,
             },
-            sync_s3: None,
+            sync_s3: Self::build_post_run_sync_s3_params(request),
         });
 
         if let Err(error) = finalize {
-            append_stderr_line(stderr, format!("Rust post-run ingest skipped: {error}"));
+            append_stderr_line(stderr, format!("Rust post-run finalize skipped: {error}"));
         }
     }
 
@@ -638,7 +653,7 @@ impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
     ) -> Result<PipelineRunResult, PipelineRuntimeError> {
         match self.inner.execute(&self.build_script_request(request)) {
             Ok(mut result) => {
-                self.run_post_run_ingest_best_effort(
+                self.run_post_run_finalize_best_effort(
                     request,
                     result.stdout.as_str(),
                     &mut result.stderr,
@@ -651,7 +666,7 @@ impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
                 stdout,
                 mut stderr,
             }) => {
-                self.run_post_run_ingest_best_effort(request, stdout.as_str(), &mut stderr);
+                self.run_post_run_finalize_best_effort(request, stdout.as_str(), &mut stderr);
                 Err(PipelineRuntimeError::CommandFailed {
                     program,
                     status_code,
@@ -1950,6 +1965,7 @@ mod tests {
     #[derive(Default)]
     struct FakePostRunBackendOps {
         seen_ingest: Mutex<Vec<BackendIngestRunRequest>>,
+        seen_sync: Mutex<Vec<BackendSyncProjectS3Request>>,
     }
 
     impl PipelineBackendOps for FakePostRunBackendOps {
@@ -1983,9 +1999,26 @@ mod tests {
 
         fn sync_project_s3(
             &self,
-            _request: &BackendSyncProjectS3Request,
+            request: &BackendSyncProjectS3Request,
         ) -> Result<BackendCommandResult, BackendOpsError> {
-            panic!("sync_project_s3 should not be called by wrapper yet");
+            self.seen_sync
+                .lock()
+                .expect("fake post-run sync mutex poisoned")
+                .push(request.clone());
+            Ok(BackendCommandResult {
+                stdout: String::from(
+                    "{\"ok\":true,\"project_slug\":\"demo\",\"project_root\":\"/tmp/demo\",\"destination\":\"s3://bucket/demo/\",\"dry_run\":false,\"delete\":false}",
+                ),
+                stderr: String::new(),
+                json: Some(json!({
+                    "ok": true,
+                    "project_slug": "demo",
+                    "project_root": "/tmp/demo",
+                    "destination": "s3://bucket/demo/",
+                    "dry_run": false,
+                    "delete": false
+                })),
+            })
         }
     }
 
@@ -2292,7 +2325,7 @@ mod tests {
 
         assert!(result
             .stderr
-            .contains("Rust post-run ingest skipped: missing 'Run log:' line"));
+            .contains("Rust post-run finalize skipped: missing summary marker or 'Run log:' line"));
         assert_eq!(
             backend_ops
                 .seen_ingest
@@ -2301,6 +2334,68 @@ mod tests {
                 .len(),
             0
         );
+        assert_eq!(
+            backend_ops
+                .seen_sync
+                .lock()
+                .expect("fake post-run sync mutex poisoned")
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn rust_post_run_wrapper_runs_backend_sync_when_requested() {
+        let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout(
+            "KROMA_PIPELINE_SUMMARY_JSON: {\"run_log_path\":\"var/projects/demo/runs/run_1.json\",\"project_slug\":\"demo\",\"project_root\":\"var/projects/demo\",\"jobs\":1,\"mode\":\"run\"}",
+        ));
+        let backend_ops = Arc::new(FakePostRunBackendOps::default());
+        let post_run = PipelinePostRunService::new(backend_ops.clone());
+        let wrapper = RustPostRunPipelineOrchestrator::new(inner.clone(), post_run);
+
+        let result = wrapper
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Run,
+                confirm_spend: true,
+                options: PipelineRunOptions {
+                    input_source: Some(PipelineInputSource::SceneRefs(vec![String::from("a.png")])),
+                    storage_sync_s3: Some(true),
+                    ..PipelineRunOptions::default()
+                },
+            })
+            .expect("wrapper execution should succeed");
+
+        assert_eq!(result.status_code, 0);
+        assert!(result.stderr.is_empty());
+
+        let seen_request = inner
+            .seen
+            .lock()
+            .expect("fake inner orchestrator mutex poisoned")
+            .first()
+            .cloned()
+            .expect("inner request should be recorded");
+        assert_eq!(seen_request.options.backend_db_ingest, Some(false));
+        assert_eq!(seen_request.options.storage_sync_s3, Some(false));
+
+        assert_eq!(
+            backend_ops
+                .seen_ingest
+                .lock()
+                .expect("fake post-run ingest mutex poisoned")
+                .len(),
+            1
+        );
+        let seen_sync = backend_ops
+            .seen_sync
+            .lock()
+            .expect("fake post-run sync mutex poisoned");
+        assert_eq!(seen_sync.len(), 1);
+        assert_eq!(seen_sync[0].project_slug, "demo");
+        assert!(!seen_sync[0].dry_run);
+        assert!(!seen_sync[0].delete);
+        assert!(!seen_sync[0].allow_missing_local);
     }
 
     #[test]

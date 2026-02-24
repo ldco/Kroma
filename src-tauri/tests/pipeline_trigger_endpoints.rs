@@ -330,7 +330,8 @@ async fn pipeline_trigger_typed_fields_translate_to_cli_args() {
                 "stage":"weather",
                 "time":"day",
                 "weather":"clear",
-                "candidates":2
+                "candidates":2,
+                "storage_sync_s3":true
             })
             .to_string(),
         ),
@@ -356,6 +357,7 @@ async fn pipeline_trigger_typed_fields_translate_to_cli_args() {
     assert_eq!(seen[0].options.time, Some(PipelineTimeFilter::Day));
     assert_eq!(seen[0].options.weather, Some(PipelineWeatherFilter::Clear));
     assert_eq!(seen[0].options.candidates, Some(2));
+    assert_eq!(seen[0].options.storage_sync_s3, Some(true));
 }
 
 #[tokio::test]

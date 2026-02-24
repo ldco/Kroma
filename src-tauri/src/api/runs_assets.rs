@@ -55,6 +55,8 @@ pub struct TriggerRunInput {
     pub weather: Option<String>,
     #[serde(default)]
     pub candidates: Option<i64>,
+    #[serde(default)]
+    pub storage_sync_s3: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -454,6 +456,7 @@ fn build_trigger_params(payload: &TriggerRunInput) -> Result<TriggerRunParams, S
         time,
         weather,
         candidates: candidates_u8,
+        storage_sync_s3: payload.storage_sync_s3,
     })
 }
 

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -17,63 +17,6 @@ use crate::pipeline::runtime::{
     default_app_root_from_manifest_dir, CommandSpec, PipelineCommandRunner, PipelineRuntimeError,
     StdPipelineCommandRunner,
 };
-
-const REMBG_INLINE_PYTHON: &str = r#"
-import argparse
-from io import BytesIO
-from pathlib import Path
-import sys
-
-def fail(message: str) -> None:
-    raise SystemExit(message)
-
-def normalize_format(value: str) -> str:
-    fmt = value.lower().strip()
-    if fmt == "jpeg":
-        fmt = "jpg"
-    if fmt not in {"png", "jpg", "webp"}:
-        fail(f"Unsupported --format '{value}'. Expected png|jpg|webp")
-    return fmt
-
-def main():
-    parser = argparse.ArgumentParser(description="Remove image background with rembg")
-    parser.add_argument("--input", required=True, help="Input image file")
-    parser.add_argument("--output", required=True, help="Output image file")
-    parser.add_argument("--model", default="u2net", help="rembg model name")
-    parser.add_argument("--format", default="png", help="Output format: png|jpg|webp")
-    args = parser.parse_args()
-
-    input_path = Path(args.input).resolve()
-    output_path = Path(args.output).resolve()
-    output_fmt = normalize_format(args.format)
-    if not input_path.exists() or not input_path.is_file():
-        fail(f"Input file not found: {input_path}")
-
-    try:
-        from rembg import remove, new_session
-        from PIL import Image
-    except Exception as exc:
-        fail(f"rembg runtime is missing. Run: bash scripts/setup-rembg.sh\nOriginal error: {exc}")
-
-    data = input_path.read_bytes()
-    session = new_session(args.model)
-    out_bytes = remove(data, session=session)
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_fmt == "png":
-        output_path.write_bytes(out_bytes)
-        return
-
-    with Image.open(BytesIO(out_bytes)).convert("RGBA") as img:
-        if output_fmt == "jpg":
-            bg = Image.new("RGB", img.size, (255, 255, 255))
-            bg.paste(img, mask=img.getchannel("A"))
-            bg.save(output_path, format="JPEG", quality=95)
-        elif output_fmt == "webp":
-            img.save(output_path, format="WEBP", quality=95)
-
-main()
-"#;
 
 const REALESRGAN_UPSCALE_INLINE_PYTHON: &str = r#"
 import argparse
@@ -487,8 +430,11 @@ where
         request: &GenerateOneImageRequest,
     ) -> Result<GenerateOneImageResponse, ToolAdapterError> {
         validate_project_slug(request.project_slug.as_str())?;
-        let input_images_file_abs =
-            resolve_under_root(self.app_root(), request.input_images_file.as_str());
+        let input_images_file_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.input_images_file.as_str(),
+            "input_images_file",
+        )?;
         if !input_images_file_abs.is_file() {
             return Err(ToolAdapterError::Native(format!(
                 "generate-one input-images file not found: {}",
@@ -556,14 +502,19 @@ where
             .or_else(|| dotenv.get("OPENAI_IMAGE_QUALITY").cloned())
             .unwrap_or_else(|| String::from("high"));
 
-        let output_abs = resolve_under_root(self.app_root(), request.output_path.as_str());
+        let output_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.output_path.as_str(),
+            "output_path",
+        )?;
         if let Some(parent) = output_abs.parent() {
             fs::create_dir_all(parent).map_err(ToolAdapterError::Io)?;
         }
         let project_root = request
             .project_root
             .as_deref()
-            .map(|v| resolve_under_root(self.app_root(), v))
+            .map(|v| resolve_request_path_under_root(self.app_root(), v, "project_root"))
+            .transpose()?
             .unwrap_or_else(|| {
                 self.app_root()
                     .join("var/projects")
@@ -583,7 +534,8 @@ where
             .text("input_fidelity", "high");
 
         for rel in input_images.iter() {
-            let abs = resolve_under_root(self.app_root(), rel.as_str());
+            let abs =
+                resolve_request_path_under_root(self.app_root(), rel.as_str(), "input_image")?;
             if !abs.is_file() {
                 return Err(ToolAdapterError::Native(format!(
                     "generate-one input image not found: {rel}"
@@ -653,14 +605,22 @@ where
         request: &UpscalePassRequest,
     ) -> Result<UpscalePassResponse, ToolAdapterError> {
         validate_project_slug(request.project_slug.as_str())?;
-        let input_abs = resolve_under_root(self.app_root(), request.input_path.as_str());
+        let input_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.input_path.as_str(),
+            "input_path",
+        )?;
         if !input_abs.exists() {
             return Err(ToolAdapterError::Native(format!(
                 "upscale input does not exist: {}",
                 request.input_path
             )));
         }
-        let output_abs = resolve_under_root(self.app_root(), request.output_path.as_str());
+        let output_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.output_path.as_str(),
+            "output_path",
+        )?;
         let input_meta = fs::metadata(input_abs.as_path()).map_err(ToolAdapterError::Io)?;
         if input_meta.is_dir() {
             fs::create_dir_all(output_abs.as_path()).map_err(ToolAdapterError::Io)?;
@@ -671,7 +631,8 @@ where
             let project_root = request
                 .project_root
                 .as_deref()
-                .map(|v| resolve_under_root(self.app_root(), v))
+                .map(|v| resolve_request_path_under_root(self.app_root(), v, "project_root"))
+                .transpose()?
                 .unwrap_or_else(|| {
                     self.app_root()
                         .join("var/projects")
@@ -836,14 +797,22 @@ where
         request: &ColorPassRequest,
     ) -> Result<ColorPassResponse, ToolAdapterError> {
         validate_project_slug(request.project_slug.as_str())?;
-        let input_abs = resolve_under_root(self.app_root(), request.input_path.as_str());
+        let input_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.input_path.as_str(),
+            "input_path",
+        )?;
         if !input_abs.exists() {
             return Err(ToolAdapterError::Native(format!(
                 "color-correction input does not exist: {}",
                 request.input_path
             )));
         }
-        let output_abs = resolve_under_root(self.app_root(), request.output_path.as_str());
+        let output_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.output_path.as_str(),
+            "output_path",
+        )?;
         if let Some(parent) = output_abs.parent() {
             fs::create_dir_all(parent).map_err(ToolAdapterError::Io)?;
         }
@@ -851,7 +820,8 @@ where
         let project_root = request
             .project_root
             .as_deref()
-            .map(|v| resolve_under_root(self.app_root(), v))
+            .map(|v| resolve_request_path_under_root(self.app_root(), v, "project_root"))
+            .transpose()?
             .unwrap_or_else(|| {
                 self.app_root()
                     .join("var/projects")
@@ -872,12 +842,28 @@ where
             .unwrap_or(cfg_default_profile.as_deref().unwrap_or("neutral"))
             .to_string();
 
-        let settings_path_abs = request
+        let settings_path_abs = if let Some(v) = request
             .color_settings_path
             .as_deref()
             .filter(|v| !v.trim().is_empty())
-            .map(|v| resolve_under_root(self.app_root(), v))
-            .or_else(|| cfg_settings_file.map(|v| resolve_under_root(self.app_root(), v.as_str())));
+        {
+            Some(resolve_request_path_under_root(
+                self.app_root(),
+                v,
+                "color_settings_path",
+            )?)
+        } else if let Some(v) = cfg_settings_file
+            .as_deref()
+            .filter(|v| !v.trim().is_empty())
+        {
+            Some(resolve_request_path_under_root(
+                self.app_root(),
+                v,
+                "color.settings_file",
+            )?)
+        } else {
+            None
+        };
         if let Some(path) = settings_path_abs.as_ref() {
             if !path.is_file() {
                 return Err(ToolAdapterError::Native(format!(
@@ -940,7 +926,11 @@ where
         request: &BackgroundRemovePassRequest,
     ) -> Result<BackgroundRemovePassResponse, ToolAdapterError> {
         validate_project_slug(request.project_slug.as_str())?;
-        let input_abs = resolve_under_root(self.app_root(), request.input_path.as_str());
+        let input_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.input_path.as_str(),
+            "input_path",
+        )?;
         if !input_abs.exists() {
             return Err(ToolAdapterError::Native(format!(
                 "background-remove input does not exist: {}",
@@ -950,14 +940,19 @@ where
         let input_is_dir = fs::metadata(input_abs.as_path())
             .map_err(ToolAdapterError::Io)?
             .is_dir();
-        let output_abs_root = resolve_under_root(self.app_root(), request.output_path.as_str());
+        let output_abs_root = resolve_request_path_under_root(
+            self.app_root(),
+            request.output_path.as_str(),
+            "output_path",
+        )?;
         if input_is_dir {
             fs::create_dir_all(output_abs_root.as_path()).map_err(ToolAdapterError::Io)?;
         }
         let project_root = request
             .project_root
             .as_deref()
-            .map(|v| resolve_under_root(self.app_root(), v))
+            .map(|v| resolve_request_path_under_root(self.app_root(), v, "project_root"))
+            .transpose()?
             .unwrap_or_else(|| {
                 self.app_root()
                     .join("var/projects")
@@ -1177,16 +1172,13 @@ where
         cfg: &BgRemoveAdapterConfig,
     ) -> Result<(), ToolAdapterError> {
         let args = vec![
-            String::from("-c"),
-            String::from(REMBG_INLINE_PYTHON),
-            String::from("--input"),
-            input_abs.to_string_lossy().to_string(),
-            String::from("--output"),
-            output_abs.to_string_lossy().to_string(),
-            String::from("--model"),
+            String::from("-m"),
+            String::from("rembg"),
+            String::from("i"),
+            String::from("-m"),
             cfg.rembg_model.clone(),
-            String::from("--format"),
-            cfg.format.clone(),
+            input_abs.to_string_lossy().to_string(),
+            output_abs.to_string_lossy().to_string(),
         ];
         let output = self
             .runner
@@ -1394,7 +1386,11 @@ where
         }
         let enforce_grayscale = request.enforce_grayscale.unwrap_or(false);
         let fail_on_chroma_exceed = request.fail_on_chroma_exceed.unwrap_or(false);
-        let input_abs = resolve_under_root(self.app_root(), request.input_path.as_str());
+        let input_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.input_path.as_str(),
+            "input_path",
+        )?;
         let report = build_output_guard_report_value(
             self.app_root(),
             input_abs.as_path(),
@@ -1434,7 +1430,11 @@ where
         request: &ArchiveBadRequest,
     ) -> Result<ArchiveBadResponse, ToolAdapterError> {
         validate_project_slug(request.project_slug.as_str())?;
-        let input_abs = resolve_under_root(self.app_root(), request.input_path.as_str());
+        let input_abs = resolve_request_path_under_root(
+            self.app_root(),
+            request.input_path.as_str(),
+            "input_path",
+        )?;
         if !input_abs.exists() {
             return Err(ToolAdapterError::Native(format!(
                 "archive-bad input not found: {}",
@@ -1445,7 +1445,8 @@ where
         let project_root = request
             .project_root
             .as_deref()
-            .map(|v| resolve_under_root(self.app_root(), v))
+            .map(|v| resolve_request_path_under_root(self.app_root(), v, "project_root"))
+            .transpose()?
             .unwrap_or_else(|| {
                 self.app_root()
                     .join("var/projects")
@@ -1546,6 +1547,36 @@ fn resolve_under_root(root: &Path, value: &str) -> PathBuf {
     } else {
         root.join(path)
     }
+}
+
+fn resolve_request_path_under_root(
+    root: &Path,
+    value: &str,
+    field: &str,
+) -> Result<PathBuf, ToolAdapterError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(ToolAdapterError::Native(format!(
+            "{field} must not be empty"
+        )));
+    }
+    let path = Path::new(trimmed);
+    if path.is_absolute() {
+        return Err(ToolAdapterError::Native(format!(
+            "{field} must be a relative path under app root"
+        )));
+    }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        return Err(ToolAdapterError::Native(format!(
+            "{field} must stay within app root"
+        )));
+    }
+    Ok(root.join(path))
 }
 
 fn path_for_output(app_root: &Path, path: &Path) -> String {
@@ -2256,7 +2287,7 @@ fn load_color_adapter_config(
     let Some(config_path) = config_path.map(str::trim).filter(|v| !v.is_empty()) else {
         return Ok((None, None));
     };
-    let path = resolve_under_root(app_root, config_path);
+    let path = resolve_request_path_under_root(app_root, config_path, "postprocess_config_path")?;
     if !path.is_file() {
         return Err(ToolAdapterError::Native(format!(
             "postprocess config not found: {}",
@@ -2331,7 +2362,7 @@ fn load_upscale_adapter_config(
     let Some(config_path) = config_path.map(str::trim).filter(|v| !v.is_empty()) else {
         return Ok(UpscaleAdapterConfig::default());
     };
-    let path = resolve_under_root(app_root, config_path);
+    let path = resolve_request_path_under_root(app_root, config_path, "postprocess_config_path")?;
     if !path.is_file() {
         return Err(ToolAdapterError::Native(format!(
             "postprocess config not found: {}",
@@ -2507,7 +2538,7 @@ fn load_bgremove_adapter_config(
     let Some(config_path) = config_path.map(str::trim).filter(|v| !v.is_empty()) else {
         return Ok(BgRemoveAdapterConfig::default());
     };
-    let path = resolve_under_root(app_root, config_path);
+    let path = resolve_request_path_under_root(app_root, config_path, "postprocess_config_path")?;
     if !path.is_file() {
         return Err(ToolAdapterError::Native(format!(
             "postprocess config not found: {}",
@@ -2759,6 +2790,46 @@ mod tests {
     }
 
     #[test]
+    fn resolve_request_path_under_root_rejects_escaping_paths() {
+        let app_root = temp_app_root();
+
+        let abs_path =
+            resolve_request_path_under_root(app_root.as_path(), "/tmp/outside.png", "input_path")
+                .expect_err("absolute path should be rejected");
+        assert!(abs_path.to_string().contains("relative path"));
+
+        let parent_path =
+            resolve_request_path_under_root(app_root.as_path(), "../outside.png", "input_path")
+                .expect_err("parent traversal should be rejected");
+        assert!(parent_path.to_string().contains("within app root"));
+
+        let _ = std::fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn native_qa_rejects_parent_path_traversal() {
+        let app_root = temp_app_root();
+        let runner = FakeRunner::default();
+        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner);
+
+        let err = adapters
+            .qa(&QaCheckRequest {
+                project_slug: String::from("demo"),
+                project_root: None,
+                input_path: String::from("../etc/passwd"),
+                manifest_path: None,
+                output_guard_enabled: Some(true),
+                enforce_grayscale: Some(true),
+                max_chroma_delta: Some(1.5),
+                fail_on_chroma_exceed: Some(false),
+            })
+            .expect_err("parent traversal should be rejected");
+
+        assert!(err.to_string().contains("within app root"));
+        let _ = std::fs::remove_dir_all(app_root);
+    }
+
+    #[test]
     fn native_qa_computes_output_guard_report_in_rust_without_running_script() {
         let app_root = temp_app_root();
         std::fs::create_dir_all(app_root.join("var/projects/demo/outputs"))
@@ -2971,12 +3042,13 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
+        assert_eq!(seen[0].args.first().map(String::as_str), Some("-m"));
+        assert!(seen[0].args.windows(2).any(|w| w == ["-m", "rembg"]));
+        assert!(seen[0].args.iter().any(|v| v == "i"));
         assert!(seen[0]
             .args
             .windows(2)
-            .any(|w| w == ["--model", "u2net_human_seg"]));
-        assert!(seen[0].args.windows(2).any(|w| w == ["--format", "webp"]));
+            .any(|w| w == ["-m", "u2net_human_seg"]));
 
         let _ = std::fs::remove_dir_all(app_root);
     }
@@ -3063,7 +3135,7 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
+        assert_eq!(seen[0].args.first().map(String::as_str), Some("-m"));
 
         let _ = std::fs::remove_dir_all(app_root);
     }
@@ -3116,7 +3188,7 @@ mod tests {
         assert!(seen.iter().all(|cmd| cmd.program == "python3"));
         assert!(seen
             .iter()
-            .all(|cmd| cmd.args.first().map(String::as_str) == Some("-c")));
+            .all(|cmd| cmd.args.first().map(String::as_str) == Some("-m")));
         assert!(!seen.iter().any(|cmd| cmd.program == "node"));
 
         let _ = std::fs::remove_dir_all(app_root);
@@ -3170,7 +3242,7 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
+        assert_eq!(seen[0].args.first().map(String::as_str), Some("-m"));
         assert!(!seen.iter().any(|cmd| cmd.program == "node"));
 
         let _ = std::fs::remove_dir_all(app_root);

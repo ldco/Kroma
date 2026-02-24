@@ -5,8 +5,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
-    ensure_user, fetch_project_by_slug, normalize_optional_text, normalize_slug, now_iso,
-    ProjectsRepoError, ProjectsStore,
+    ensure_user, fetch_project_by_slug, fetch_project_by_slug_for_user, normalize_optional_text,
+    normalize_slug, now_iso, ProjectsRepoError, ProjectsStore,
 };
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -60,6 +60,60 @@ pub struct AppendAuditEventInput {
 }
 
 impl ProjectsStore {
+    pub fn authorize_project_slug_access(
+        &self,
+        slug: &str,
+        user_id: &str,
+        token_project_id: Option<&str>,
+    ) -> Result<bool, ProjectsRepoError> {
+        let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+        let safe_user_id = normalize_optional_text(Some(user_id))
+            .ok_or_else(|| ProjectsRepoError::Validation(String::from("user_id is required")))?;
+        let scoped_project_id = normalize_optional_text(token_project_id);
+
+        self.with_connection(|conn| {
+            // Current data access paths resolve by slug only, so deny ambiguous slugs
+            // until all lookups are fully user-scoped end-to-end.
+            let same_slug_count = conn.query_row(
+                "SELECT COUNT(*) FROM projects WHERE slug = ?1",
+                [safe_slug.as_str()],
+                |row| row.get::<_, i64>(0),
+            )?;
+            if same_slug_count > 1 {
+                return Err(ProjectsRepoError::Validation(String::from(
+                    "Ambiguous project slug for multi-tenant access",
+                )));
+            }
+
+            let allowed_count = if let Some(project_id) = scoped_project_id.as_deref() {
+                conn.query_row(
+                    "
+                    SELECT COUNT(*)
+                    FROM projects
+                    WHERE slug = ?1
+                      AND COALESCE(owner_user_id, user_id) = ?2
+                      AND id = ?3
+                ",
+                    params![safe_slug, safe_user_id, project_id],
+                    |row| row.get::<_, i64>(0),
+                )?
+            } else {
+                conn.query_row(
+                    "
+                    SELECT COUNT(*)
+                    FROM projects
+                    WHERE slug = ?1
+                      AND COALESCE(owner_user_id, user_id) = ?2
+                ",
+                    params![safe_slug, safe_user_id],
+                    |row| row.get::<_, i64>(0),
+                )?
+            };
+
+            Ok(allowed_count > 0)
+        })
+    }
+
     pub fn create_api_token_local(
         &self,
         input: CreateApiTokenInput,
@@ -75,7 +129,7 @@ impl ProjectsStore {
             let user_id = ensure_user(conn, "local", "Local User")?;
             let project_id = if let Some(project_slug) = input.project_slug.as_deref() {
                 let safe_slug = normalize_slug(project_slug).ok_or(ProjectsRepoError::NotFound)?;
-                let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                let project = fetch_project_by_slug_for_user(conn, safe_slug.as_str(), user_id.as_str())?
                     .ok_or(ProjectsRepoError::NotFound)?;
                 Some(project.id)
             } else {

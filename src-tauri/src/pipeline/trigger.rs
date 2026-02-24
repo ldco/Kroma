@@ -78,6 +78,7 @@ pub struct TriggerRunParams {
     pub time: Option<TriggerTime>,
     pub weather: Option<TriggerWeather>,
     pub candidates: Option<u8>,
+    pub storage_sync_s3: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,6 +120,7 @@ impl PipelineTriggerService {
             time,
             weather,
             candidates,
+            storage_sync_s3,
         } = params;
 
         let confirm_spend = matches!(mode, TriggerMode::Run);
@@ -148,7 +150,7 @@ impl PipelineTriggerService {
                     candidates,
                     postprocess: Default::default(),
                     backend_db_ingest: None,
-                    storage_sync_s3: None,
+                    storage_sync_s3,
                 },
             })
             .map_err(PipelineTriggerError::Runtime)

@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,6 +17,7 @@ use crate::api::response::{failure, ApiJson};
 use crate::api::routes::{route_catalog, RouteDefinition};
 use crate::contract::HttpMethod;
 use crate::db::projects::ProjectsStore;
+use crate::db::{resolve_backend_config, DatabaseBackendConfig};
 use crate::pipeline::backend_ops::{
     default_backend_ops_with_native_ingest, SharedPipelineBackendOps,
 };
@@ -69,8 +70,17 @@ impl AppState {
 
 pub fn build_router() -> Router {
     let repo_root = default_repo_root();
-    let db_path = resolve_db_path(repo_root.as_path());
-    let projects_store = Arc::new(ProjectsStore::new(db_path, repo_root));
+    let projects_store = match resolve_backend_config(repo_root.as_path()) {
+        DatabaseBackendConfig::Sqlite(sqlite) => {
+            Arc::new(ProjectsStore::new(sqlite.app_db_path, repo_root))
+        }
+        DatabaseBackendConfig::Postgres(pg) => {
+            panic!(
+                "KROMA_BACKEND_DB_URL is set ({}), but PostgreSQL backend wiring is not implemented yet. Unset KROMA_BACKEND_DB_URL to use SQLite.",
+                pg.database_url
+            );
+        }
+    };
     projects_store
         .initialize()
         .expect("projects store should initialize schema");
@@ -363,17 +373,6 @@ fn auth_dev_bypass_enabled() -> bool {
 fn default_repo_root() -> PathBuf {
     let fallback = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     fallback.canonicalize().unwrap_or(fallback)
-}
-
-fn resolve_db_path(repo_root: &Path) -> PathBuf {
-    let raw =
-        std::env::var("KROMA_BACKEND_DB").unwrap_or_else(|_| String::from("var/backend/app.db"));
-    let candidate = PathBuf::from(raw);
-    if candidate.is_absolute() {
-        candidate
-    } else {
-        repo_root.join(candidate)
-    }
 }
 
 async fn health_handler(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
