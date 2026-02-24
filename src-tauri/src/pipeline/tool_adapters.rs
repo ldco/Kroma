@@ -13,9 +13,11 @@ use serde_json::{json, Value};
 use thiserror::Error;
 
 use crate::pipeline::runtime::{
-    default_app_root_from_manifest_dir, CommandOutput, CommandSpec, PipelineCommandRunner,
+    default_app_root_from_manifest_dir, CommandSpec, PipelineCommandRunner,
     PipelineRuntimeError, StdPipelineCommandRunner,
 };
+#[cfg(test)]
+use crate::pipeline::runtime::CommandOutput;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerateOneImageRequest {
