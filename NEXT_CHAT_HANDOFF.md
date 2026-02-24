@@ -50,38 +50,42 @@ Result: passing.
 
 1. Risk (low): downstream script/tooling docs outside `src-tauri` may still mention `--qa-python-bin`; not validated in this pass.
 2. Testing gap: no explicit unit test asserts that `build_qa_command(...)` no longer emits `--qa-python-bin` (behavior is indirectly covered by type removal + grep).
-3. Larger migration risk remains: python-upscale script wrapper (`scripts/realesrgan-python-upscale.py`) is still an active script-era dependency.
+3. Migration risk shifted: native adapter/runtime no longer depends on wrapper script files, but now embeds inline Python shims for `rembg` and python-upscale.
+   - Impact: duplication risk vs the standalone scripts if both remain maintained in parallel.
 
 ### Recommended Next Steps (updated)
 
-1. Continue the Rust migration cleanup by removing the remaining python-upscale script wrapper dependency (`scripts/realesrgan-python-upscale.py`).
+1. Continue the Rust migration cleanup by replacing the inline Python shims (rembg/upscale) with Rust-owned execution or a cleaner direct tool/module invocation path.
 2. Add one focused regression test for QA command args only if the script adapter path remains long enough to justify the extra coverage.
 3. Run a broader `src-tauri` test subset after the next adapter cleanup to catch cross-module regressions early.
 
-## Latest Patch (2026-02-24, rembg wrapper dependency removal)
+## Latest Patch (2026-02-24, native wrapper-file dependency removal)
 
 ### Scope
 
-1. `src-tauri/src/pipeline/tool_adapters.rs` (`bgremove` native rembg backend path)
-2. `tool_adapters` unit tests covering native `bgremove` command behavior
+1. `src-tauri/src/pipeline/tool_adapters.rs` (`bgremove` + python `upscale` native backend paths)
+2. `tool_adapters` unit tests covering native `bgremove`/`upscale` command behavior
 
 ### What Landed
 
 1. Native `bgremove` rembg backend no longer requires `scripts/rembg-remove.py` at runtime.
-2. `run_bgremove_rembg(...)` now invokes the configured Python interpreter directly with an inline rembg/Pillow routine (`python -c ...`) to preserve current output-format behavior (`png`/`jpg`/`webp`).
-3. Removed the `scripts/rembg-remove.py` existence gate from `bgremove_native_simple_rembg(...)`.
-4. Updated tests to stop creating/asserting the wrapper script path and instead assert direct Python invocation (`-c`) for rembg fallback paths.
+2. Native python `upscale` backend no longer requires `scripts/realesrgan-python-upscale.py` at runtime.
+3. `run_bgremove_rembg(...)` now invokes the configured Python interpreter directly with an inline rembg/Pillow routine (`python -c ...`) to preserve current output-format behavior (`png`/`jpg`/`webp`).
+4. `upscale_native(...)` python backend path now invokes an inline RealESRGAN Python routine (`python -c ...`) that preserves the previous wrapper behavior (source-path injection, model selection/download, directory/file handling).
+5. Removed wrapper-file existence gates from both native paths.
+6. Updated tests to stop creating/asserting wrapper script paths and instead assert direct Python invocation (`-c`) for rembg/upscale paths.
 
 ### Validation
 
 1. `cargo fmt --manifest-path src-tauri/Cargo.toml`
 2. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+3. `cargo test -q pipeline::runtime:: --manifest-path src-tauri/Cargo.toml`
 
 Result: passing.
 
 ### Remaining Risk / Next Step
 
-1. The python-upscale wrapper (`scripts/realesrgan-python-upscale.py`) is still in the native adapter path and is the next removal target.
+1. Inline Python shim duplication is now the main transitional debt; next step is to replace these with Rust-owned execution or direct module invocations without embedded script blobs.
 
 ## Architecture Decisions (2026-02-24, Rust-Only Direction)
 
@@ -114,8 +118,9 @@ Result: passing.
 
 ## Remaining Tasks (High Priority)
 
-1. Delete remaining Python-script dependency from the default path:
-   - `scripts/realesrgan-python-upscale.py`
+1. Replace inline Python shims used by native adapters with Rust-owned execution or cleaner direct-module invocation paths:
+   - rembg backend shim
+   - python RealESRGAN upscale shim
 2. Remove legacy script orchestration code from the runtime module once no longer used:
    - `ScriptPipelineOrchestrator`
    - default script fallback constructors/wiring
@@ -125,8 +130,8 @@ Result: passing.
 
 ## Next Phase Goals (Immediate)
 
-1. Replace `scripts/realesrgan-python-upscale.py` usage in the python upscale backend with a Rust-owned backend path or direct binary/module invocation.
-2. After that is removed, delete `image-lab.mjs` orchestration paths and collapse the remaining compatibility layers.
+1. Replace inline python shims in `tool_adapters.rs` (rembg + python upscale) with Rust-owned backend paths or cleaner direct binary/module invocation.
+2. After that, delete `image-lab.mjs` orchestration paths and collapse the remaining compatibility layers.
 
 ## Current Status
 
