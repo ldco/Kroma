@@ -17,12 +17,14 @@ use crate::pipeline::runtime::{
     default_app_root_from_manifest_dir, CommandSpec, PipelineCommandRunner, PipelineRuntimeError,
     StdPipelineCommandRunner,
 };
+use dotenv_utils::load_dotenv_map;
 use pathing::{
     is_image_path, list_image_files_recursive, path_for_output, resolve_request_path_under_root,
     resolve_under_root,
 };
 use upscale_config::load_upscale_adapter_config;
 
+mod dotenv_utils;
 mod pathing;
 mod upscale_config;
 
@@ -1974,47 +1976,6 @@ fn mime_for_path(path: &Path) -> String {
     }
 }
 
-fn load_dotenv_map(app_root: &Path) -> Result<HashMap<String, String>, std::io::Error> {
-    let path = app_root.join(".env");
-    if !path.is_file() {
-        return Ok(HashMap::new());
-    }
-    let raw = fs::read_to_string(path)?;
-    Ok(parse_dotenv_content(raw.as_str()))
-}
-
-fn parse_dotenv_content(raw: &str) -> HashMap<String, String> {
-    let mut out = HashMap::new();
-    for line in raw.lines() {
-        let mut value = line.trim();
-        if value.is_empty() || value.starts_with('#') {
-            continue;
-        }
-        if let Some(rest) = value.strip_prefix("export ") {
-            value = rest.trim_start();
-        }
-        let Some((key_raw, value_raw)) = value.split_once('=') else {
-            continue;
-        };
-        let key = key_raw.trim();
-        if key.is_empty() {
-            continue;
-        }
-        let mut parsed = value_raw.trim().to_string();
-        if (parsed.starts_with('"') && parsed.ends_with('"'))
-            || (parsed.starts_with('\'') && parsed.ends_with('\''))
-        {
-            if parsed.len() >= 2 {
-                parsed = parsed[1..parsed.len() - 1].to_string();
-            }
-        } else if let Some((before_comment, _)) = parsed.split_once(" #") {
-            parsed = before_comment.trim_end().to_string();
-        }
-        out.insert(key.to_string(), parsed);
-    }
-    out
-}
-
 fn load_color_adapter_config(
     app_root: &Path,
     config_path: Option<&str>,
@@ -2865,7 +2826,7 @@ mod tests {
 
     #[test]
     fn parse_dotenv_content_supports_export_quotes_and_comments() {
-        let parsed = parse_dotenv_content(
+        let parsed = dotenv_utils::parse_dotenv_content(
             r#"
                 # comment
                 OPENAI_API_KEY = sk-test
