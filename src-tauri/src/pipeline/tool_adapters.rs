@@ -12,12 +12,69 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-use crate::pipeline::runtime::{
-    default_app_root_from_manifest_dir, CommandSpec, PipelineCommandRunner,
-    PipelineRuntimeError, StdPipelineCommandRunner,
-};
 #[cfg(test)]
 use crate::pipeline::runtime::CommandOutput;
+use crate::pipeline::runtime::{
+    default_app_root_from_manifest_dir, CommandSpec, PipelineCommandRunner, PipelineRuntimeError,
+    StdPipelineCommandRunner,
+};
+
+const REMBG_INLINE_PYTHON: &str = r#"
+import argparse
+from io import BytesIO
+from pathlib import Path
+import sys
+
+def fail(message: str) -> None:
+    raise SystemExit(message)
+
+def normalize_format(value: str) -> str:
+    fmt = value.lower().strip()
+    if fmt == "jpeg":
+        fmt = "jpg"
+    if fmt not in {"png", "jpg", "webp"}:
+        fail(f"Unsupported --format '{value}'. Expected png|jpg|webp")
+    return fmt
+
+def main():
+    parser = argparse.ArgumentParser(description="Remove image background with rembg")
+    parser.add_argument("--input", required=True, help="Input image file")
+    parser.add_argument("--output", required=True, help="Output image file")
+    parser.add_argument("--model", default="u2net", help="rembg model name")
+    parser.add_argument("--format", default="png", help="Output format: png|jpg|webp")
+    args = parser.parse_args()
+
+    input_path = Path(args.input).resolve()
+    output_path = Path(args.output).resolve()
+    output_fmt = normalize_format(args.format)
+    if not input_path.exists() or not input_path.is_file():
+        fail(f"Input file not found: {input_path}")
+
+    try:
+        from rembg import remove, new_session
+        from PIL import Image
+    except Exception as exc:
+        fail(f"rembg runtime is missing. Run: bash scripts/setup-rembg.sh\nOriginal error: {exc}")
+
+    data = input_path.read_bytes()
+    session = new_session(args.model)
+    out_bytes = remove(data, session=session)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_fmt == "png":
+        output_path.write_bytes(out_bytes)
+        return
+
+    with Image.open(BytesIO(out_bytes)).convert("RGBA") as img:
+        if output_fmt == "jpg":
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=img.getchannel("A"))
+            bg.save(output_path, format="JPEG", quality=95)
+        elif output_fmt == "webp":
+            img.save(output_path, format="WEBP", quality=95)
+
+main()
+"#;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerateOneImageRequest {
@@ -1145,14 +1202,6 @@ where
             } else {
                 cfg.rembg_python_bin.clone()
             };
-        let rembg_script = self.app_root().join("scripts/rembg-remove.py");
-        if !rembg_script.is_file() {
-            return Err(ToolAdapterError::Native(format!(
-                "missing script: {}",
-                path_for_output(self.app_root(), rembg_script.as_path())
-            )));
-        }
-
         let files =
             list_image_files_recursive(input_abs.as_path()).map_err(ToolAdapterError::Io)?;
         if files.is_empty() {
@@ -1189,7 +1238,6 @@ where
                 &backends,
                 &cfg,
                 rembg_python.as_str(),
-                rembg_script.as_path(),
                 &dotenv,
             )?;
 
@@ -1272,15 +1320,12 @@ where
         backends: &[String],
         cfg: &BgRemoveAdapterConfig,
         rembg_python: &str,
-        rembg_script: &Path,
         dotenv: &HashMap<String, String>,
     ) -> Result<String, ToolAdapterError> {
         let mut failures = Vec::new();
         for backend in backends {
             let result = match backend.as_str() {
-                "rembg" => {
-                    self.run_bgremove_rembg(input_abs, output_abs, rembg_python, rembg_script, cfg)
-                }
+                "rembg" => self.run_bgremove_rembg(input_abs, output_abs, rembg_python, cfg),
                 "photoroom" => self.run_bgremove_http_backend(
                     input_abs,
                     output_abs,
@@ -1322,11 +1367,11 @@ where
         input_abs: &Path,
         output_abs: &Path,
         rembg_python: &str,
-        rembg_script: &Path,
         cfg: &BgRemoveAdapterConfig,
     ) -> Result<(), ToolAdapterError> {
         let args = vec![
-            rembg_script.to_string_lossy().to_string(),
+            String::from("-c"),
+            String::from(REMBG_INLINE_PYTHON),
             String::from("--input"),
             input_abs.to_string_lossy().to_string(),
             String::from("--output"),
@@ -3239,9 +3284,6 @@ mod tests {
     #[test]
     fn native_bgremove_runs_rembg_directly_when_simple_case() {
         let app_root = temp_app_root();
-        std::fs::create_dir_all(app_root.join("scripts")).expect("scripts dir should exist");
-        std::fs::write(app_root.join("scripts/rembg-remove.py"), b"# test")
-            .expect("rembg script should exist");
         std::fs::create_dir_all(app_root.join("var/projects/demo/outputs"))
             .expect("outputs dir should exist");
         std::fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
@@ -3280,10 +3322,7 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert!(seen[0]
-            .args
-            .iter()
-            .any(|v| v.ends_with("scripts/rembg-remove.py")));
+        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
         assert!(seen[0]
             .args
             .windows(2)
@@ -3339,9 +3378,6 @@ mod tests {
     #[test]
     fn native_bgremove_tries_photoroom_then_falls_back_to_rembg_without_script() {
         let app_root = temp_app_root();
-        std::fs::create_dir_all(app_root.join("scripts")).expect("scripts dir should exist");
-        std::fs::write(app_root.join("scripts/rembg-remove.py"), b"# test")
-            .expect("rembg script should exist");
         std::fs::create_dir_all(app_root.join("var/projects/demo/outputs"))
             .expect("outputs dir should exist");
         std::fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
@@ -3378,10 +3414,7 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert!(seen[0]
-            .args
-            .iter()
-            .any(|v| v.ends_with("scripts/rembg-remove.py")));
+        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
 
         let _ = std::fs::remove_dir_all(app_root);
     }
@@ -3389,9 +3422,6 @@ mod tests {
     #[test]
     fn native_bgremove_runs_rembg_directly_for_directory_input() {
         let app_root = temp_app_root();
-        std::fs::create_dir_all(app_root.join("scripts")).expect("scripts dir should exist");
-        std::fs::write(app_root.join("scripts/rembg-remove.py"), b"# test")
-            .expect("rembg script should exist");
         std::fs::create_dir_all(app_root.join("var/projects/demo/outputs/sub"))
             .expect("input dir should exist");
         std::fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
@@ -3435,10 +3465,9 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 2);
         assert!(seen.iter().all(|cmd| cmd.program == "python3"));
-        assert!(seen.iter().all(|cmd| cmd
-            .args
+        assert!(seen
             .iter()
-            .any(|v| v.ends_with("scripts/rembg-remove.py"))));
+            .all(|cmd| cmd.args.first().map(String::as_str) == Some("-c")));
         assert!(!seen.iter().any(|cmd| cmd.program == "node"));
 
         let _ = std::fs::remove_dir_all(app_root);
@@ -3447,9 +3476,6 @@ mod tests {
     #[test]
     fn native_bgremove_uses_rust_refine_path_without_script_fallback_when_optional_refine_fails() {
         let app_root = temp_app_root_with_script();
-        std::fs::create_dir_all(app_root.join("scripts")).expect("scripts dir should exist");
-        std::fs::write(app_root.join("scripts/rembg-remove.py"), b"# test")
-            .expect("rembg script should exist");
         std::fs::create_dir_all(app_root.join("var/projects/demo/outputs"))
             .expect("outputs dir should exist");
         std::fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
@@ -3495,10 +3521,7 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert!(seen[0]
-            .args
-            .iter()
-            .any(|v| v.ends_with("scripts/rembg-remove.py")));
+        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
         assert!(!seen.iter().any(|cmd| cmd.program == "node"));
 
         let _ = std::fs::remove_dir_all(app_root);
