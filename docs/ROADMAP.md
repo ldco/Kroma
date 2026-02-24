@@ -1,6 +1,6 @@
 # Kroma Roadmap (Progress Tracker)
 
-Last updated: 2026-02-22
+Last updated: 2026-02-24
 Status: Phase 1 in progress (backend + runtime consolidation into Rust)
 
 ## Purpose
@@ -18,6 +18,19 @@ This file is the working progress tracker for Kroma.
   - temporary Rust boundaries around scripts are allowed only to preserve momentum while replacing them
   - every script-backed path must have a Rust replacement milestone and removal milestone
 - Phase 1 is not complete until core runtime/orchestration, worker flows, and active backend integrations are owned by Rust modules.
+
+### Persistence Model Decision (2026-02-24)
+
+1. Default (desktop) data model remains:
+   - SQLite for metadata/state
+   - local filesystem for image assets
+2. Cloud storage is an optional tier:
+   - S3 sync/backups are additive, not mandatory for local runtime
+3. PostgreSQL is deferred:
+   - not required for current desktop single-user architecture
+   - planned only for future hosted/shared multi-user mode
+4. Scope guard:
+   - do not spend roadmap capacity on full PostgreSQL backend wiring until hosted mode requirements are active
 
 ## Current Phase Status
 

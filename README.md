@@ -35,6 +35,17 @@ Why it exists:
 - Project-scoped storage and export/sync primitives.
 - Integration tests across API domains (`src-tauri/tests/*`).
 
+## Architecture Decision (Desktop-First Persistence)
+
+Current product architecture is explicitly desktop-first:
+
+1. Metadata database: local SQLite per user/app install.
+2. Image/blob storage: local filesystem (project-scoped directories).
+3. Cloud storage: optional S3 sync as an add-on capability (for backup/sync/team workflows), not a required runtime dependency.
+4. PostgreSQL: deferred until a hosted multi-user deployment mode is introduced.
+
+This keeps local UX fast and zero-ops while preserving a clean upgrade path for paid cloud features.
+
 ## Current Backend State (2026-02-22)
 
 - Primary backend is Rust (`src-tauri`), started with `npm run backend:rust` on `127.0.0.1:8788`.
@@ -183,8 +194,11 @@ console.log(data);
 | `REMOVE_BG_API_KEY` | Optional remove.bg fallback for BG removal | None | No |
 | `KROMA_BACKEND_BIND` | Rust API bind address | `127.0.0.1:8788` | No |
 | `KROMA_BACKEND_DB` | Rust API SQLite database path | `var/backend/app.db` | No |
+| `KROMA_BACKEND_DB_URL` | Reserved for future hosted DB mode (`postgres://...`) | None | No |
 | `IAT_AGENT_API_URL` | Optional agent dispatch target URL | None | No |
 | `IAT_AGENT_API_TOKEN` | Optional agent dispatch bearer token | None | No |
+
+For desktop/local mode, keep `KROMA_BACKEND_DB_URL` unset and use SQLite (`KROMA_BACKEND_DB`).
 
 ### Pipeline Runtime Settings (Layered, Rust-Owned)
 

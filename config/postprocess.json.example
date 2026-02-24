@@ -1,6 +1,15 @@
 {
   "upscale": {
-    "backend": "python"
+    "backend": "python",
+    "python": {
+      "python_bin": "tools/realesrgan-python/.venv/bin/python",
+      "inference_script": "tools/realesrgan-python/src/Real-ESRGAN/inference_realesrgan.py",
+      "model_name": "RealESRGAN_x4plus",
+      "tile": 0,
+      "tile_pad": 10,
+      "pre_pad": 0,
+      "fp32": false
+    }
   },
   "color": {
     "default_profile": "neutral"

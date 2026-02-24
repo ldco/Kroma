@@ -28,6 +28,57 @@ Worktree: dirty (handoff update in progress)
 1. Continue from the existing "Suggested Starting Point For Next Chat" section later in this file.
 2. Prioritize remaining Rust runtime migration debt: replace transitional inline Python shims and reduce script-runtime dependencies.
 
+## Architecture Decision (2026-02-24, desktop persistence policy)
+
+### Decision
+
+1. Keep desktop/local architecture on:
+   - SQLite for metadata
+   - local filesystem for image assets
+2. Keep cloud storage optional:
+   - S3 sync remains an additive capability (backup/sync/team workflows), not a baseline dependency.
+3. Defer PostgreSQL:
+   - no immediate PostgreSQL backend wiring work for desktop mode.
+   - revisit only when hosted/shared multi-user mode becomes an active product requirement.
+
+### Roadmap Impact
+
+1. Continue Phase 1 on runtime/tooling Rust consolidation and local reliability hardening.
+2. Treat PostgreSQL support as future hosted-tier work, not current critical path.
+
+## Latest Patch (2026-02-24, python upscale inline shim removal)
+
+### Scope
+
+1. `src-tauri/src/pipeline/tool_adapters.rs`
+2. `config/postprocess.json.example`
+3. `tool_adapters` unit tests
+
+### What Landed
+
+1. Replaced the remaining inline RealESRGAN Python shim (`python -c ...`) with direct script invocation.
+   - Python upscale now executes:
+   - `<python_bin> tools/realesrgan-python/src/Real-ESRGAN/inference_realesrgan.py ...`
+2. Added `upscale.python.inference_script` config support with secure path validation under app root.
+3. Added explicit runtime guard:
+   - returns a clear error when inference script path is missing, with setup hint (`scripts/setup-realesrgan-python.sh`).
+4. Updated unit tests:
+   - python upscale command-shape assertions now check script-path invocation (not `-c`).
+   - new regression test for missing inference script path error.
+5. Updated `config/postprocess.json.example` with explicit Python upscale fields (`python_bin`, `inference_script`, model/tile knobs).
+
+### Validation
+
+1. `cargo fmt --manifest-path src-tauri/Cargo.toml`
+2. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+3. `cargo test -q --manifest-path src-tauri/Cargo.toml`
+
+Result: passing.
+
+### Remaining Risk / Next Step
+
+1. `tool_adapters.rs` is still a large hotspot; next migration step should split it into focused modules (`upscale`, `bgremove`, `color`, `qa`, shared path/config helpers).
+
 ## Latest Patch (2026-02-24, request-path containment + rembg module invocation)
 
 ### Scope

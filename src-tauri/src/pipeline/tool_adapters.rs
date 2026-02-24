@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -17,205 +17,12 @@ use crate::pipeline::runtime::{
     default_app_root_from_manifest_dir, CommandSpec, PipelineCommandRunner, PipelineRuntimeError,
     StdPipelineCommandRunner,
 };
+use pathing::{
+    is_image_path, list_image_files_recursive, path_for_output, resolve_request_path_under_root,
+    resolve_under_root,
+};
 
-const REALESRGAN_UPSCALE_INLINE_PYTHON: &str = r#"
-import argparse
-import sys
-from pathlib import Path
-
-def fail(message: str) -> None:
-    raise SystemExit(message)
-
-def add_local_source_paths() -> None:
-    project_root = Path.cwd()
-    src_root = project_root / "tools" / "realesrgan-python" / "src"
-    for folder in ("Real-ESRGAN", "BasicSR"):
-        candidate = src_root / folder
-        if candidate.exists():
-            sys.path.insert(0, str(candidate))
-
-def clamp_extension(value: str) -> str:
-    ext = value.lower().strip()
-    if ext == "jpeg":
-        ext = "jpg"
-    allowed = {"auto", "jpg", "png", "webp"}
-    if ext not in allowed:
-        fail(f"Unsupported --ext '{value}'. Expected one of: {', '.join(sorted(allowed))}")
-    return ext
-
-def import_runtime_deps():
-    add_local_source_paths()
-    try:
-        import cv2  # noqa: F401
-        from basicsr.archs.rrdbnet_arch import RRDBNet  # noqa: F401
-        from basicsr.utils.download_util import load_file_from_url  # noqa: F401
-        from realesrgan import RealESRGANer  # noqa: F401
-        from realesrgan.archs.srvgg_arch import SRVGGNetCompact  # noqa: F401
-    except Exception as exc:
-        fail(
-            "Python Real-ESRGAN dependencies are missing. "
-            "Run: bash scripts/setup-realesrgan-python.sh\n"
-            f"Original error: {exc}"
-        )
-
-def build_model_spec(model_name: str):
-    from basicsr.archs.rrdbnet_arch import RRDBNet
-    from realesrgan.archs.srvgg_arch import SRVGGNetCompact
-
-    if model_name == "RealESRGAN_x4plus":
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-        return 4, model, [
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth"
-        ]
-    if model_name == "RealESRNet_x4plus":
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
-        return 4, model, [
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth"
-        ]
-    if model_name == "RealESRGAN_x4plus_anime_6B":
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
-        return 4, model, [
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
-        ]
-    if model_name == "RealESRGAN_x2plus":
-        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
-        return 2, model, [
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
-        ]
-    if model_name == "realesr-animevideov3":
-        model = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64, num_conv=16, upscale=4, act_type="prelu")
-        return 4, model, [
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
-        ]
-    if model_name == "realesr-general-x4v3":
-        model = SRVGGNetCompact(num_in_ch=3, num_out_ch=3, num_feat=64, num_conv=32, upscale=4, act_type="prelu")
-        return 4, model, [
-            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth"
-        ]
-
-    fail(
-        "Unsupported --model-name. "
-        "Use one of: RealESRGAN_x4plus, RealESRNet_x4plus, RealESRGAN_x4plus_anime_6B, "
-        "RealESRGAN_x2plus, realesr-animevideov3, realesr-general-x4v3"
-    )
-
-def resolve_model_path(model_name: str, weights_dir: Path) -> str:
-    from basicsr.utils.download_util import load_file_from_url
-
-    weights_dir.mkdir(parents=True, exist_ok=True)
-    candidate = weights_dir / f"{model_name}.pth"
-    if candidate.exists():
-        return str(candidate)
-
-    _, _, urls = build_model_spec(model_name)
-    resolved = None
-    for url in urls:
-        resolved = load_file_from_url(url=url, model_dir=str(weights_dir), progress=True, file_name=None)
-    if not resolved:
-        fail(f"Could not download model weights for {model_name}")
-    return str(resolved)
-
-def list_input_images(input_path: Path):
-    if input_path.is_file():
-        return [input_path]
-    image_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-    files = []
-    for item in sorted(input_path.rglob("*")):
-        if item.is_file() and item.suffix.lower() in image_exts:
-            files.append(item)
-    return files
-
-def output_path_for(src: Path, input_root: Path, output_path: Path, ext: str, input_is_dir: bool) -> Path:
-    if not input_is_dir:
-        if output_path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
-            final = output_path
-        else:
-            output_path.mkdir(parents=True, exist_ok=True)
-            final = output_path / src.name
-    else:
-        rel = src.relative_to(input_root)
-        final = output_path / rel
-        final.parent.mkdir(parents=True, exist_ok=True)
-    if ext == "auto":
-        normalized_ext = src.suffix.lower()
-        if normalized_ext == ".jpeg":
-            normalized_ext = ".jpg"
-    else:
-        normalized_ext = f".{ext}"
-    return final.with_suffix(normalized_ext)
-
-def main():
-    parser = argparse.ArgumentParser(description="Real-ESRGAN python backend wrapper")
-    parser.add_argument("--input", required=True, help="Input image file or directory")
-    parser.add_argument("--output", required=True, help="Output image file or directory")
-    parser.add_argument("--model-name", default="RealESRGAN_x4plus", help="Real-ESRGAN model name")
-    parser.add_argument("--outscale", type=float, default=2.0, help="Final upscale ratio")
-    parser.add_argument("--tile", type=int, default=0, help="Tile size, 0 for no tile")
-    parser.add_argument("--tile-pad", type=int, default=10, help="Tile padding")
-    parser.add_argument("--pre-pad", type=int, default=0, help="Pre padding")
-    parser.add_argument("--ext", default="png", help="Output extension: auto|jpg|png|webp")
-    parser.add_argument("--weights-dir", default="", help="Optional custom weights directory")
-    parser.add_argument("--gpu-id", type=int, default=None, help="GPU id (optional)")
-    parser.add_argument("--fp32", action="store_true", help="Force fp32")
-    args = parser.parse_args()
-
-    input_path = Path(args.input).resolve()
-    output_path = Path(args.output).resolve()
-    if not input_path.exists():
-        fail(f"Input path not found: {input_path}")
-
-    ext = clamp_extension(args.ext)
-    import_runtime_deps()
-
-    from realesrgan import RealESRGANer
-    import cv2
-
-    netscale, model, _ = build_model_spec(args.model_name)
-    default_weights_dir = Path.cwd() / "tools" / "realesrgan-python" / "weights"
-    weights_dir = Path(args.weights_dir).resolve() if args.weights_dir else default_weights_dir
-    model_path = resolve_model_path(args.model_name, weights_dir)
-
-    upsampler = RealESRGANer(
-        scale=netscale,
-        model_path=model_path,
-        model=model,
-        tile=args.tile,
-        tile_pad=args.tile_pad,
-        pre_pad=args.pre_pad,
-        half=not args.fp32,
-        gpu_id=args.gpu_id,
-    )
-
-    images = list_input_images(input_path)
-    if not images:
-        fail("No image files found in input path")
-    input_is_dir = input_path.is_dir()
-    if input_is_dir:
-        output_path.mkdir(parents=True, exist_ok=True)
-    else:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    done = 0
-    for src in images:
-        dst = output_path_for(src, input_path, output_path, ext, input_is_dir)
-        img = cv2.imread(str(src), cv2.IMREAD_UNCHANGED)
-        if img is None:
-            print(f"Skip unreadable image: {src}", file=sys.stderr)
-            continue
-        try:
-            output, _ = upsampler.enhance(img, outscale=args.outscale)
-        except RuntimeError as exc:
-            fail(f"Upscale failed for {src}: {exc}. Try smaller --tile value.")
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        ok = cv2.imwrite(str(dst), output)
-        if not ok:
-            fail(f"Failed to write output: {dst}")
-        done += 1
-
-    print(f"Processed {done} image(s) with model {args.model_name} (outscale x{args.outscale})")
-
-main()
-"#;
+mod pathing;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerateOneImageRequest {
@@ -738,9 +545,19 @@ where
         } else {
             cfg.python_bin.clone()
         };
+        let python_script = resolve_request_path_under_root(
+            self.app_root(),
+            cfg.python_inference_script.as_str(),
+            "upscale.python.inference_script",
+        )?;
+        if !python_script.is_file() {
+            return Err(ToolAdapterError::Native(format!(
+                "Real-ESRGAN python inference script not found: {}. Run: bash scripts/setup-realesrgan-python.sh",
+                path_for_output(self.app_root(), python_script.as_path())
+            )));
+        }
         let mut args = vec![
-            String::from("-c"),
-            String::from(REALESRGAN_UPSCALE_INLINE_PYTHON),
+            python_script.to_string_lossy().to_string(),
             String::from("--input"),
             input_abs.to_string_lossy().to_string(),
             String::from("--output"),
@@ -1540,90 +1357,6 @@ fn validate_project_slug(value: &str) -> Result<(), ToolAdapterError> {
     }
 }
 
-fn resolve_under_root(root: &Path, value: &str) -> PathBuf {
-    let path = PathBuf::from(value);
-    if path.is_absolute() {
-        path
-    } else {
-        root.join(path)
-    }
-}
-
-fn resolve_request_path_under_root(
-    root: &Path,
-    value: &str,
-    field: &str,
-) -> Result<PathBuf, ToolAdapterError> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(ToolAdapterError::Native(format!(
-            "{field} must not be empty"
-        )));
-    }
-    let path = Path::new(trimmed);
-    if path.is_absolute() {
-        return Err(ToolAdapterError::Native(format!(
-            "{field} must be a relative path under app root"
-        )));
-    }
-    if path.components().any(|component| {
-        matches!(
-            component,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
-        )
-    }) {
-        return Err(ToolAdapterError::Native(format!(
-            "{field} must stay within app root"
-        )));
-    }
-    Ok(root.join(path))
-}
-
-fn path_for_output(app_root: &Path, path: &Path) -> String {
-    let value = match path.strip_prefix(app_root) {
-        Ok(rel) => rel.to_string_lossy().to_string(),
-        Err(_) => path.to_string_lossy().to_string(),
-    };
-    value.replace('\\', "/")
-}
-
-fn is_image_path(path: &Path) -> bool {
-    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-        return false;
-    };
-    matches!(
-        ext.to_ascii_lowercase().as_str(),
-        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tif" | "tiff"
-    )
-}
-
-fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-    let meta = fs::metadata(input_abs)?;
-    if meta.is_file() {
-        return Ok(if is_image_path(input_abs) {
-            vec![input_abs.to_path_buf()]
-        } else {
-            Vec::new()
-        });
-    }
-
-    let mut out = Vec::new();
-    let mut entries = fs::read_dir(input_abs)?.collect::<Result<Vec<_>, std::io::Error>>()?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            out.extend(list_image_files_recursive(path.as_path())?);
-            continue;
-        }
-        if file_type.is_file() && is_image_path(path.as_path()) {
-            out.push(path);
-        }
-    }
-    Ok(out)
-}
-
 #[derive(Debug, Clone)]
 struct ColorProfileConfig {
     brightness: f32,
@@ -2326,6 +2059,7 @@ struct UpscaleAdapterConfig {
     ncnn_model_dir: String,
     ncnn_model_name: String,
     python_bin: String,
+    python_inference_script: String,
     python_model_name: String,
     python_tile: u32,
     python_tile_pad: u32,
@@ -2345,6 +2079,9 @@ impl Default for UpscaleAdapterConfig {
             ncnn_model_dir: String::from("tools/realesrgan/models"),
             ncnn_model_name: String::from("realesrgan-x4plus"),
             python_bin: String::from("tools/realesrgan-python/.venv/bin/python"),
+            python_inference_script: String::from(
+                "tools/realesrgan-python/src/Real-ESRGAN/inference_realesrgan.py",
+            ),
             python_model_name: String::from("RealESRGAN_x4plus"),
             python_tile: 0,
             python_tile_pad: 10,
@@ -2440,6 +2177,14 @@ fn load_upscale_adapter_config(
             .filter(|v| !v.is_empty())
         {
             cfg.python_bin = v.to_string();
+        }
+        if let Some(v) = py
+            .get("inference_script")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            cfg.python_inference_script = v.to_string();
         }
         if let Some(v) = py
             .get("model_name")
@@ -2959,6 +2704,14 @@ mod tests {
         std::fs::create_dir_all(app_root.join("var/projects/demo/outputs"))
             .expect("outputs dir should exist");
         std::fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
+        let inference_script = app_root.join("tools/realesrgan-python/src/Real-ESRGAN");
+        std::fs::create_dir_all(inference_script.as_path())
+            .expect("inference script dir should exist");
+        std::fs::write(
+            inference_script.join("inference_realesrgan.py"),
+            b"#!/usr/bin/env python3",
+        )
+        .expect("inference script should exist");
         std::fs::write(app_root.join("var/projects/demo/outputs/in.png"), b"png")
             .expect("input should exist");
         std::fs::write(
@@ -2992,11 +2745,49 @@ mod tests {
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-c"));
+        assert!(seen[0]
+            .args
+            .first()
+            .map(|v| v.ends_with("tools/realesrgan-python/src/Real-ESRGAN/inference_realesrgan.py"))
+            .unwrap_or(false));
         assert!(seen[0].args.windows(2).any(|w| w == ["--outscale", "4"]));
         assert!(seen[0].args.windows(2).any(|w| w == ["--tile", "8"]));
         assert!(seen[0].args.iter().any(|v| v == "--fp32"));
         assert!(seen[0].args.windows(2).any(|w| w == ["--gpu-id", "0"]));
+
+        let _ = std::fs::remove_dir_all(app_root);
+    }
+
+    #[test]
+    fn native_upscale_errors_when_python_inference_script_is_missing() {
+        let app_root = temp_app_root();
+        std::fs::create_dir_all(app_root.join("var/projects/demo/outputs"))
+            .expect("outputs dir should exist");
+        std::fs::create_dir_all(app_root.join("config")).expect("config dir should exist");
+        std::fs::write(app_root.join("var/projects/demo/outputs/in.png"), b"png")
+            .expect("input should exist");
+        std::fs::write(
+            app_root.join("config/postprocess.json"),
+            r#"{"upscale":{"backend":"python","scale":4,"format":"png","python":{"python_bin":"python3"}}}"#,
+        )
+        .expect("postprocess config should exist");
+
+        let runner = FakeRunner::default();
+        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner);
+
+        let err = adapters
+            .upscale(&UpscalePassRequest {
+                project_slug: String::from("demo"),
+                project_root: Some(String::from("var/projects/demo")),
+                input_path: String::from("var/projects/demo/outputs/in.png"),
+                output_path: String::from("var/projects/demo/upscaled/out.png"),
+                postprocess_config_path: Some(String::from("config/postprocess.json")),
+                upscale_backend: None,
+                upscale_scale: None,
+                upscale_format: None,
+            })
+            .expect_err("missing script should error");
+        assert!(err.to_string().contains("inference script not found"));
 
         let _ = std::fs::remove_dir_all(app_root);
     }
