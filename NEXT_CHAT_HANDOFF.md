@@ -116,6 +116,37 @@ Result: passing.
 
 1. `ScriptPipelineOrchestrator` and `ScriptPipelineToolAdapters` themselves still exist and are the next cleanup seam if compatibility exports/tests are no longer needed.
 
+## Latest Patch (2026-02-24, legacy script types gated out of production build)
+
+### Scope
+
+1. `src-tauri/src/pipeline/runtime.rs`
+2. `src-tauri/src/pipeline/tool_adapters.rs`
+
+### What Landed
+
+1. `ScriptPipelineOrchestrator` and its impls are now `#[cfg(test)]` only.
+2. `ScriptPipelineToolAdapters` and its impls are now `#[cfg(test)]` only.
+3. Script-only helper functions/imports uncovered by the gating pass were also moved behind `#[cfg(test)]`:
+   - `append_pipeline_options_args(...)`
+   - `RustPlanningPreflightSummary::ids_preview(...)`
+   - `strip_script_planning_inputs_when_jobs_file_present(...)`
+   - `write_planned_jobs_temp_file(...)`
+   - `serde::de::DeserializeOwned` import in `tool_adapters.rs`
+4. Production build surface no longer compiles the legacy script orchestrator/adapter compatibility implementations.
+
+### Validation
+
+1. `cargo check -q --manifest-path src-tauri/Cargo.toml`
+2. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+3. `cargo test -q pipeline::runtime:: --manifest-path src-tauri/Cargo.toml`
+
+Result: passing.
+
+### Remaining Risk / Next Step
+
+1. Legacy script compatibility tests/types still exist in test builds; next step is full deletion (types + tests) once the team decides those regression fixtures are no longer needed.
+
 ## Architecture Decisions (2026-02-24, Rust-Only Direction)
 
 1. Default pipeline execution path is now Rust-only for orchestration (`dry`/`run` wrappers + post-run ingest).

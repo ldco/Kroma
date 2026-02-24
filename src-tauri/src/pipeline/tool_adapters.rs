@@ -7,6 +7,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
 use image::{DynamicImage, RgbImage};
 use reqwest::blocking::{multipart, Client};
+#[cfg(test)]
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -466,6 +467,7 @@ pub trait PipelineToolAdapterOps: Send + Sync + 'static {
 pub type SharedPipelineToolAdapterOps = Arc<dyn PipelineToolAdapterOps>;
 
 #[derive(Debug, Clone)]
+#[cfg(test)]
 pub struct ScriptPipelineToolAdapters<R> {
     runner: R,
     app_root: PathBuf,
@@ -479,6 +481,7 @@ pub struct NativeQaArchiveScriptToolAdapters<R> {
     app_root: PathBuf,
 }
 
+#[cfg(test)]
 impl<R> ScriptPipelineToolAdapters<R>
 where
     R: PipelineCommandRunner,
@@ -802,6 +805,7 @@ where
     }
 }
 
+#[cfg(test)]
 impl<R> PipelineToolAdapterOps for ScriptPipelineToolAdapters<R>
 where
     R: PipelineCommandRunner,

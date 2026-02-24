@@ -233,6 +233,7 @@ impl PipelineOrchestrator for RustOnlyUnsupportedPipelineOrchestrator {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(test)]
 pub struct ScriptPipelineOrchestrator<R> {
     runner: R,
     app_root: PathBuf,
@@ -240,6 +241,7 @@ pub struct ScriptPipelineOrchestrator<R> {
     script_rel_path: PathBuf,
 }
 
+#[cfg(test)]
 impl<R> ScriptPipelineOrchestrator<R>
 where
     R: PipelineCommandRunner,
@@ -559,6 +561,7 @@ fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io:
     Ok(out)
 }
 
+#[cfg(test)]
 fn append_pipeline_options_args(args: &mut Vec<String>, options: &PipelineRunOptions) {
     if let Some(manifest_path) = options.manifest_path.as_ref() {
         args.push(String::from("--manifest"));
@@ -1431,6 +1434,7 @@ impl RustPlanningPreflightSummary {
         self.job_ids.len() as u64
     }
 
+    #[cfg(test)]
     fn ids_preview(&self, limit: usize) -> String {
         self.job_ids
             .iter()
@@ -1893,12 +1897,14 @@ fn sync_winner_passthrough_fields(
     changed
 }
 
+#[cfg(test)]
 fn strip_script_planning_inputs_when_jobs_file_present(request: &mut PipelineRunRequest) {
     // When Rust injects a planned jobs file, avoid duplicate scene/style scanning in the script path.
     request.options.input_source = None;
     request.options.style_refs.clear();
 }
 
+#[cfg(test)]
 impl<R> PipelineOrchestrator for ScriptPipelineOrchestrator<R>
 where
     R: PipelineCommandRunner,
@@ -2132,6 +2138,7 @@ fn parse_pipeline_upscale_backend(value: &str) -> Option<PipelineUpscaleBackend>
     }
 }
 
+#[cfg(test)]
 fn write_planned_jobs_temp_file(
     app_root: &Path,
     jobs: &[PlannedGenerationJob],
