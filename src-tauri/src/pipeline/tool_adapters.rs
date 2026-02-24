@@ -475,7 +475,8 @@ pub struct ScriptPipelineToolAdapters<R> {
 
 #[derive(Debug, Clone)]
 pub struct NativeQaArchiveScriptToolAdapters<R> {
-    script: ScriptPipelineToolAdapters<R>,
+    runner: R,
+    app_root: PathBuf,
 }
 
 impl<R> ScriptPipelineToolAdapters<R>
@@ -847,23 +848,11 @@ where
     R: PipelineCommandRunner,
 {
     pub fn new(app_root: PathBuf, runner: R) -> Self {
-        Self {
-            script: ScriptPipelineToolAdapters::new(app_root, runner),
-        }
-    }
-
-    pub fn with_node_binary(mut self, node_binary: impl Into<String>) -> Self {
-        self.script = self.script.with_node_binary(node_binary);
-        self
-    }
-
-    pub fn with_script_rel_path(mut self, script_rel_path: impl Into<PathBuf>) -> Self {
-        self.script = self.script.with_script_rel_path(script_rel_path);
-        self
+        Self { runner, app_root }
     }
 
     fn app_root(&self) -> &Path {
-        self.script.app_root.as_path()
+        self.app_root.as_path()
     }
 
     fn generate_one_native(
@@ -1129,12 +1118,11 @@ where
             args.push(cfg.tile.to_string());
 
             let output = self
-                .script
                 .runner
                 .run(&CommandSpec {
                     program: bin_path.to_string_lossy().to_string(),
                     args,
-                    cwd: self.script.app_root.clone(),
+                    cwd: self.app_root.clone(),
                 })
                 .map_err(ToolAdapterError::CommandRunner)?;
             if output.status_code != 0 {
@@ -1191,12 +1179,11 @@ where
         }
 
         let output = self
-            .script
             .runner
             .run(&CommandSpec {
                 program: python_program.clone(),
                 args,
-                cwd: self.script.app_root.clone(),
+                cwd: self.app_root.clone(),
             })
             .map_err(ToolAdapterError::CommandRunner)?;
         if output.status_code != 0 {
@@ -1575,12 +1562,11 @@ where
             cfg.format.clone(),
         ];
         let output = self
-            .script
             .runner
             .run(&CommandSpec {
                 program: rembg_python.to_string(),
                 args,
-                cwd: self.script.app_root.clone(),
+                cwd: self.app_root.clone(),
             })
             .map_err(ToolAdapterError::CommandRunner)?;
         if output.status_code != 0 {
@@ -3083,14 +3069,6 @@ pub enum ToolAdapterError {
     Io(#[source] std::io::Error),
     #[error("{0}")]
     Native(String),
-}
-
-pub fn default_script_pipeline_tool_adapters(
-) -> ScriptPipelineToolAdapters<StdPipelineCommandRunner> {
-    ScriptPipelineToolAdapters::new(
-        default_app_root_from_manifest_dir(),
-        StdPipelineCommandRunner,
-    )
 }
 
 pub fn default_native_qa_archive_script_tool_adapters(

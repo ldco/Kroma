@@ -85,7 +85,36 @@ Result: passing.
 
 ### Remaining Risk / Next Step
 
-1. Inline Python shim duplication is now the main transitional debt; next step is to replace these with Rust-owned execution or direct module invocations without embedded script blobs.
+1. Inline Python shim duplication is now one transitional debt; next step is to replace these with Rust-owned execution or direct module invocations without embedded script blobs.
+2. Legacy script orchestration/adapter types (`ScriptPipelineOrchestrator`, `ScriptPipelineToolAdapters`) still exist for compatibility/test coverage and remain a cleanup target.
+
+## Latest Patch (2026-02-24, script-compat decoupling in native adapter path)
+
+### Scope
+
+1. `src-tauri/src/pipeline/tool_adapters.rs`
+2. `src-tauri/src/pipeline/runtime.rs`
+
+### What Landed
+
+1. `NativeQaArchiveScriptToolAdapters` no longer embeds `ScriptPipelineToolAdapters` as an internal field.
+   - It now owns `runner` and `app_root` directly, removing an unnecessary script-adapter coupling from the active native path.
+2. Removed dead script-only default constructors that were no longer referenced anywhere:
+   - `default_script_pipeline_tool_adapters(...)`
+   - `default_script_pipeline_orchestrator(...)`
+3. Removed legacy passthrough customization methods on `NativeQaArchiveScriptToolAdapters` that only mutated script adapter settings and were unused.
+
+### Validation
+
+1. `cargo fmt --manifest-path src-tauri/Cargo.toml`
+2. `cargo test -q tool_adapters::tests:: --manifest-path src-tauri/Cargo.toml`
+3. `cargo test -q pipeline::runtime:: --manifest-path src-tauri/Cargo.toml`
+
+Result: passing.
+
+### Remaining Risk / Next Step
+
+1. `ScriptPipelineOrchestrator` and `ScriptPipelineToolAdapters` themselves still exist and are the next cleanup seam if compatibility exports/tests are no longer needed.
 
 ## Architecture Decisions (2026-02-24, Rust-Only Direction)
 

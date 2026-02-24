@@ -2193,14 +2193,6 @@ pub fn default_app_root_from_manifest_dir() -> PathBuf {
         .to_path_buf()
 }
 
-pub fn default_script_pipeline_orchestrator() -> ScriptPipelineOrchestrator<StdPipelineCommandRunner>
-{
-    ScriptPipelineOrchestrator::new(
-        default_app_root_from_manifest_dir(),
-        StdPipelineCommandRunner,
-    )
-}
-
 pub fn default_pipeline_orchestrator_with_rust_post_run() -> RustPostRunPipelineOrchestrator {
     let backend_ops: SharedPipelineBackendOps = Arc::new(default_script_backend_ops());
     default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops)
