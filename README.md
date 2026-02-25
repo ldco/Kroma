@@ -196,6 +196,9 @@ console.log(data);
 | `KROMA_BACKEND_DB` | Rust API SQLite database path | `var/backend/app.db` | No |
 | `KROMA_BACKEND_DB_URL` | Reserved for future hosted DB mode (`postgres://...`) | None | No |
 | `KROMA_API_AUTH_DEV_BYPASS` | Dev-only auth bypass toggle (`true` disables bearer auth checks) | `false` | No |
+| `KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN` | Allow unauthenticated first `POST /auth/token` bootstrap on loopback binds only | `true` | No |
+| `IAT_MASTER_KEY` | Optional base64url 32-byte key for encrypting `project_secrets.secret_value` at rest | None | No |
+| `IAT_MASTER_KEY_FILE` | Master key file path when `IAT_MASTER_KEY` is unset | `var/backend/master.key` | No |
 | `IAT_AGENT_API_URL` | Optional agent dispatch target URL | None | No |
 | `IAT_AGENT_API_TOKEN` | Optional agent dispatch bearer token | None | No |
 

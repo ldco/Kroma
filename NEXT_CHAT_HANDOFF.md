@@ -2,8 +2,105 @@
 
 Date: 2026-02-25
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `4a0329a` / `7d0934b`
-Worktree: dirty (auth hardening + roadmap update in progress)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `09ed65e` / `7d0934b`
+Worktree: dirty (auth hardening + secrets-at-rest migration + docs updates in progress)
+
+## Session Update (2026-02-25, secrets-at-rest migration + auth protected-route coverage)
+
+### Scope
+
+1. Continue roadmap security work from the previous handoff.
+2. Migrate Rust `project_secrets` storage from plaintext-at-rest to encrypted-at-rest.
+3. Close the auth test blind spot for a representative protected endpoint with dev bypass disabled.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added encrypted-at-rest secret writes in `src-tauri/src/db/projects/secrets.rs`:
+   - `upsert_project_secret(...)` now encrypts incoming secret values before DB insert/update.
+   - ciphertext format is `enc:v1:<base64url(payload)>` where payload is `nonce(12B) + AES-256-GCM ciphertext+tag`.
+   - added schema support for `key_ref` on `project_secrets` (table create + migration via `ensure_column`).
+2. Added master-key loading/generation parity behavior in Rust:
+   - first source: `IAT_MASTER_KEY` (base64url 32-byte key)
+   - fallback: `IAT_MASTER_KEY_FILE` (default `var/backend/master.key`)
+   - if missing, generate and persist local key file (Unix permissions set to `0600`).
+3. Extended error handling for non-SQL internal failures:
+   - added `ProjectsRepoError::Internal(String)` in `src-tauri/src/db/projects.rs`.
+   - mapped internal repo errors to sanitized `500` in `src-tauri/src/api/handler_utils.rs`.
+4. Added/updated tests:
+   - `src-tauri/src/db/projects/secrets.rs`:
+     - `upsert_secret_encrypts_value_at_rest`
+     - `upsert_secret_creates_master_key_file_when_missing`
+   - `src-tauri/tests/auth_endpoints.rs`:
+     - `protected_projects_endpoint_requires_bearer_when_dev_bypass_is_off`
+5. Added docs updates:
+   - `README.md` config table now documents `IAT_MASTER_KEY` and `IAT_MASTER_KEY_FILE`.
+   - `docs/ROADMAP.md` marks secrets-at-rest hardening as landed.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo check` (in `src-tauri`) -> passing.
+3. `cargo test` (in `src-tauri`) -> passing (full suite, including new secrets/auth coverage).
+
+### Next Chat Starting Point
+
+1. Add an explicit key-rotation path for secret re-encryption (`key_ref` is now present but rotation flow is not implemented).
+2. Decide whether non-secret bootstrap/import/export paths should emit explicit migration warnings when legacy plaintext rows are detected.
+3. Continue Phase 1 runtime consolidation milestones (generation/orchestration migration from `scripts/image-lab.mjs` into Rust modules).
+
+## Session Update (2026-02-25, auth bootstrap lockout fix + security follow-through)
+
+### Scope
+
+1. Resolve auth bootstrap deadlock after secure-by-default bypass change.
+2. Keep auth posture hardened without reopening broad unauthenticated access.
+3. Add explicit tests and docs for the bootstrap policy.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added active-token bootstrap guard in `ProjectsStore`:
+   - `has_active_api_tokens()` in `src-tauri/src/db/projects/auth_audit.rs`.
+2. Extended app auth state/policy wiring in `src-tauri/src/api/server.rs`:
+   - new state field: `auth_bootstrap_allow_unauth_token_create`
+   - new router constructor for explicit auth-mode testing:
+     - `build_router_with_projects_store_auth_mode(...)`
+   - bootstrap policy defaults:
+     - controlled by `KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN` (default `true`)
+     - only effective when `KROMA_BACKEND_BIND` resolves to loopback.
+3. Updated auth middleware in `src-tauri/src/api/auth.rs`:
+   - allows unauthenticated `POST /auth/token` only when:
+     - route is exactly `/auth/token` + `POST`
+     - bootstrap policy is enabled
+     - there are no active API tokens
+   - marks bootstrap pass-through requests with explicit auth principal (`BootstrapFirstToken`) instead of generic dev bypass.
+   - once a token exists, bearer auth is required again for token creation.
+4. Added atomic first-token DB guard in `src-tauri/src/db/projects/auth_audit.rs`:
+   - new `create_first_api_token_local(...)` uses `TransactionBehavior::Immediate`
+   - rechecks active token count in-transaction before insert to close concurrent bootstrap mint race.
+5. Added integration coverage:
+   - new file `src-tauri/tests/auth_endpoints.rs`
+   - validates:
+     - first unauthenticated token creation succeeds once
+     - second unauthenticated creation is rejected (`401`)
+     - authenticated token creation still works
+     - bootstrap path can be disabled.
+6. Added/updated docs:
+   - `README.md` config table includes `KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN`.
+   - `docs/ROADMAP.md` notes constrained first-token bootstrap behavior.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo check` (in `src-tauri`) -> passing.
+3. `cargo test --test auth_endpoints` -> passing (`2` tests).
+4. `cargo test` (in `src-tauri`) -> passing (full suite).
+5. `cargo clippy --all-targets --all-features -- -D warnings` -> not runnable in current env (`cargo-clippy` component missing).
+
+### Next Chat Starting Point
+
+1. Continue roadmap security work: encrypted-at-rest migration for Rust `project_secrets` parity with legacy behavior.
+2. Add at least one auth integration test path using the non-dev-bypass router for a representative protected `/api/projects/{slug}` endpoint (to avoid auth-test blind spots).
+3. Decide whether to add a local CLI bootstrap-token command as an ops fallback when first-token bootstrap is intentionally disabled.
 
 ## Session Update (2026-02-25, roadmap continuation: auth hardening + explicit legacy gating)
 

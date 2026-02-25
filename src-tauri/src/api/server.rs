@@ -33,6 +33,7 @@ pub struct AppState {
     pub started_unix_ms: u128,
     pub route_count: usize,
     pub auth_dev_bypass: bool,
+    pub auth_bootstrap_allow_unauth_token_create: bool,
     pub projects_store: Arc<ProjectsStore>,
     pub pipeline_trigger: PipelineTriggerService,
 }
@@ -44,6 +45,7 @@ impl AppState {
             projects_store.clone(),
             default_pipeline_trigger(projects_store),
             auth_dev_bypass_enabled(),
+            auth_bootstrap_allow_unauth_token_create(),
         )
     }
 
@@ -57,6 +59,7 @@ impl AppState {
             projects_store,
             pipeline_trigger,
             auth_dev_bypass_enabled(),
+            auth_bootstrap_allow_unauth_token_create(),
         )
     }
 
@@ -65,6 +68,7 @@ impl AppState {
         projects_store: Arc<ProjectsStore>,
         pipeline_trigger: PipelineTriggerService,
         auth_dev_bypass: bool,
+        auth_bootstrap_allow_unauth_token_create: bool,
     ) -> Self {
         Self {
             service_name: "kroma-backend-core",
@@ -72,6 +76,7 @@ impl AppState {
             started_unix_ms: now_unix_ms(),
             route_count,
             auth_dev_bypass,
+            auth_bootstrap_allow_unauth_token_create,
             projects_store,
             pipeline_trigger,
         }
@@ -98,20 +103,35 @@ pub fn build_router() -> Router {
 }
 
 pub fn build_router_with_projects_store(projects_store: Arc<ProjectsStore>) -> Router {
-    let catalog = route_catalog();
-    let state = AppState::new(catalog.len(), projects_store);
-    build_router_with_catalog(catalog, state)
+    build_router_with_projects_store_auth_mode(
+        projects_store,
+        auth_dev_bypass_enabled(),
+        auth_bootstrap_allow_unauth_token_create(),
+    )
 }
 
-pub fn build_router_with_projects_store_dev_bypass(projects_store: Arc<ProjectsStore>) -> Router {
+pub fn build_router_with_projects_store_auth_mode(
+    projects_store: Arc<ProjectsStore>,
+    auth_dev_bypass: bool,
+    auth_bootstrap_allow_unauth_token_create: bool,
+) -> Router {
     let catalog = route_catalog();
     let state = AppState::new_with_pipeline_trigger_and_auth_dev_bypass(
         catalog.len(),
         projects_store.clone(),
         default_pipeline_trigger(projects_store),
-        true,
+        auth_dev_bypass,
+        auth_bootstrap_allow_unauth_token_create,
     );
     build_router_with_catalog(catalog, state)
+}
+
+pub fn build_router_with_projects_store_dev_bypass(projects_store: Arc<ProjectsStore>) -> Router {
+    build_router_with_projects_store_auth_mode(
+        projects_store,
+        true,
+        auth_bootstrap_allow_unauth_token_create(),
+    )
 }
 
 pub fn build_router_with_projects_store_and_pipeline_trigger(
@@ -134,6 +154,7 @@ pub fn build_router_with_projects_store_and_pipeline_trigger_dev_bypass(
         projects_store,
         pipeline_trigger,
         true,
+        auth_bootstrap_allow_unauth_token_create(),
     );
     build_router_with_catalog(catalog, state)
 }
@@ -396,13 +417,34 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
 fn auth_dev_bypass_enabled() -> bool {
     std::env::var("KROMA_API_AUTH_DEV_BYPASS")
         .ok()
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
+        .map(|value| truthy_flag(value.as_str()))
         .unwrap_or(false)
+}
+
+fn auth_bootstrap_allow_unauth_token_create() -> bool {
+    auth_bootstrap_first_token_enabled() && backend_bind_is_loopback()
+}
+
+fn auth_bootstrap_first_token_enabled() -> bool {
+    std::env::var("KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN")
+        .ok()
+        .map(|value| truthy_flag(value.as_str()))
+        .unwrap_or(true)
+}
+
+fn backend_bind_is_loopback() -> bool {
+    let bind =
+        std::env::var("KROMA_BACKEND_BIND").unwrap_or_else(|_| String::from("127.0.0.1:8788"));
+    bind.parse::<SocketAddr>()
+        .map(|addr| addr.ip().is_loopback())
+        .unwrap_or(false)
+}
+
+fn truthy_flag(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn default_pipeline_trigger(projects_store: Arc<ProjectsStore>) -> PipelineTriggerService {
@@ -492,6 +534,32 @@ mod tests {
         }
     }
 
+    fn with_env_var(key: &str, value: Option<&str>, run: impl FnOnce()) {
+        with_env_vars(&[(key, value)], run);
+    }
+
+    fn with_env_vars(vars: &[(&str, Option<&str>)], run: impl FnOnce()) {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let originals = vars
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), std::env::var(key).ok()))
+            .collect::<Vec<_>>();
+        for (key, value) in vars {
+            match value {
+                Some(v) => unsafe { std::env::set_var(key, v) },
+                None => unsafe { std::env::remove_var(key) },
+            }
+        }
+        run();
+        for (key, original) in originals {
+            if let Some(v) = original {
+                unsafe { std::env::set_var(&key, v) };
+            } else {
+                unsafe { std::env::remove_var(&key) };
+            }
+        }
+    }
+
     #[test]
     fn openapi_path_is_compatible_with_router_syntax() {
         assert_eq!(
@@ -516,5 +584,68 @@ mod tests {
         with_auth_bypass_env(Some("1"), || {
             assert!(auth_dev_bypass_enabled());
         });
+    }
+
+    #[test]
+    fn auth_bootstrap_first_token_defaults_on_when_env_missing() {
+        with_env_var("KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN", None, || {
+            assert!(auth_bootstrap_first_token_enabled());
+        });
+    }
+
+    #[test]
+    fn auth_bootstrap_first_token_can_be_disabled() {
+        with_env_var(
+            "KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN",
+            Some("false"),
+            || {
+                assert!(!auth_bootstrap_first_token_enabled());
+            },
+        );
+    }
+
+    #[test]
+    fn backend_bind_loopback_detection_defaults_true_for_localhost_bind() {
+        with_env_var("KROMA_BACKEND_BIND", None, || {
+            assert!(backend_bind_is_loopback());
+        });
+    }
+
+    #[test]
+    fn backend_bind_loopback_detection_rejects_non_loopback_bind() {
+        with_env_var("KROMA_BACKEND_BIND", Some("0.0.0.0:8788"), || {
+            assert!(!backend_bind_is_loopback());
+        });
+    }
+
+    #[test]
+    fn auth_bootstrap_allow_requires_flag_and_loopback_bind() {
+        with_env_vars(
+            &[
+                ("KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN", Some("true")),
+                ("KROMA_BACKEND_BIND", Some("127.0.0.1:8788")),
+            ],
+            || {
+                assert!(auth_bootstrap_allow_unauth_token_create());
+            },
+        );
+        with_env_vars(
+            &[
+                ("KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN", Some("true")),
+                ("KROMA_BACKEND_BIND", Some("0.0.0.0:8788")),
+            ],
+            || {
+                assert!(!auth_bootstrap_allow_unauth_token_create());
+            },
+        );
+        with_env_vars(
+            &[
+                ("KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN", Some("false")),
+                ("KROMA_BACKEND_BIND", Some("127.0.0.1:8788")),
+            ],
+            || {
+                assert!(!auth_bootstrap_allow_unauth_token_create());
+            },
+        );
     }
 }

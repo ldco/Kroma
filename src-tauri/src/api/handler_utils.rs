@@ -30,6 +30,7 @@ pub fn map_repo_error(error: ProjectsRepoError, not_found_message: &str) -> ApiO
                 error: message,
             }),
         ),
+        ProjectsRepoError::Internal(message) => internal_error(message),
         ProjectsRepoError::Sqlite(source) => internal_error(format!("database error: {source}")),
     }
 }

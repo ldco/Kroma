@@ -4,6 +4,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{header, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -18,6 +19,7 @@ use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject}
 #[derive(Debug, Clone)]
 pub enum AuthPrincipal {
     DevBypass,
+    BootstrapFirstToken,
     ApiToken {
         token_id: String,
         user_id: String,
@@ -29,6 +31,7 @@ impl AuthPrincipal {
     pub fn actor_user_id(&self) -> Option<&str> {
         match self {
             Self::DevBypass => None,
+            Self::BootstrapFirstToken => None,
             Self::ApiToken { user_id, .. } => Some(user_id.as_str()),
         }
     }
@@ -38,6 +41,7 @@ impl fmt::Display for AuthPrincipal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DevBypass => write!(f, "dev_bypass"),
+            Self::BootstrapFirstToken => write!(f, "bootstrap_first_token"),
             Self::ApiToken { token_id, .. } => write!(f, "api_token:{token_id}"),
         }
     }
@@ -81,15 +85,22 @@ struct DeleteAuthTokenResponse {
 
 pub async fn create_auth_token_handler(
     State(state): State<AppState>,
+    Extension(actor): Extension<AuthPrincipal>,
     Json(payload): Json<CreateAuthTokenRequest>,
 ) -> ApiObject<Value> {
     let store = state.projects_store.clone();
+    let bootstrap_first_token_only = matches!(actor, AuthPrincipal::BootstrapFirstToken);
     let result = tokio::task::spawn_blocking(move || {
-        store.create_api_token_local(CreateApiTokenInput {
+        let input = CreateApiTokenInput {
             label: payload.label,
             project_slug: payload.project_slug,
             expires_at: payload.expires_at,
-        })
+        };
+        if bootstrap_first_token_only {
+            store.create_first_api_token_local(input)
+        } else {
+            store.create_api_token_local(input)
+        }
     })
     .await;
 
@@ -168,6 +179,27 @@ pub async fn auth_middleware(
         return next.run(request).await;
     }
 
+    if is_bootstrap_auth_token_create_route(request.method(), path.as_str())
+        && state.auth_bootstrap_allow_unauth_token_create
+        && extract_bearer_token(&request).is_none()
+    {
+        let store = state.projects_store.clone();
+        let has_active_tokens =
+            tokio::task::spawn_blocking(move || store.has_active_api_tokens()).await;
+        match has_active_tokens {
+            Ok(Ok(false)) => {
+                request
+                    .extensions_mut()
+                    .insert(AuthPrincipal::BootstrapFirstToken);
+                return next.run(request).await;
+            }
+            Ok(Ok(true)) => {}
+            Ok(Err(_)) | Err(_) => {
+                return unauthorized("Token bootstrap check failed");
+            }
+        }
+    }
+
     let Some(bearer) = extract_bearer_token(&request) else {
         return unauthorized("Missing Authorization: Bearer token");
     };
@@ -224,6 +256,10 @@ fn extract_bearer_token(request: &Request) -> Option<String> {
     Some(token.to_string())
 }
 
+fn is_bootstrap_auth_token_create_route(method: &Method, path: &str) -> bool {
+    *method == Method::POST && path == "/auth/token"
+}
+
 fn extract_project_slug(path: &str) -> Option<String> {
     let mut segments = path.trim_matches('/').split('/');
     if segments.next()? != "api" {
@@ -265,7 +301,9 @@ fn forbidden(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_project_slug;
+    use axum::http::Method;
+
+    use super::{extract_project_slug, is_bootstrap_auth_token_create_route};
 
     #[test]
     fn extract_project_slug_from_project_routes() {
@@ -284,5 +322,21 @@ mod tests {
         assert!(extract_project_slug("/api/projects").is_none());
         assert!(extract_project_slug("/api/other/demo").is_none());
         assert!(extract_project_slug("/health").is_none());
+    }
+
+    #[test]
+    fn bootstrap_route_detection_requires_post_auth_token_path() {
+        assert!(is_bootstrap_auth_token_create_route(
+            &Method::POST,
+            "/auth/token"
+        ));
+        assert!(!is_bootstrap_auth_token_create_route(
+            &Method::GET,
+            "/auth/token"
+        ));
+        assert!(!is_bootstrap_auth_token_create_route(
+            &Method::POST,
+            "/auth/tokens"
+        ));
     }
 }

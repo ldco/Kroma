@@ -57,6 +57,7 @@ Status:
   - hashed `api_tokens` table + `/auth/token(s)` routes
   - Bearer middleware with local dev bypass flag (`KROMA_API_AUTH_DEV_BYPASS`)
   - auth bypass now defaults to `false` when unset; dev bypass is explicit opt-in
+  - first-token bootstrap path restored safely: unauthenticated `POST /auth/token` is allowed only when there are no active tokens and bind is loopback (toggle: `KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN`)
   - test routers now use explicit dev-bypass constructors instead of relying on implicit default bypass
   - `audit_events` table + initial audit writes for key mutating endpoints
 - Contract-first route catalog + parity tests + HTTP mount checks
@@ -72,6 +73,10 @@ Status:
   - chat
   - agent instructions
   - secrets CRUD
+- Secrets-at-rest hardening landed for Rust `project_secrets` writes:
+  - `secret_value` now stores ciphertext (AES-256-GCM) instead of plaintext
+  - key source matches legacy behavior (`IAT_MASTER_KEY` or `IAT_MASTER_KEY_FILE`, default `var/backend/master.key`)
+  - local key file is auto-generated on first use when not provided
 
 ### Bootstrap Flow (Rust)
 

@@ -205,6 +205,9 @@ pub enum ProjectsRepoError {
     #[error("{0}")]
     Validation(String),
 
+    #[error("{0}")]
+    Internal(String),
+
     #[error("sqlite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 }

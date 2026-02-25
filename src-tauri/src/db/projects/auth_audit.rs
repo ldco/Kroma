@@ -1,4 +1,4 @@
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -60,6 +60,23 @@ pub struct AppendAuditEventInput {
 }
 
 impl ProjectsStore {
+    pub fn has_active_api_tokens(&self) -> Result<bool, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            let now = now_iso();
+            let count = conn.query_row(
+                "
+                SELECT COUNT(*)
+                FROM api_tokens
+                WHERE revoked_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > ?1)
+                ",
+                params![now],
+                |row| row.get::<_, i64>(0),
+            )?;
+            Ok(count > 0)
+        })
+    }
+
     pub fn authorize_project_slug_access(
         &self,
         slug: &str,
@@ -159,6 +176,83 @@ impl ProjectsStore {
                     created_at
                 ],
             )?;
+
+            Ok(CreateApiTokenResult {
+                id: token_id,
+                token: secret,
+                token_prefix,
+                label,
+                project_id,
+                created_at,
+                expires_at,
+            })
+        })
+    }
+
+    pub fn create_first_api_token_local(
+        &self,
+        input: CreateApiTokenInput,
+    ) -> Result<CreateApiTokenResult, ProjectsRepoError> {
+        let label = normalize_optional_text(input.label.as_deref())
+            .unwrap_or_default()
+            .chars()
+            .take(200)
+            .collect::<String>();
+        let expires_at = normalize_optional_text(input.expires_at.as_deref());
+
+        self.with_connection_mut(|conn| {
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let now = now_iso();
+            let active_count = tx.query_row(
+                "
+                SELECT COUNT(*)
+                FROM api_tokens
+                WHERE revoked_at IS NULL
+                  AND (expires_at IS NULL OR expires_at > ?1)
+                ",
+                params![now],
+                |row| row.get::<_, i64>(0),
+            )?;
+            if active_count > 0 {
+                return Err(ProjectsRepoError::Validation(String::from(
+                    "Bootstrap token already initialized",
+                )));
+            }
+
+            let user_id = ensure_user(&tx, "local", "Local User")?;
+            let project_id = if let Some(project_slug) = input.project_slug.as_deref() {
+                let safe_slug = normalize_slug(project_slug).ok_or(ProjectsRepoError::NotFound)?;
+                let project = fetch_project_by_slug_for_user(&tx, safe_slug.as_str(), user_id.as_str())?
+                    .ok_or(ProjectsRepoError::NotFound)?;
+                Some(project.id)
+            } else {
+                None
+            };
+
+            let token_id = Uuid::new_v4().to_string();
+            let secret = format!("kroma_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+            let token_prefix = secret.chars().take(12).collect::<String>();
+            let token_hash = sha256_hex(secret.as_bytes());
+            let created_at = now_iso();
+            tx.execute(
+                "
+                INSERT INTO api_tokens
+                  (id, user_id, project_id, token_hash, token_prefix, label, expires_at, revoked_at, last_used_at, created_at)
+                VALUES
+                  (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL, ?8)
+                ",
+                params![
+                    token_id,
+                    user_id,
+                    project_id,
+                    token_hash,
+                    token_prefix,
+                    label,
+                    expires_at,
+                    created_at
+                ],
+            )?;
+            tx.commit()?;
 
             Ok(CreateApiTokenResult {
                 id: token_id,
