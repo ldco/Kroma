@@ -230,12 +230,12 @@ pub trait PipelineToolAdapterOps: Send + Sync + 'static {
 pub type SharedPipelineToolAdapterOps = Arc<dyn PipelineToolAdapterOps>;
 
 #[derive(Debug, Clone)]
-pub struct NativeQaArchiveScriptToolAdapters<R> {
+pub struct NativeToolAdapters<R> {
     runner: R,
     app_root: PathBuf,
 }
 
-impl<R> NativeQaArchiveScriptToolAdapters<R>
+impl<R> NativeToolAdapters<R>
 where
     R: PipelineCommandRunner,
 {
@@ -1316,7 +1316,7 @@ where
     }
 }
 
-impl<R> PipelineToolAdapterOps for NativeQaArchiveScriptToolAdapters<R>
+impl<R> PipelineToolAdapterOps for NativeToolAdapters<R>
 where
     R: PipelineCommandRunner,
 {
@@ -1397,17 +1397,11 @@ pub enum ToolAdapterError {
     Native(String),
 }
 
-pub fn default_native_tool_adapters() -> NativeQaArchiveScriptToolAdapters<StdPipelineCommandRunner>
-{
-    NativeQaArchiveScriptToolAdapters::new(
+pub fn default_native_tool_adapters() -> NativeToolAdapters<StdPipelineCommandRunner> {
+    NativeToolAdapters::new(
         default_app_root_from_manifest_dir(),
         StdPipelineCommandRunner,
     )
-}
-
-pub fn default_native_qa_archive_script_tool_adapters(
-) -> NativeQaArchiveScriptToolAdapters<StdPipelineCommandRunner> {
-    default_native_tool_adapters()
 }
 
 #[cfg(test)]
@@ -1485,7 +1479,7 @@ mod tests {
     fn native_qa_rejects_parent_path_traversal() {
         let app_root = temp_app_root();
         let runner = FakeRunner::default();
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner);
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner);
 
         let err = adapters
             .qa(&QaCheckRequest {
@@ -1514,7 +1508,7 @@ mod tests {
             .expect("image should be written");
 
         let runner = FakeRunner::default();
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let parsed = adapters
             .qa(&QaCheckRequest {
@@ -1550,7 +1544,7 @@ mod tests {
         std::fs::write(outputs.join("note.txt"), b"txt").expect("non-image should exist");
 
         let runner = FakeRunner::default();
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
         let result = adapters
             .archive_bad(&ArchiveBadRequest {
                 project_slug: String::from("demo"),
@@ -1598,7 +1592,7 @@ mod tests {
             .expect("postprocess config should exist");
 
         let runner = FakeRunner::default();
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let resp = adapters
             .color(&ColorPassRequest {
@@ -1655,7 +1649,7 @@ mod tests {
             stdout: String::new(),
             stderr: String::new(),
         }));
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let resp = adapters
             .upscale(&UpscalePassRequest {
@@ -1703,7 +1697,7 @@ mod tests {
         .expect("postprocess config should exist");
 
         let runner = FakeRunner::default();
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner);
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner);
 
         let err = adapters
             .upscale(&UpscalePassRequest {
@@ -1741,7 +1735,7 @@ mod tests {
             stdout: String::new(),
             stderr: String::new(),
         }));
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let resp = adapters
             .bgremove(&BackgroundRemovePassRequest {
@@ -1789,7 +1783,7 @@ mod tests {
             ),
             stderr: String::new(),
         }));
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let err = adapters
             .bgremove(&BackgroundRemovePassRequest {
@@ -1836,7 +1830,7 @@ mod tests {
             stdout: String::new(),
             stderr: String::new(),
         }));
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let resp = adapters
             .bgremove(&BackgroundRemovePassRequest {
@@ -1878,7 +1872,7 @@ mod tests {
         .expect("postprocess config should exist");
 
         let runner = FakeRunner::default();
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let resp = adapters
             .bgremove(&BackgroundRemovePassRequest {
@@ -1934,7 +1928,7 @@ mod tests {
             stdout: String::new(),
             stderr: String::new(),
         }));
-        let adapters = NativeQaArchiveScriptToolAdapters::new(app_root.clone(), runner.clone());
+        let adapters = NativeToolAdapters::new(app_root.clone(), runner.clone());
 
         let resp = adapters
             .bgremove(&BackgroundRemovePassRequest {
@@ -2008,8 +2002,7 @@ mod tests {
         std::fs::write(app_root.join("var/tmp/input-images.json"), b"{not-json")
             .expect("input images file should exist");
 
-        let adapters =
-            NativeQaArchiveScriptToolAdapters::new(app_root.clone(), FakeRunner::default());
+        let adapters = NativeToolAdapters::new(app_root.clone(), FakeRunner::default());
         let err = adapters
             .generate_one(&GenerateOneImageRequest {
                 project_slug: String::from("demo"),
