@@ -8,13 +8,13 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn asset_links_support_crud_and_filters() {
     let (store, db_path) = test_store_with_db_path();
-    let app = build_router_with_projects_store(store);
+    let app = build_router_with_projects_store_dev_bypass(store);
 
     let create_project = send_json(
         app.clone(),
@@ -143,7 +143,7 @@ async fn asset_links_support_crud_and_filters() {
 #[tokio::test]
 async fn asset_link_validation_returns_bad_request() {
     let (store, db_path) = test_store_with_db_path();
-    let app = build_router_with_projects_store(store);
+    let app = build_router_with_projects_store_dev_bypass(store);
 
     let create_project = send_json(
         app.clone(),

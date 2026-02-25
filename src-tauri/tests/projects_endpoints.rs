@@ -6,12 +6,12 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn project_endpoints_support_create_list_and_detail() {
-    let app = build_router_with_projects_store(test_repo());
+    let app = build_router_with_projects_store_dev_bypass(test_repo());
 
     let list_before = send_json(
         app.clone(),
@@ -73,7 +73,7 @@ async fn project_endpoints_support_create_list_and_detail() {
 
 #[tokio::test]
 async fn project_create_requires_name() {
-    let app = build_router_with_projects_store(test_repo());
+    let app = build_router_with_projects_store_dev_bypass(test_repo());
     let response = send_json(
         app,
         Method::POST,

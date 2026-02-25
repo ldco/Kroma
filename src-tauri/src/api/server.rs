@@ -39,15 +39,11 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(route_count: usize, projects_store: Arc<ProjectsStore>) -> Self {
-        let backend_ops: SharedPipelineBackendOps = Arc::new(
-            default_backend_ops_with_native_ingest(projects_store.clone()),
-        );
-        let orchestrator: SharedPipelineOrchestrator =
-            Arc::new(default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops));
-        Self::new_with_pipeline_trigger(
+        Self::new_with_pipeline_trigger_and_auth_dev_bypass(
             route_count,
-            projects_store,
-            PipelineTriggerService::new(orchestrator),
+            projects_store.clone(),
+            default_pipeline_trigger(projects_store),
+            auth_dev_bypass_enabled(),
         )
     }
 
@@ -56,12 +52,26 @@ impl AppState {
         projects_store: Arc<ProjectsStore>,
         pipeline_trigger: PipelineTriggerService,
     ) -> Self {
+        Self::new_with_pipeline_trigger_and_auth_dev_bypass(
+            route_count,
+            projects_store,
+            pipeline_trigger,
+            auth_dev_bypass_enabled(),
+        )
+    }
+
+    fn new_with_pipeline_trigger_and_auth_dev_bypass(
+        route_count: usize,
+        projects_store: Arc<ProjectsStore>,
+        pipeline_trigger: PipelineTriggerService,
+        auth_dev_bypass: bool,
+    ) -> Self {
         Self {
             service_name: "kroma-backend-core",
             service_version: env!("CARGO_PKG_VERSION"),
             started_unix_ms: now_unix_ms(),
             route_count,
-            auth_dev_bypass: auth_dev_bypass_enabled(),
+            auth_dev_bypass,
             projects_store,
             pipeline_trigger,
         }
@@ -93,6 +103,17 @@ pub fn build_router_with_projects_store(projects_store: Arc<ProjectsStore>) -> R
     build_router_with_catalog(catalog, state)
 }
 
+pub fn build_router_with_projects_store_dev_bypass(projects_store: Arc<ProjectsStore>) -> Router {
+    let catalog = route_catalog();
+    let state = AppState::new_with_pipeline_trigger_and_auth_dev_bypass(
+        catalog.len(),
+        projects_store.clone(),
+        default_pipeline_trigger(projects_store),
+        true,
+    );
+    build_router_with_catalog(catalog, state)
+}
+
 pub fn build_router_with_projects_store_and_pipeline_trigger(
     projects_store: Arc<ProjectsStore>,
     pipeline_trigger: PipelineTriggerService,
@@ -100,6 +121,20 @@ pub fn build_router_with_projects_store_and_pipeline_trigger(
     let catalog = route_catalog();
     let state =
         AppState::new_with_pipeline_trigger(catalog.len(), projects_store, pipeline_trigger);
+    build_router_with_catalog(catalog, state)
+}
+
+pub fn build_router_with_projects_store_and_pipeline_trigger_dev_bypass(
+    projects_store: Arc<ProjectsStore>,
+    pipeline_trigger: PipelineTriggerService,
+) -> Router {
+    let catalog = route_catalog();
+    let state = AppState::new_with_pipeline_trigger_and_auth_dev_bypass(
+        catalog.len(),
+        projects_store,
+        pipeline_trigger,
+        true,
+    );
     build_router_with_catalog(catalog, state)
 }
 
@@ -367,7 +402,15 @@ fn auth_dev_bypass_enabled() -> bool {
                 "1" | "true" | "yes" | "on"
             )
         })
-        .unwrap_or(true)
+        .unwrap_or(false)
+}
+
+fn default_pipeline_trigger(projects_store: Arc<ProjectsStore>) -> PipelineTriggerService {
+    let backend_ops: SharedPipelineBackendOps =
+        Arc::new(default_backend_ops_with_native_ingest(projects_store));
+    let orchestrator: SharedPipelineOrchestrator =
+        Arc::new(default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops));
+    PipelineTriggerService::new(orchestrator)
 }
 
 fn default_repo_root() -> PathBuf {
@@ -426,6 +469,28 @@ fn now_unix_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn with_auth_bypass_env(value: Option<&str>, run: impl FnOnce()) {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let key = "KROMA_API_AUTH_DEV_BYPASS";
+        let original = std::env::var(key).ok();
+        match value {
+            Some(v) => unsafe { std::env::set_var(key, v) },
+            None => unsafe { std::env::remove_var(key) },
+        }
+        run();
+        if let Some(v) = original {
+            unsafe { std::env::set_var(key, v) };
+        } else {
+            unsafe { std::env::remove_var(key) };
+        }
+    }
 
     #[test]
     fn openapi_path_is_compatible_with_router_syntax() {
@@ -434,5 +499,22 @@ mod tests {
             "/api/projects/{slug}/runs/{runId}"
         );
         assert_eq!(openapi_path_to_router("/health"), "/health");
+    }
+
+    #[test]
+    fn auth_dev_bypass_defaults_off_when_env_missing() {
+        with_auth_bypass_env(None, || {
+            assert!(!auth_dev_bypass_enabled());
+        });
+    }
+
+    #[test]
+    fn auth_dev_bypass_parses_truthy_values() {
+        with_auth_bypass_env(Some("true"), || {
+            assert!(auth_dev_bypass_enabled());
+        });
+        with_auth_bypass_env(Some("1"), || {
+            assert!(auth_dev_bypass_enabled());
+        });
     }
 }

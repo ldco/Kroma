@@ -4,13 +4,13 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use kroma_backend_core::api::routes::route_catalog;
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::contract::HttpMethod;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn every_contract_route_is_http_mounted() {
-    let app = build_router_with_projects_store(test_repo());
+    let app = build_router_with_projects_store_dev_bypass(test_repo());
 
     for route in route_catalog() {
         let request_path = materialize_path(route.spec.path.as_str());

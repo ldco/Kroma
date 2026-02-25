@@ -7,12 +7,12 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn characters_support_crud() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
@@ -112,7 +112,7 @@ async fn characters_support_crud() {
 
 #[tokio::test]
 async fn character_validation_is_enforced() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),

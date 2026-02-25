@@ -8,13 +8,13 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn exports_endpoints_return_seeded_records() {
     let (store, db_path) = test_store_with_db_path();
-    let app = build_router_with_projects_store(store);
+    let app = build_router_with_projects_store_dev_bypass(store);
 
     let create = send_json(
         app.clone(),
@@ -63,7 +63,7 @@ async fn exports_endpoints_return_seeded_records() {
 #[tokio::test]
 async fn export_detail_returns_not_found_when_missing() {
     let (store, _) = test_store_with_db_path();
-    let app = build_router_with_projects_store(store);
+    let app = build_router_with_projects_store_dev_bypass(store);
 
     let create = send_json(
         app.clone(),

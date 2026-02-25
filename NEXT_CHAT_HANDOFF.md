@@ -1,9 +1,41 @@
 # Next Chat Handoff
 
-Date: 2026-02-24
+Date: 2026-02-25
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `7d0934b` / `7d0934b`
-Worktree: dirty (tool adapter refactor modules + handoff update in progress)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `4a0329a` / `7d0934b`
+Worktree: dirty (auth hardening + roadmap update in progress)
+
+## Session Update (2026-02-25, roadmap continuation: auth hardening + explicit legacy gating)
+
+### Scope
+
+1. Continue roadmap execution with security hardening and migration ergonomics.
+2. Keep test coverage green while removing implicit insecure defaults.
+
+### What Landed (this session, local/uncommitted)
+
+1. Auth dev bypass default changed to secure-by-default (`false` when `KROMA_API_AUTH_DEV_BYPASS` is unset) in `src-tauri/src/api/server.rs`.
+2. Added explicit dev-bypass router constructors for test usage:
+   - `build_router_with_projects_store_dev_bypass(...)`
+   - `build_router_with_projects_store_and_pipeline_trigger_dev_bypass(...)`
+3. Updated integration tests to use explicit dev-bypass router constructors (no implicit bypass assumptions).
+4. Added unit tests covering auth bypass env behavior in `src-tauri/src/api/server.rs`.
+5. Updated npm legacy-script commands to explicitly opt in:
+   - `KROMA_ENABLE_LEGACY_SCRIPTS=1` for `backend:init`, `backend:migrate`, `backend:user:local`, `backend:project:list`, `backend:worker`, `backend:worker:once`.
+6. Updated docs:
+   - `README.md` config table now documents `KROMA_API_AUTH_DEV_BYPASS` default.
+   - `docs/ROADMAP.md` updated with this milestone.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test` (in `src-tauri`) -> passing (`117` tests in lib + integration suite, `0` failed).
+3. `npm run -s backend:migrate -- --help` -> passing (legacy migration helper is callable with explicit gate).
+
+### Next Chat Starting Point
+
+1. Continue roadmap security work: migrate Rust `project_secrets` storage from plaintext-at-rest to encrypted-at-rest parity with legacy behavior.
+2. Keep reducing script fallback surface and remove migrated script paths once Rust parity lands.
 
 ## Session Update (2026-02-24, tool adapter refactor continuation)
 

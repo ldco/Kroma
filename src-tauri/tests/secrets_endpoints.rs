@@ -7,12 +7,12 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn secrets_support_upsert_list_and_delete() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
@@ -112,7 +112,7 @@ async fn secrets_support_upsert_list_and_delete() {
 
 #[tokio::test]
 async fn secrets_validation_and_not_found_paths_are_enforced() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),

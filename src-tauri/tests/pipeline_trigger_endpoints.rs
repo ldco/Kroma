@@ -13,7 +13,8 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use kroma_backend_core::api::server::{
-    build_router_with_projects_store, build_router_with_projects_store_and_pipeline_trigger,
+    build_router_with_projects_store_and_pipeline_trigger_dev_bypass,
+    build_router_with_projects_store_dev_bypass,
 };
 use kroma_backend_core::db::projects::{ProjectsStore, UpdateStorageLocalInput};
 use kroma_backend_core::pipeline::runtime::{
@@ -24,7 +25,7 @@ use kroma_backend_core::pipeline::trigger::PipelineTriggerService;
 
 #[tokio::test]
 async fn pipeline_trigger_validates_mode_before_execution() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -43,7 +44,7 @@ async fn pipeline_trigger_validates_mode_before_execution() {
 
 #[tokio::test]
 async fn pipeline_trigger_returns_not_found_for_missing_project() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -59,7 +60,7 @@ async fn pipeline_trigger_returns_not_found_for_missing_project() {
 
 #[tokio::test]
 async fn pipeline_validate_config_returns_not_found_for_missing_project() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -75,7 +76,7 @@ async fn pipeline_validate_config_returns_not_found_for_missing_project() {
 
 #[tokio::test]
 async fn pipeline_trigger_run_mode_requires_spend_confirmation() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let created = send_json(
         app.clone(),
@@ -108,7 +109,7 @@ async fn pipeline_trigger_run_mode_requires_spend_confirmation() {
 #[tokio::test]
 async fn pipeline_validate_config_uses_project_storage_root_when_missing() {
     let store = test_store();
-    let app = build_router_with_projects_store(store.clone());
+    let app = build_router_with_projects_store_dev_bypass(store.clone());
 
     let created = send_json(
         app.clone(),
@@ -186,7 +187,7 @@ async fn pipeline_validate_config_uses_project_storage_root_when_missing() {
 
 #[tokio::test]
 async fn pipeline_validate_config_returns_bad_request_for_invalid_manifest_override() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
     let created = send_json(
         app.clone(),
         Method::POST,
@@ -241,7 +242,8 @@ async fn pipeline_trigger_success_path_can_use_injected_fake_orchestrator() {
         stderr: String::new(),
     })));
     let pipeline_trigger = PipelineTriggerService::new(fake.clone());
-    let app = build_router_with_projects_store_and_pipeline_trigger(store, pipeline_trigger);
+    let app =
+        build_router_with_projects_store_and_pipeline_trigger_dev_bypass(store, pipeline_trigger);
 
     let created = send_json(
         app.clone(),
@@ -303,7 +305,8 @@ async fn pipeline_trigger_typed_fields_translate_to_cli_args() {
         stderr: String::new(),
     })));
     let pipeline_trigger = PipelineTriggerService::new(fake.clone());
-    let app = build_router_with_projects_store_and_pipeline_trigger(store, pipeline_trigger);
+    let app =
+        build_router_with_projects_store_and_pipeline_trigger_dev_bypass(store, pipeline_trigger);
 
     let created = send_json(
         app.clone(),
@@ -369,8 +372,10 @@ async fn pipeline_trigger_injects_project_root_from_rust_storage_when_missing() 
         stderr: String::new(),
     })));
     let pipeline_trigger = PipelineTriggerService::new(fake.clone());
-    let app =
-        build_router_with_projects_store_and_pipeline_trigger(store.clone(), pipeline_trigger);
+    let app = build_router_with_projects_store_and_pipeline_trigger_dev_bypass(
+        store.clone(),
+        pipeline_trigger,
+    );
 
     let created = send_json(
         app.clone(),
@@ -423,7 +428,7 @@ async fn pipeline_trigger_injects_project_root_from_rust_storage_when_missing() 
 
 #[tokio::test]
 async fn pipeline_trigger_typed_fields_validate_before_execution() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -448,7 +453,7 @@ async fn pipeline_trigger_typed_fields_validate_before_execution() {
 
 #[tokio::test]
 async fn pipeline_trigger_rejects_empty_scene_refs_array() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -473,7 +478,7 @@ async fn pipeline_trigger_rejects_empty_scene_refs_array() {
 
 #[tokio::test]
 async fn pipeline_trigger_rejects_empty_style_refs_array() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -499,7 +504,7 @@ async fn pipeline_trigger_rejects_empty_style_refs_array() {
 
 #[tokio::test]
 async fn pipeline_trigger_requires_one_input_source_before_execution() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -518,7 +523,7 @@ async fn pipeline_trigger_requires_one_input_source_before_execution() {
 
 #[tokio::test]
 async fn pipeline_trigger_rejects_conflicting_typed_input_fields() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -544,7 +549,7 @@ async fn pipeline_trigger_rejects_conflicting_typed_input_fields() {
 
 #[tokio::test]
 async fn pipeline_trigger_rejects_out_of_range_candidates() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -570,7 +575,7 @@ async fn pipeline_trigger_rejects_out_of_range_candidates() {
 
 #[tokio::test]
 async fn pipeline_trigger_rejects_time_without_time_or_weather_stage() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,
@@ -596,7 +601,7 @@ async fn pipeline_trigger_rejects_time_without_time_or_weather_stage() {
 
 #[tokio::test]
 async fn pipeline_trigger_rejects_weather_without_weather_stage() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let response = send_json(
         app,

@@ -1,6 +1,6 @@
 # Kroma Roadmap (Progress Tracker)
 
-Last updated: 2026-02-24
+Last updated: 2026-02-25
 Status: Phase 1 in progress (backend + runtime consolidation into Rust)
 
 ## Purpose
@@ -56,6 +56,8 @@ Status:
 - Auth/audit foundation started in Rust:
   - hashed `api_tokens` table + `/auth/token(s)` routes
   - Bearer middleware with local dev bypass flag (`KROMA_API_AUTH_DEV_BYPASS`)
+  - auth bypass now defaults to `false` when unset; dev bypass is explicit opt-in
+  - test routers now use explicit dev-bypass constructors instead of relying on implicit default bypass
   - `audit_events` table + initial audit writes for key mutating endpoints
 - Contract-first route catalog + parity tests + HTTP mount checks
 - Most metadata CRUD/read endpoints implemented in Rust:
@@ -131,6 +133,7 @@ Status:
 - Split secrets DB code into `src-tauri/src/db/projects/secrets.rs`
 - Removed voice schema remnants from `scripts/backend.py`
 - Updated contract smoke scripts, README, and spec docs to match current scope
+- Legacy npm script entrypoints now explicitly set `KROMA_ENABLE_LEGACY_SCRIPTS=1` for Python fallback commands (`backend:init`, `backend:migrate`, worker scripts), avoiding accidental fallback usage while keeping migration utilities callable
 
 ## In Progress
 

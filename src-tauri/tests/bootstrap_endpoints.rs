@@ -7,12 +7,12 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use kroma_backend_core::api::server::build_router_with_projects_store;
+use kroma_backend_core::api::server::build_router_with_projects_store_dev_bypass;
 use kroma_backend_core::db::projects::ProjectsStore;
 
 #[tokio::test]
 async fn bootstrap_prompt_export_and_import_round_trip() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
@@ -410,7 +410,7 @@ async fn bootstrap_prompt_export_and_import_round_trip() {
 
 #[tokio::test]
 async fn bootstrap_import_accepts_ai_response_text_payload() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
@@ -491,7 +491,7 @@ async fn bootstrap_import_accepts_ai_response_text_payload() {
 
 #[tokio::test]
 async fn bootstrap_import_validation_is_enforced() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
@@ -569,7 +569,7 @@ async fn bootstrap_import_validation_is_enforced() {
 
 #[tokio::test]
 async fn bootstrap_replace_mode_only_replaces_provided_sections() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
@@ -799,7 +799,7 @@ async fn bootstrap_replace_mode_only_replaces_provided_sections() {
 
 #[tokio::test]
 async fn bootstrap_import_dry_run_previews_without_writing() {
-    let app = build_router_with_projects_store(test_store());
+    let app = build_router_with_projects_store_dev_bypass(test_store());
 
     let create_project = send_json(
         app.clone(),
