@@ -1953,6 +1953,7 @@ pub fn default_pipeline_orchestrator_with_rust_post_run_backend_ops(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::projects::ProjectsStore;
     use crate::pipeline::backend_ops::{
         BackendCommandResult, BackendIngestRunRequest, BackendOpsError,
         BackendSyncProjectS3Request, PipelineBackendOps,
@@ -2649,6 +2650,31 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn default_native_post_run_stack_rejects_unsupported_request_shape_without_script_fallback() {
+        let root = temp_app_root();
+        let db = root.join("var/backend/app.db");
+        let store = Arc::new(ProjectsStore::new(db, root));
+        let orchestrator = default_pipeline_orchestrator_with_native_post_run(store);
+
+        let err = orchestrator
+            .execute(&PipelineRunRequest {
+                project_slug: String::from("demo"),
+                mode: PipelineRunMode::Dry,
+                confirm_spend: false,
+                options: PipelineRunOptions::default(),
+            })
+            .expect_err("unsupported rust-only request shape should fail");
+
+        match err {
+            PipelineRuntimeError::PlanningPreflight(message) => {
+                assert!(message.contains("Rust-only pipeline runtime"));
+                assert!(message.contains("preflight-supported inputs"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
     }
 
     #[test]
