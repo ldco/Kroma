@@ -2,8 +2,51 @@
 
 Date: 2026-02-24
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `d18510c` / `a7dfc6f`
-Worktree: dirty (handoff update in progress)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `7d0934b` / `7d0934b`
+Worktree: dirty (tool adapter refactor modules + handoff update in progress)
+
+## Session Update (2026-02-24, tool adapter refactor continuation)
+
+### Scope
+
+1. Resume from interrupted `tool_adapters` extraction work after IDE crash.
+2. Continue splitting large helper/config/report blocks out of `src-tauri/src/pipeline/tool_adapters.rs`.
+3. Refresh handoff with the exact local WIP state.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added extracted modules:
+   - `src-tauri/src/pipeline/tool_adapters/bgremove_config.rs`
+   - `src-tauri/src/pipeline/tool_adapters/color_config.rs`
+   - `src-tauri/src/pipeline/tool_adapters/color_ops.rs`
+   - `src-tauri/src/pipeline/tool_adapters/qa_report.rs`
+   - `src-tauri/src/pipeline/tool_adapters/file_ops.rs`
+2. `src-tauri/src/pipeline/tool_adapters.rs` now wires and uses the extracted modules (`mod ...` + imports) and removes the duplicated inline helper implementations.
+3. Cleanup pass removed stale imports so the refactor checkpoint compiles warning-free in normal `cargo check`.
+
+### Repo State Snapshot
+
+1. Branch: `master`
+2. HEAD: `7d0934b`
+3. Upstream (`origin/master`): `7d0934b`
+4. Worktree dirty files:
+   - `src-tauri/src/pipeline/tool_adapters.rs`
+   - `src-tauri/src/pipeline/tool_adapters/bgremove_config.rs`
+   - `src-tauri/src/pipeline/tool_adapters/color_config.rs`
+   - `src-tauri/src/pipeline/tool_adapters/color_ops.rs`
+   - `src-tauri/src/pipeline/tool_adapters/file_ops.rs`
+   - `src-tauri/src/pipeline/tool_adapters/qa_report.rs`
+   - `NEXT_CHAT_HANDOFF.md`
+
+### Validation
+
+1. `cargo check` (run in `src-tauri`) -> passing.
+2. `cargo test tool_adapters -- --nocapture` (run in `src-tauri`) -> passing (`14 passed, 0 failed`).
+
+### Next Chat Starting Point
+
+1. Continue module extraction in `tool_adapters.rs` only if it still improves readability; remaining free helper footprint is now small.
+2. Stage and commit this refactor checkpoint once the module boundaries are accepted.
 
 ## Session Update (2026-02-24, handoff refresh)
 
