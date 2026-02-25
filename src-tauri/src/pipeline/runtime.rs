@@ -8,7 +8,10 @@ use serde_json::{json, Value};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::pipeline::backend_ops::{default_script_backend_ops, SharedPipelineBackendOps};
+use crate::db::projects::ProjectsStore;
+use crate::pipeline::backend_ops::{
+    default_backend_ops_with_native_ingest, default_script_backend_ops, SharedPipelineBackendOps,
+};
 use crate::pipeline::execution::{
     build_planned_run_log_record, build_run_log_output_guard_record, ensure_generation_mode_dirs,
     execution_project_dirs, finalize_job_from_candidates, plan_job_candidate_output_paths,
@@ -37,9 +40,9 @@ use crate::pipeline::settings_layer::{
     PipelineSettingsLayerPaths, PipelineSettingsOverlay,
 };
 use crate::pipeline::tool_adapters::{
-    default_native_qa_archive_script_tool_adapters, ArchiveBadRequest, BackgroundRemovePassRequest,
-    ColorPassRequest, GenerateOneImageRequest, PipelineToolAdapterOps, QaCheckRequest,
-    SharedPipelineToolAdapterOps, ToolAdapterError, UpscalePassRequest,
+    default_native_tool_adapters, ArchiveBadRequest, BackgroundRemovePassRequest, ColorPassRequest,
+    GenerateOneImageRequest, PipelineToolAdapterOps, QaCheckRequest, SharedPipelineToolAdapterOps,
+    ToolAdapterError, UpscalePassRequest,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1919,6 +1922,14 @@ pub fn default_pipeline_orchestrator_with_rust_post_run() -> RustPostRunPipeline
     default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops)
 }
 
+pub fn default_pipeline_orchestrator_with_native_post_run(
+    projects_store: Arc<ProjectsStore>,
+) -> RustPostRunPipelineOrchestrator {
+    let backend_ops: SharedPipelineBackendOps =
+        Arc::new(default_backend_ops_with_native_ingest(projects_store));
+    default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops)
+}
+
 pub fn default_pipeline_orchestrator_with_rust_post_run_backend_ops(
     backend_ops: SharedPipelineBackendOps,
 ) -> RustPostRunPipelineOrchestrator {
@@ -1929,8 +1940,7 @@ pub fn default_pipeline_orchestrator_with_rust_post_run_backend_ops(
         rust_only_inner,
         app_root.clone(),
     ));
-    let tool_adapters: SharedPipelineToolAdapterOps =
-        Arc::new(default_native_qa_archive_script_tool_adapters());
+    let tool_adapters: SharedPipelineToolAdapterOps = Arc::new(default_native_tool_adapters());
     let inner: SharedPipelineOrchestrator = Arc::new(RustRunModePipelineOrchestrator::new(
         dry_inner,
         tool_adapters,

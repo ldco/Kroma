@@ -18,11 +18,8 @@ use crate::api::routes::{route_catalog, RouteDefinition};
 use crate::contract::HttpMethod;
 use crate::db::projects::ProjectsStore;
 use crate::db::{resolve_backend_config, DatabaseBackendConfig};
-use crate::pipeline::backend_ops::{
-    default_backend_ops_with_native_ingest, SharedPipelineBackendOps,
-};
 use crate::pipeline::runtime::{
-    default_pipeline_orchestrator_with_rust_post_run_backend_ops, SharedPipelineOrchestrator,
+    default_pipeline_orchestrator_with_native_post_run, SharedPipelineOrchestrator,
 };
 use crate::pipeline::trigger::PipelineTriggerService;
 
@@ -454,10 +451,9 @@ fn truthy_flag(value: &str) -> bool {
 }
 
 fn default_pipeline_trigger(projects_store: Arc<ProjectsStore>) -> PipelineTriggerService {
-    let backend_ops: SharedPipelineBackendOps =
-        Arc::new(default_backend_ops_with_native_ingest(projects_store));
-    let orchestrator: SharedPipelineOrchestrator =
-        Arc::new(default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops));
+    let orchestrator: SharedPipelineOrchestrator = Arc::new(
+        default_pipeline_orchestrator_with_native_post_run(projects_store),
+    );
     PipelineTriggerService::new(orchestrator)
 }
 

@@ -1397,12 +1397,17 @@ pub enum ToolAdapterError {
     Native(String),
 }
 
-pub fn default_native_qa_archive_script_tool_adapters(
-) -> NativeQaArchiveScriptToolAdapters<StdPipelineCommandRunner> {
+pub fn default_native_tool_adapters() -> NativeQaArchiveScriptToolAdapters<StdPipelineCommandRunner>
+{
     NativeQaArchiveScriptToolAdapters::new(
         default_app_root_from_manifest_dir(),
         StdPipelineCommandRunner,
     )
+}
+
+pub fn default_native_qa_archive_script_tool_adapters(
+) -> NativeQaArchiveScriptToolAdapters<StdPipelineCommandRunner> {
+    default_native_tool_adapters()
 }
 
 #[cfg(test)]
