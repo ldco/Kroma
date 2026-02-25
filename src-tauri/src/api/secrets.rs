@@ -10,7 +10,10 @@ use crate::api::auth::AuthPrincipal;
 use crate::api::server::AppState;
 
 use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
-use crate::db::projects::{SecretSummary, UpsertSecretInput};
+use crate::db::projects::{
+    RotateSecretsInput, RotateSecretsResult, SecretEncryptionStatus, SecretSummary,
+    UpsertSecretInput,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SlugSecretPath {
@@ -44,6 +47,28 @@ struct DeleteSecretResponse {
     audit_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct SecretEncryptionStatusResponse {
+    ok: bool,
+    status: SecretEncryptionStatus,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct RotateSecretsRequest {
+    #[serde(default)]
+    pub from_key_ref: Option<String>,
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RotateSecretsResponse {
+    ok: bool,
+    rotation: RotateSecretsResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audit_id: Option<String>,
+}
+
 pub async fn list_secrets_handler(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -63,6 +88,26 @@ pub async fn list_secrets_handler(
         ),
         Ok(Err(error)) => map_repo_error(error, "Project not found"),
         Err(join_error) => internal_error(format!("secret listing task failed: {join_error}")),
+    }
+}
+
+pub async fn get_secret_encryption_status_handler(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiObject<Value> {
+    let store = state.projects_store.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        store.get_project_secret_encryption_status(slug.as_str())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(status)) => (
+            StatusCode::OK,
+            into_json(SecretEncryptionStatusResponse { ok: true, status }),
+        ),
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
+        Err(join_error) => internal_error(format!("secret status task failed: {join_error}")),
     }
 }
 
@@ -156,5 +201,58 @@ pub async fn delete_secret_handler(
         }
         Ok(Err(error)) => map_repo_error(error, "Secret not found"),
         Err(join_error) => internal_error(format!("secret delete task failed: {join_error}")),
+    }
+}
+
+pub async fn rotate_secrets_handler(
+    State(state): State<AppState>,
+    Extension(actor): Extension<AuthPrincipal>,
+    Path(slug): Path<String>,
+    Json(payload): Json<RotateSecretsRequest>,
+) -> ApiObject<Value> {
+    let store = state.projects_store.clone();
+    let slug_for_store = slug.clone();
+    let from_key_ref = payload.from_key_ref.clone();
+    let force = payload.force;
+    let result = tokio::task::spawn_blocking(move || {
+        store.rotate_project_secrets(
+            slug_for_store.as_str(),
+            RotateSecretsInput {
+                from_key_ref,
+                force,
+            },
+        )
+    })
+    .await;
+
+    match result {
+        Ok(Ok(rotation)) => {
+            let audit_id = match write_project_audit_event(
+                &state,
+                Some(&actor),
+                slug.as_str(),
+                "secret.rotate",
+                json!({
+                    "from_key_ref": payload.from_key_ref,
+                    "force": payload.force,
+                    "rotated": rotation.rotated,
+                }),
+            )
+            .await
+            {
+                Ok(id) => Some(id),
+                Err(message) => return internal_error(format!("secret audit failed: {message}")),
+            };
+            (
+                StatusCode::OK,
+                into_json(RotateSecretsResponse {
+                    ok: true,
+                    rotation,
+                    audit_id,
+                }),
+            )
+        }
+        Ok(Err(error)) => map_repo_error(error, "Project not found"),
+        Err(join_error) => internal_error(format!("secret rotate task failed: {join_error}")),
     }
 }

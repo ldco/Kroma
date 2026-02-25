@@ -1299,6 +1299,26 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+  /api/projects/{slug}/secrets/rotation-status:
+    get:
+      summary: Get project secrets encryption status
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/projects/{slug}/secrets/rotate:
+    post:
+      summary: Rotate project secret encryption key
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
   /api/projects/{slug}/secrets/{providerCode}/{secretName}:
     delete:
       summary: Delete project secret

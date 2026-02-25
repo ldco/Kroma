@@ -77,6 +77,13 @@ Status:
   - `secret_value` now stores ciphertext (AES-256-GCM) instead of plaintext
   - key source matches legacy behavior (`IAT_MASTER_KEY` or `IAT_MASTER_KEY_FILE`, default `var/backend/master.key`)
   - local key file is auto-generated on first use when not provided
+  - explicit per-project key rotation path added: `POST /api/projects/{slug}/secrets/rotate`
+    - supports active key refs (`IAT_MASTER_KEY_REF`) and previous-key fallback (`IAT_MASTER_KEY_PREVIOUS`) for re-encryption
+  - explicit migration visibility endpoint added: `GET /api/projects/{slug}/secrets/rotation-status`
+    - reports encrypted/plaintext/empty row counts and key-ref distribution
+  - local operator CLI fallback added for key maintenance without HTTP dependency:
+    - `cargo run -- secrets-rotation-status --project-slug <slug>`
+    - `cargo run -- secrets-rotate --project-slug <slug> [--from-key-ref <ref>] [--force]`
 
 ### Bootstrap Flow (Rust)
 
@@ -124,6 +131,8 @@ Status:
   - `backend.py ingest-run` is no longer used for the default Rust `runs/trigger` path
 - Rust-owned S3 sync prechecks + AWS CLI execution added in `pipeline::backend_ops`
   - `backend.py sync-project-s3` is no longer used for the default Rust `runs/trigger` post-run path
+  - native ingest+sync runtime wiring no longer depends on `ScriptPipelineBackendOps` wrapper state
+    - Rust post-run default now injects runner/app-root directly for AWS sync execution
 - Removed script-owned post-run backend ingest/sync calls from `scripts/image-lab.mjs`
   - script run path now emits run log + summary marker only; Rust runtime owns post-run backend operations
 - Typed trigger path now injects `project_root` from Rust project storage

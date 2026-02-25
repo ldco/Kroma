@@ -47,7 +47,10 @@ pub use reference_sets::{
     ReferenceSetSummary, UpdateReferenceSetInput, UpdateReferenceSetItemInput,
 };
 pub use runs_assets::{AssetSummary, RunCandidateSummary, RunJobSummary, RunSummary};
-pub use secrets::{SecretSummary, UpsertSecretInput};
+pub use secrets::{
+    RotateSecretsInput, RotateSecretsResult, SecretEncryptionStatus, SecretSummary,
+    UpsertSecretInput,
+};
 
 const DEFAULT_PROJECTS_BASE_DIR: &str = "var/projects";
 const DEFAULT_S3_PREFIX: &str = "iat-projects";

@@ -202,7 +202,9 @@ fn expected_status(method: HttpMethod, path: &str) -> StatusCode {
             StatusCode::NOT_FOUND
         }
         (HttpMethod::Get, "/api/projects/{slug}/secrets") => StatusCode::NOT_FOUND,
+        (HttpMethod::Get, "/api/projects/{slug}/secrets/rotation-status") => StatusCode::NOT_FOUND,
         (HttpMethod::Post, "/api/projects/{slug}/secrets") => StatusCode::BAD_REQUEST,
+        (HttpMethod::Post, "/api/projects/{slug}/secrets/rotate") => StatusCode::NOT_FOUND,
         (HttpMethod::Delete, "/api/projects/{slug}/secrets/{providerCode}/{secretName}") => {
             StatusCode::NOT_FOUND
         }

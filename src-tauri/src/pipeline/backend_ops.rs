@@ -94,22 +94,21 @@ pub trait PipelineBackendOps: Send + Sync + 'static {
 pub type SharedPipelineBackendOps = Arc<dyn PipelineBackendOps>;
 
 #[derive(Clone)]
-pub struct NativeIngestScriptSyncBackendOps<R> {
+pub struct NativeIngestAwsSyncBackendOps<R> {
     projects_store: Arc<ProjectsStore>,
-    script_sync_ops: ScriptPipelineBackendOps<R>,
+    runner: R,
+    app_root: PathBuf,
 }
 
-impl<R> NativeIngestScriptSyncBackendOps<R>
+impl<R> NativeIngestAwsSyncBackendOps<R>
 where
     R: PipelineCommandRunner,
 {
-    pub fn new(
-        projects_store: Arc<ProjectsStore>,
-        script_sync_ops: ScriptPipelineBackendOps<R>,
-    ) -> Self {
+    pub fn new(projects_store: Arc<ProjectsStore>, app_root: PathBuf, runner: R) -> Self {
         Self {
             projects_store,
-            script_sync_ops,
+            runner,
+            app_root,
         }
     }
 }
@@ -286,7 +285,7 @@ where
     }
 }
 
-impl<R> PipelineBackendOps for NativeIngestScriptSyncBackendOps<R>
+impl<R> PipelineBackendOps for NativeIngestAwsSyncBackendOps<R>
 where
     R: PipelineCommandRunner,
 {
@@ -339,7 +338,7 @@ where
     }
 }
 
-impl<R> NativeIngestScriptSyncBackendOps<R>
+impl<R> NativeIngestAwsSyncBackendOps<R>
 where
     R: PipelineCommandRunner,
 {
@@ -444,22 +443,16 @@ where
         let spec = CommandSpec {
             program: String::from("aws"),
             args,
-            cwd: self.script_sync_ops.app_root.clone(),
+            cwd: self.app_root.clone(),
         };
-        let output = self
-            .script_sync_ops
-            .runner
-            .run(&spec)
-            .map_err(|err| match err {
-                PipelineRuntimeError::Io(source)
-                    if source.kind() == std::io::ErrorKind::NotFound =>
-                {
-                    BackendOpsError::SyncPrecheck(String::from(
-                        "AWS CLI not found. Install aws cli v2 to use sync-project-s3.",
-                    ))
-                }
-                other => BackendOpsError::CommandRunner(other),
-            })?;
+        let output = self.runner.run(&spec).map_err(|err| match err {
+            PipelineRuntimeError::Io(source) if source.kind() == std::io::ErrorKind::NotFound => {
+                BackendOpsError::SyncPrecheck(String::from(
+                    "AWS CLI not found. Install aws cli v2 to use sync-project-s3.",
+                ))
+            }
+            other => BackendOpsError::CommandRunner(other),
+        })?;
 
         if output.status_code != 0 {
             let stderr = if output.stderr.trim().is_empty() {
@@ -563,8 +556,12 @@ pub fn default_script_backend_ops() -> ScriptPipelineBackendOps<StdPipelineComma
 
 pub fn default_backend_ops_with_native_ingest(
     projects_store: Arc<ProjectsStore>,
-) -> NativeIngestScriptSyncBackendOps<StdPipelineCommandRunner> {
-    NativeIngestScriptSyncBackendOps::new(projects_store, default_script_backend_ops())
+) -> NativeIngestAwsSyncBackendOps<StdPipelineCommandRunner> {
+    NativeIngestAwsSyncBackendOps::new(
+        projects_store,
+        default_app_root_from_manifest_dir(),
+        StdPipelineCommandRunner,
+    )
 }
 
 #[cfg(test)]
@@ -790,7 +787,11 @@ mod tests {
             .expect("s3 storage should be configured");
 
         let runner = FakeRunner::default();
-        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+        let hybrid = NativeIngestAwsSyncBackendOps::new(
+            store,
+            default_app_root_from_manifest_dir(),
+            runner.clone(),
+        );
 
         let result = hybrid
             .sync_project_s3(&BackendSyncProjectS3Request {
@@ -826,7 +827,11 @@ mod tests {
             .expect("project should be created");
 
         let runner = FakeRunner::default();
-        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+        let hybrid = NativeIngestAwsSyncBackendOps::new(
+            store,
+            default_app_root_from_manifest_dir(),
+            runner.clone(),
+        );
 
         let err = hybrid
             .sync_project_s3(&BackendSyncProjectS3Request {
@@ -883,7 +888,11 @@ mod tests {
             stdout: String::new(),
             stderr: String::new(),
         }));
-        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+        let hybrid = NativeIngestAwsSyncBackendOps::new(
+            store,
+            default_app_root_from_manifest_dir(),
+            runner.clone(),
+        );
 
         let result = hybrid
             .sync_project_s3(&BackendSyncProjectS3Request {
@@ -949,7 +958,11 @@ mod tests {
             .expect("file project root should exist");
 
         let runner = FakeRunner::default();
-        let hybrid = NativeIngestScriptSyncBackendOps::new(store, test_ops(runner.clone()));
+        let hybrid = NativeIngestAwsSyncBackendOps::new(
+            store,
+            default_app_root_from_manifest_dir(),
+            runner.clone(),
+        );
 
         let err = hybrid
             .sync_project_s3(&BackendSyncProjectS3Request {

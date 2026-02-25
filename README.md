@@ -199,10 +199,47 @@ console.log(data);
 | `KROMA_API_AUTH_BOOTSTRAP_FIRST_TOKEN` | Allow unauthenticated first `POST /auth/token` bootstrap on loopback binds only | `true` | No |
 | `IAT_MASTER_KEY` | Optional base64url 32-byte key for encrypting `project_secrets.secret_value` at rest | None | No |
 | `IAT_MASTER_KEY_FILE` | Master key file path when `IAT_MASTER_KEY` is unset | `var/backend/master.key` | No |
+| `IAT_MASTER_KEY_REF` | Active key reference label persisted in `project_secrets.key_ref` on writes/rotations | `local-master` | No |
+| `IAT_MASTER_KEY_PREVIOUS` | Comma-separated base64url 32-byte prior keys used to decrypt existing ciphertext during rotation | None | No |
 | `IAT_AGENT_API_URL` | Optional agent dispatch target URL | None | No |
 | `IAT_AGENT_API_TOKEN` | Optional agent dispatch bearer token | None | No |
 
 For desktop/local mode, keep `KROMA_BACKEND_DB_URL` unset and use SQLite (`KROMA_BACKEND_DB`).
+
+Rotate encrypted project secrets after key changes:
+
+```bash
+curl -s -X POST http://127.0.0.1:8788/api/projects/my_project/secrets/rotate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $KROMA_API_TOKEN" \
+  -d '{"force":false}'
+```
+
+Inspect encryption migration status (counts encrypted/plaintext/empty rows and key refs):
+
+```bash
+curl -s http://127.0.0.1:8788/api/projects/my_project/secrets/rotation-status \
+  -H "Authorization: Bearer $KROMA_API_TOKEN"
+```
+
+Equivalent local CLI status check:
+
+```bash
+cd src-tauri
+cargo run -- secrets-rotation-status --project-slug my_project
+```
+
+Typical flow:
+1. Set new active key (`IAT_MASTER_KEY` or `IAT_MASTER_KEY_FILE`) and `IAT_MASTER_KEY_REF`.
+2. Set `IAT_MASTER_KEY_PREVIOUS` with the old key so existing ciphertext can be decrypted.
+3. Call `POST /api/projects/{slug}/secrets/rotate` to re-encrypt rows under the active key/ref.
+
+Equivalent local CLI rotation:
+
+```bash
+cd src-tauri
+cargo run -- secrets-rotate --project-slug my_project --from-key-ref local-master-v1
+```
 
 ### Pipeline Runtime Settings (Layered, Rust-Owned)
 

@@ -2,8 +2,186 @@
 
 Date: 2026-02-25
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `09ed65e` / `7d0934b`
-Worktree: dirty (auth hardening + secrets-at-rest migration + docs updates in progress)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `8b3fce3` / `8b3fce3`
+Worktree: dirty (`NEXT_CHAT_HANDOFF.md` update in progress)
+
+## Session Update (2026-02-25, backend_ops decoupling continuation)
+
+### Scope
+
+1. Continue Phase 1 runtime consolidation after secrets API/CLI hardening.
+2. Remove residual structural coupling between native ingest/S3 sync runtime path and script-wrapper backend ops state.
+3. Preserve behavior and keep full test suite green.
+
+### What Landed (this session, local/uncommitted)
+
+1. Refactored `src-tauri/src/pipeline/backend_ops.rs`:
+   - replaced `NativeIngestScriptSyncBackendOps` with `NativeIngestAwsSyncBackendOps`.
+   - native ingest+sync path now stores `runner` + `app_root` directly instead of embedding `ScriptPipelineBackendOps`.
+2. Preserved native behavior:
+   - ingest remains Rust-native via `ProjectsStore::ingest_run_log`.
+   - S3 sync remains Rust precheck + `aws s3 sync` execution path.
+   - no contract/API surface changes.
+3. Updated default runtime wiring:
+   - `default_backend_ops_with_native_ingest(...)` now constructs native ops directly with default app root + `StdPipelineCommandRunner`.
+4. Updated backend ops tests to the new constructor while preserving assertions for:
+   - no external command call on precheck failures/skips
+   - AWS CLI invocation when sync precheck is ready.
+5. Synced roadmap note:
+   - `docs/ROADMAP.md` now states runtime native ingest+sync no longer depends on script-wrapper backend ops state.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test --test pipeline_trigger_endpoints --test runs_assets_endpoints --test http_contract_surface` -> passing.
+3. `cargo test hybrid_sync_precheck_skips_missing_local_without_calling_script` -> passing.
+4. `cargo test hybrid_sync_executes_aws_cli_when_ready` -> passing.
+5. `cargo test` (in `src-tauri`) -> passing (full suite, `0` failed).
+
+### Known Gaps / Risks
+
+1. Changes remain local/uncommitted along with prior secrets/API/CLI/handoff updates.
+2. Broader runtime/tool migration milestones remain (external tool adapters and remaining legacy scripts outside this backend_ops decoupling step).
+
+### Next Chat Starting Point
+
+1. Run `[$general-git](/home/ldco/.codex/skills/general-git/SKILL.md)` to finalize/push the accumulated continuation slices.
+2. Continue Phase 1 migration by reducing remaining script dependencies in tool adapter execution paths where feasible.
+
+## Session Update (2026-02-25, secrets operator CLI continuation)
+
+### Scope
+
+1. Continue after secrets rotation/status API landing.
+2. Add a local operator CLI path for secret rotation/status workflows without HTTP dependency.
+3. Keep docs and validation aligned.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added new CLI commands in `src-tauri/src/main.rs`:
+   - `cargo run -- secrets-rotation-status --project-slug <slug>`
+   - `cargo run -- secrets-rotate --project-slug <slug> [--from-key-ref <ref>] [--force]`
+2. CLI implementation details:
+   - resolves backend config and initializes `ProjectsStore` using the same app-root/db resolution path as runtime defaults.
+   - supports SQLite backend for these CLI operations; explicitly errors with a clear message if `KROMA_BACKEND_DB_URL` (PostgreSQL mode) is set.
+   - returns JSON payloads for both commands (`status` or `rotation` body).
+3. Added CLI argument parser unit tests in `src-tauri/src/main.rs`:
+   - required `--project-slug` validation
+   - optional `--from-key-ref` and `--force` parsing
+4. Updated docs:
+   - `README.md` now includes CLI examples for both rotation status and rotation execution.
+   - `docs/ROADMAP.md` now notes the local operator CLI fallback under secrets hardening progress.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test parse_rotate_accepts_optional_flags` -> passing.
+3. `cargo test parse_rotation_status_accepts_project_slug` -> passing.
+4. `cargo test` (in `src-tauri`) -> passing (full suite, `0` failed).
+
+### Known Gaps / Risks
+
+1. All changes remain local/uncommitted (including handoff updates).
+2. CLI currently does not implement PostgreSQL backend operations (same project-wide limitation as the rest of backend wiring).
+
+### Next Chat Starting Point
+
+1. Run `[$general-git](/home/ldco/.codex/skills/general-git/SKILL.md)` to finalize and push the accumulated secrets rotation/status/API/CLI slice.
+2. Continue Phase 1 runtime consolidation work as needed after commit finalization.
+
+## Session Update (2026-02-25, secrets rotation visibility + continuation)
+
+### Scope
+
+1. Continue immediately after landing project secret key rotation/re-encryption support.
+2. Add explicit visibility for legacy plaintext secret rows to reduce migration risk.
+3. Keep API/OpenAPI route contract parity and full test suite green.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added secret encryption-status aggregation in Rust store (`src-tauri/src/db/projects/secrets.rs`):
+   - new `ProjectsStore::get_project_secret_encryption_status(slug)` method.
+   - returns `total`, `encrypted`, `plaintext`, `empty`, and `key_refs` distribution.
+2. Added secrets migration visibility endpoint:
+   - `GET /api/projects/{slug}/secrets/rotation-status`
+   - handler implemented in `src-tauri/src/api/secrets.rs`.
+   - route wired in `src-tauri/src/api/server.rs` and `src-tauri/src/api/routes.rs`.
+3. Updated contract artifacts:
+   - OpenAPI path added in `openapi/backend-api.openapi.yaml`.
+   - route catalog count updated to `74`.
+   - HTTP contract expected-status matrix updated.
+4. Added/updated tests:
+   - unit: `encryption_status_counts_plaintext_encrypted_and_empty_rows`
+   - integration: `secrets_rotation_status_reports_plaintext_and_key_refs`
+   - existing secrets + contract parity/surface tests remain passing.
+5. Updated docs:
+   - `README.md` includes status endpoint usage and rotation workflow references.
+   - `docs/ROADMAP.md` notes explicit migration visibility endpoint.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test encryption_status_counts_plaintext_encrypted_and_empty_rows` -> passing.
+3. `cargo test secrets_rotation_status_reports_plaintext_and_key_refs` -> passing.
+4. `cargo test --test secrets_endpoints --test http_contract_surface --test contract_parity` -> passing.
+5. `cargo test` (in `src-tauri`) -> passing (full suite, `0` failed).
+
+### Known Gaps / Risks
+
+1. Changes remain local/uncommitted (including this handoff update).
+2. Secrets rotation/status is now available, but broader Phase 1 runtime consolidation milestones remain open (generation/orchestration migration out of `scripts/image-lab.mjs`).
+
+### Next Chat Starting Point
+
+1. Run `[$general-git](/home/ldco/.codex/skills/general-git/SKILL.md)` to finalize and push this secrets rotation + status slice.
+2. Continue Phase 1 runtime consolidation: next extraction step from `scripts/image-lab.mjs` into Rust orchestration/execution modules.
+3. Optionally add CLI/operator convenience path for secret rotation/status if non-API maintenance flow is needed.
+
+## Session Update (2026-02-25, git finalization + handoff/git skill standardization)
+
+### Scope
+
+1. Finalize and push the in-progress Rust security/auth roadmap work to `master`.
+2. Create a reusable handoff skill so next chats can continue without rediscovery.
+3. Create/upgrade a reusable git finalization skill with deterministic branch-default behavior.
+4. Refresh `NEXT_CHAT_HANDOFF.md` to reflect the true latest repository and workflow state.
+
+### What Landed (this session, local/uncommitted)
+
+1. Finalized and pushed roadmap security changes with `general-git` default branch behavior (`master`):
+   - commit: `8b3fce3`
+   - subject: `feat: harden auth bootstrap and encrypt project secrets`
+   - pushed: `origin/master` advanced `7d0934b -> 8b3fce3`.
+2. Added a new global skill at `/home/ldco/.codex/skills/general-handoff`:
+   - `SKILL.md` now enforces evidence-backed, complete session handoffs into `NEXT_CHAT_HANDOFF.md`.
+   - `references/handoff-template.md` added with standardized section template + completeness checklist.
+3. Upgraded existing global skill at `/home/ldco/.codex/skills/general-git`:
+   - `SKILL.md` now enforces best-practice commit/push workflow with explicit branch rule:
+     - no argument -> push to `master`
+     - single trailing word -> use that as branch.
+   - `references/git-finalization-checklist.md` added for deterministic command sequence.
+4. Synchronized handoff continuity:
+   - previous top handoff header state was stale (`09ed65e`/`7d0934b`) and is now corrected to `8b3fce3`/`8b3fce3`.
+
+### Validation
+
+1. `python3 /home/ldco/.codex/skills/.system/skill-creator/scripts/quick_validate.py /home/ldco/.codex/skills/general-handoff` -> passing (`Skill is valid!`).
+2. `python3 /home/ldco/.codex/skills/.system/skill-creator/scripts/quick_validate.py /home/ldco/.codex/skills/general-git` -> first run failed (YAML frontmatter parse), then fixed and rerun -> passing (`Skill is valid!`).
+3. `git fetch origin && git pull --ff-only origin master` -> passing (`Already up to date`).
+4. `git diff --cached --check` before commit -> passing (no output/errors).
+5. `git commit ...` -> passing (created `8b3fce3`, `12 files changed, 821 insertions, 21 deletions`).
+6. `git push -u origin master` -> passing (`master -> master`, tracking set).
+
+### Known Gaps / Risks
+
+1. `general-handoff` and `general-git` live under `/home/ldco/.codex/skills` and are not part of the project repository; other machines/users will not receive these updates unless Codex home is synchronized separately.
+2. Project roadmap follow-up items remain open after the pushed security patch (for example key rotation/re-encryption flow for `project_secrets.key_ref`).
+
+### Next Chat Starting Point
+
+1. Decide whether to vendor/document these global skills in-repo (or install via shared bootstrap) so team environments stay consistent.
+2. Continue security roadmap work from `8b3fce3`: implement key rotation + re-encryption flow for encrypted `project_secrets`.
+3. After this handoff edit, optionally run `[$general-git](/home/ldco/.codex/skills/general-git/SKILL.md)` again to commit/push the updated handoff file itself.
 
 ## Session Update (2026-02-25, secrets-at-rest migration + auth protected-route coverage)
 

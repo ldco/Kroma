@@ -285,7 +285,12 @@ const CONTRACT_ROUTES: &[(HttpMethod, &str)] = &[
         "/api/projects/{slug}/agent/instructions/{instructionId}/cancel",
     ),
     (HttpMethod::Get, "/api/projects/{slug}/secrets"),
+    (
+        HttpMethod::Get,
+        "/api/projects/{slug}/secrets/rotation-status",
+    ),
     (HttpMethod::Post, "/api/projects/{slug}/secrets"),
+    (HttpMethod::Post, "/api/projects/{slug}/secrets/rotate"),
     (
         HttpMethod::Delete,
         "/api/projects/{slug}/secrets/{providerCode}/{secretName}",
@@ -298,7 +303,7 @@ mod tests {
 
     #[test]
     fn contract_route_count_is_stable() {
-        assert_eq!(CONTRACT_ROUTES.len(), 72);
+        assert_eq!(CONTRACT_ROUTES.len(), 74);
     }
 
     #[test]

@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
+use rusqlite::params;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -108,6 +109,123 @@ async fn secrets_support_upsert_list_and_delete() {
     )
     .await;
     assert_eq!(list_after_delete["count"], json!(0));
+}
+
+#[tokio::test]
+async fn secrets_support_rotation_endpoint() {
+    let app = build_router_with_projects_store_dev_bypass(test_store());
+
+    let create_project = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Secrets Rotate"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = create_project["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let _created = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::from(
+            json!({
+                "provider_code": "openai",
+                "secret_name": "api_key",
+                "secret_value": "sk-test-rotate"
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+
+    let rotated = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/secrets/rotate"),
+        Body::from(
+            json!({
+                "force": true
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(rotated["ok"], json!(true));
+    assert_eq!(rotated["rotation"]["scanned"], json!(1));
+    assert_eq!(rotated["rotation"]["rotated"], json!(1));
+    assert_eq!(rotated["rotation"]["skipped_empty"], json!(0));
+}
+
+#[tokio::test]
+async fn secrets_rotation_status_reports_plaintext_and_key_refs() {
+    let (store, db) = test_store_with_db_path();
+    let app = build_router_with_projects_store_dev_bypass(store.clone());
+
+    let create_project = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Secrets Rotation Status"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = create_project["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let _created = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/projects/{slug}/secrets"),
+        Body::from(
+            json!({
+                "provider_code": "openai",
+                "secret_name": "api_key",
+                "secret_value": "sk-test-status"
+            })
+            .to_string(),
+        ),
+        StatusCode::OK,
+    )
+    .await;
+
+    let conn = rusqlite::Connection::open(db.as_path()).expect("db should open");
+    conn.execute(
+        "
+        UPDATE project_secrets
+        SET secret_value = 'legacy-plaintext', key_ref = 'legacy-key'
+        WHERE provider_code = 'openai' AND secret_name = 'api_key'
+    ",
+        params![],
+    )
+    .expect("legacy row update should succeed");
+
+    let status = send_json(
+        app,
+        Method::GET,
+        &format!("/api/projects/{slug}/secrets/rotation-status"),
+        Body::empty(),
+        StatusCode::OK,
+    )
+    .await;
+    assert_eq!(status["ok"], json!(true));
+    assert_eq!(status["status"]["total"], json!(1));
+    assert_eq!(status["status"]["encrypted"], json!(0));
+    assert_eq!(status["status"]["plaintext"], json!(1));
+    assert_eq!(status["status"]["empty"], json!(0));
+    assert_eq!(
+        status["status"]["key_refs"][0]["key_ref"],
+        json!("legacy-key")
+    );
+    assert_eq!(status["status"]["key_refs"][0]["count"], json!(1));
 }
 
 #[tokio::test]
@@ -232,11 +350,16 @@ async fn send_json(
 }
 
 fn test_store() -> Arc<ProjectsStore> {
+    let (store, _) = test_store_with_db_path();
+    store
+}
+
+fn test_store_with_db_path() -> (Arc<ProjectsStore>, PathBuf) {
     let suffix = Uuid::new_v4().to_string();
     let root = std::env::temp_dir().join(format!("kroma_secrets_test_{suffix}"));
     let db = root.join("var/backend/app.db");
     std::fs::create_dir_all(root.as_path()).expect("temp test root must be creatable");
-    let store = Arc::new(ProjectsStore::new(db, PathBuf::from(root)));
+    let store = Arc::new(ProjectsStore::new(db.clone(), PathBuf::from(root)));
     store.initialize().expect("store should initialize");
-    store
+    (store, db)
 }

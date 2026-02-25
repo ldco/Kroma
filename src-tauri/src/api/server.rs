@@ -393,8 +393,14 @@ fn method_router_for(route: RouteDefinition) -> MethodRouter<AppState> {
         (HttpMethod::Get, "/api/projects/{slug}/secrets") => {
             get(crate::api::secrets::list_secrets_handler)
         }
+        (HttpMethod::Get, "/api/projects/{slug}/secrets/rotation-status") => {
+            get(crate::api::secrets::get_secret_encryption_status_handler)
+        }
         (HttpMethod::Post, "/api/projects/{slug}/secrets") => {
             post(crate::api::secrets::upsert_secret_handler)
+        }
+        (HttpMethod::Post, "/api/projects/{slug}/secrets/rotate") => {
+            post(crate::api::secrets::rotate_secrets_handler)
         }
         (HttpMethod::Delete, "/api/projects/{slug}/secrets/{providerCode}/{secretName}") => {
             delete(crate::api::secrets::delete_secret_handler)
