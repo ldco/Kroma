@@ -1,6 +1,7 @@
 pub mod backend_ops;
 pub mod config_validation;
 pub mod execution;
+pub mod pathing;
 pub mod planning;
 pub mod post_run;
 pub mod postprocess_planning;

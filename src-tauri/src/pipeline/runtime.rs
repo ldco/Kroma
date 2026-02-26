@@ -21,6 +21,10 @@ use crate::pipeline::execution::{
     ExecutionPlannedJob, ExecutionPlannedOutputGuardRecord, ExecutionPlannedPostprocessRecord,
     ExecutionPlannedRunLogContext, ExecutionPostprocessPathConfig, ExecutionUpscalePathConfig,
 };
+use crate::pipeline::pathing::{
+    list_image_files_recursive as list_image_files_recursive_shared,
+    path_for_output as path_for_output_shared, resolve_under_root,
+};
 use crate::pipeline::planning::{
     build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
     PipelinePlanningOutputGuard, PlannedGenerationJob,
@@ -457,41 +461,8 @@ fn jobs_file_optional_string(value: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn is_image_path(path: &Path) -> bool {
-    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-        return false;
-    };
-    matches!(
-        ext.to_ascii_lowercase().as_str(),
-        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tif" | "tiff"
-    )
-}
-
 fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-    let meta = fs::metadata(input_abs)?;
-    if meta.is_file() {
-        return Ok(if is_image_path(input_abs) {
-            vec![input_abs.to_path_buf()]
-        } else {
-            Vec::new()
-        });
-    }
-
-    let mut out = Vec::new();
-    let mut entries = fs::read_dir(input_abs)?.collect::<Result<Vec<_>, std::io::Error>>()?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            out.extend(list_image_files_recursive(path.as_path())?);
-            continue;
-        }
-        if file_type.is_file() && is_image_path(path.as_path()) {
-            out.push(path);
-        }
-    }
-    Ok(out)
+    list_image_files_recursive_shared(input_abs)
 }
 
 #[derive(Clone)]
@@ -1771,12 +1742,7 @@ fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
 }
 
 fn resolve_under_app_root(app_root: &Path, value: &str) -> PathBuf {
-    let path = PathBuf::from(value);
-    if path.is_absolute() {
-        path
-    } else {
-        app_root.join(path)
-    }
+    resolve_under_root(app_root, value)
 }
 
 fn default_project_root_for_request(app_root: &Path, request: &PipelineRunRequest) -> PathBuf {
@@ -1883,15 +1849,8 @@ fn parse_pipeline_upscale_backend(value: &str) -> Option<PipelineUpscaleBackend>
     }
 }
 
-fn normalize_relish_path(value: &str) -> String {
-    value.replace('\\', "/")
-}
-
 fn path_for_output(app_root: &Path, path: &Path) -> String {
-    match path.strip_prefix(app_root) {
-        Ok(rel) => normalize_relish_path(rel.to_string_lossy().as_ref()),
-        Err(_) => normalize_relish_path(path.to_string_lossy().as_ref()),
-    }
+    path_for_output_shared(app_root, path)
 }
 
 fn iso_like_timestamp() -> String {
