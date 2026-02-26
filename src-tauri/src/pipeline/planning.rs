@@ -100,6 +100,22 @@ pub enum PlanningManifestError {
     ParseJson { path: String, message: String },
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum PlannedJobsFileError {
+    #[error("jobs file read failed ({path}): {message}")]
+    ReadFile { path: String, message: String },
+    #[error("jobs file parse failed ({path}): {message}")]
+    ParseJson { path: String, message: String },
+    #[error("jobs file must contain a JSON array: {path}")]
+    RootArrayRequired { path: String },
+    #[error("jobs file entry {index} must be an object")]
+    EntryMustBeObject { index: usize },
+    #[error("jobs file entry {index} missing '{field}'")]
+    MissingRequiredField { index: usize, field: String },
+    #[error("jobs file entry {index} has invalid '{field}'")]
+    InvalidField { index: usize, field: String },
+}
+
 pub fn default_planning_manifest() -> PipelinePlanningManifest {
     let mut prompts = HashMap::new();
     prompts.insert(
@@ -252,6 +268,98 @@ pub fn load_planning_manifest_file(
         }
     })?;
     parse_planning_manifest_json(&parsed)
+}
+
+pub fn load_planned_jobs_file(
+    path: &Path,
+) -> Result<Vec<PlannedGenerationJob>, PlannedJobsFileError> {
+    let raw = fs::read_to_string(path).map_err(|error| PlannedJobsFileError::ReadFile {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })?;
+    let parsed = serde_json::from_str::<Value>(raw.as_str()).map_err(|error| {
+        PlannedJobsFileError::ParseJson {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        }
+    })?;
+    let jobs = parsed
+        .as_array()
+        .ok_or_else(|| PlannedJobsFileError::RootArrayRequired {
+            path: path.display().to_string(),
+        })?;
+
+    let mut out = Vec::with_capacity(jobs.len());
+    for (idx, job) in jobs.iter().enumerate() {
+        let index = idx + 1;
+        let obj = job
+            .as_object()
+            .ok_or(PlannedJobsFileError::EntryMustBeObject { index })?;
+        let id = jobs_file_required_string(obj.get("id"), index, "id")?;
+        let prompt = jobs_file_required_string(obj.get("prompt"), index, "prompt")?;
+
+        let input_images = obj
+            .get("input_images")
+            .and_then(Value::as_array)
+            .ok_or_else(|| PlannedJobsFileError::MissingRequiredField {
+                index,
+                field: String::from("input_images"),
+            })?
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| PlannedJobsFileError::InvalidField {
+                        index,
+                        field: String::from("input_images"),
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if input_images.is_empty() {
+            return Err(PlannedJobsFileError::MissingRequiredField {
+                index,
+                field: String::from("input_images"),
+            });
+        }
+
+        let mode =
+            jobs_file_optional_string(obj.get("mode")).unwrap_or_else(|| String::from("style"));
+        let time =
+            jobs_file_optional_string(obj.get("time")).unwrap_or_else(|| String::from("day"));
+        let weather =
+            jobs_file_optional_string(obj.get("weather")).unwrap_or_else(|| String::from("clear"));
+
+        out.push(PlannedGenerationJob {
+            id,
+            prompt,
+            mode,
+            time,
+            weather,
+            input_images,
+        });
+    }
+    Ok(out)
+}
+
+fn jobs_file_required_string(
+    value: Option<&Value>,
+    index: usize,
+    field: &str,
+) -> Result<String, PlannedJobsFileError> {
+    jobs_file_optional_string(value).ok_or_else(|| PlannedJobsFileError::MissingRequiredField {
+        index,
+        field: field.to_string(),
+    })
+}
+
+fn jobs_file_optional_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
 }
 
 pub fn compose_prompt(
@@ -435,6 +543,18 @@ fn sanitize_id(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_root(prefix: &str) -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("{prefix}_{stamp}"));
+        fs::create_dir_all(root.as_path()).expect("temp root should be creatable");
+        root
+    }
 
     fn test_manifest() -> PipelinePlanningManifest {
         let mut manifest = default_planning_manifest();
@@ -624,5 +744,53 @@ mod tests {
                 field: String::from("scene_refs")
             }
         );
+    }
+
+    #[test]
+    fn load_planned_jobs_file_parses_entries_and_defaults() {
+        let root = temp_root("kroma_planning_jobs_parse");
+        let jobs_path = root.join("jobs.json");
+        fs::write(
+            jobs_path.as_path(),
+            r#"[
+  {"id":"job_1","prompt":"Prompt 1","input_images":["a.png"]},
+  {"id":"job_2","prompt":"Prompt 2","input_images":["b.png"],"mode":"weather","time":"night","weather":"rain"}
+]"#,
+        )
+        .expect("jobs file should be written");
+
+        let jobs = load_planned_jobs_file(jobs_path.as_path()).expect("jobs should parse");
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].mode, "style");
+        assert_eq!(jobs[0].time, "day");
+        assert_eq!(jobs[0].weather, "clear");
+        assert_eq!(jobs[1].mode, "weather");
+        assert_eq!(jobs[1].time, "night");
+        assert_eq!(jobs[1].weather, "rain");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn load_planned_jobs_file_rejects_empty_input_images_array() {
+        let root = temp_root("kroma_planning_jobs_invalid");
+        let jobs_path = root.join("jobs.json");
+        fs::write(
+            jobs_path.as_path(),
+            r#"[{"id":"job_1","prompt":"Prompt 1","input_images":[]}]"#,
+        )
+        .expect("jobs file should be written");
+
+        let err = load_planned_jobs_file(jobs_path.as_path())
+            .expect_err("empty input_images should be rejected");
+        assert_eq!(
+            err,
+            PlannedJobsFileError::MissingRequiredField {
+                index: 1,
+                field: String::from("input_images")
+            }
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 }

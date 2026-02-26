@@ -26,8 +26,8 @@ use crate::pipeline::pathing::{
     path_for_output as path_for_output_shared, resolve_under_root,
 };
 use crate::pipeline::planning::{
-    build_generation_jobs, default_planning_manifest, load_planning_manifest_file,
-    PipelinePlanningOutputGuard, PlannedGenerationJob,
+    build_generation_jobs, default_planning_manifest, load_planned_jobs_file,
+    load_planning_manifest_file, PipelinePlanningOutputGuard, PlannedGenerationJob,
 };
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams, PostRunSyncS3Params,
@@ -301,7 +301,9 @@ fn build_rust_planning_preflight_summary(
         .weather
         .unwrap_or(PipelineWeatherFilter::Clear);
     let jobs = if let Some(jobs_file_raw) = request.options.jobs_file.as_deref() {
-        load_planned_jobs_file_for_preflight(app_root, jobs_file_raw)?
+        let jobs_path = resolve_under_app_root(app_root, jobs_file_raw);
+        load_planned_jobs_file(jobs_path.as_path())
+            .map_err(|error| PipelineRuntimeError::PlanningPreflight(error.to_string()))?
     } else {
         build_generation_jobs(&manifest, stage, time, weather).map_err(|error| {
             PipelineRuntimeError::PlanningPreflight(format!(
@@ -352,113 +354,6 @@ fn build_rust_planning_preflight_summary(
         manifest_max_candidates: manifest.generation.max_candidates,
         jobs,
     }))
-}
-
-fn load_planned_jobs_file_for_preflight(
-    app_root: &Path,
-    jobs_file_raw: &str,
-) -> Result<Vec<PlannedGenerationJob>, PipelineRuntimeError> {
-    let jobs_path = resolve_under_app_root(app_root, jobs_file_raw);
-    let raw = fs::read_to_string(jobs_path.as_path()).map_err(|e| {
-        PipelineRuntimeError::PlanningPreflight(format!(
-            "jobs file read failed ({}): {e}",
-            jobs_path.display()
-        ))
-    })?;
-    let parsed: Value = serde_json::from_str(raw.as_str()).map_err(|e| {
-        PipelineRuntimeError::PlanningPreflight(format!(
-            "jobs file parse failed ({}): {e}",
-            jobs_path.display()
-        ))
-    })?;
-    let jobs = parsed.as_array().ok_or_else(|| {
-        PipelineRuntimeError::PlanningPreflight(format!(
-            "jobs file must contain a JSON array: {}",
-            jobs_path.display()
-        ))
-    })?;
-
-    let mut out = Vec::with_capacity(jobs.len());
-    for (idx, job) in jobs.iter().enumerate() {
-        let obj = job.as_object().ok_or_else(|| {
-            PipelineRuntimeError::PlanningPreflight(format!(
-                "jobs file entry {} must be an object",
-                idx + 1
-            ))
-        })?;
-        let id = jobs_file_required_string(obj.get("id"), idx, "id")?;
-        let prompt = jobs_file_required_string(obj.get("prompt"), idx, "prompt")?;
-
-        let input_images = obj
-            .get("input_images")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                PipelineRuntimeError::PlanningPreflight(format!(
-                    "jobs file entry {} missing 'input_images'",
-                    idx + 1
-                ))
-            })?
-            .iter()
-            .map(|v| {
-                v.as_str()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .ok_or_else(|| {
-                        PipelineRuntimeError::PlanningPreflight(format!(
-                            "jobs file entry {} has invalid 'input_images'",
-                            idx + 1
-                        ))
-                    })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        if input_images.is_empty() {
-            return Err(PipelineRuntimeError::PlanningPreflight(format!(
-                "jobs file entry {} missing 'input_images'",
-                idx + 1
-            )));
-        }
-
-        let mode =
-            jobs_file_optional_string(obj.get("mode")).unwrap_or_else(|| String::from("style"));
-        let time =
-            jobs_file_optional_string(obj.get("time")).unwrap_or_else(|| String::from("day"));
-        let weather =
-            jobs_file_optional_string(obj.get("weather")).unwrap_or_else(|| String::from("clear"));
-
-        out.push(PlannedGenerationJob {
-            id,
-            prompt,
-            mode,
-            time,
-            weather,
-            input_images,
-        });
-    }
-    Ok(out)
-}
-
-fn jobs_file_required_string(
-    value: Option<&Value>,
-    idx: usize,
-    field: &str,
-) -> Result<String, PipelineRuntimeError> {
-    let parsed = jobs_file_optional_string(value).ok_or_else(|| {
-        PipelineRuntimeError::PlanningPreflight(format!(
-            "jobs file entry {} missing '{}'",
-            idx + 1,
-            field
-        ))
-    })?;
-    Ok(parsed)
-}
-
-fn jobs_file_optional_string(value: Option<&Value>) -> Option<String> {
-    value
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .map(str::to_string)
 }
 
 fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
