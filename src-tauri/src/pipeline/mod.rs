@@ -3,6 +3,7 @@ pub mod config_validation;
 pub mod execution;
 pub mod pathing;
 pub mod planning;
+pub mod planning_preflight;
 pub mod post_run;
 pub mod postprocess_planning;
 pub mod runlog;
