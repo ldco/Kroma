@@ -327,7 +327,8 @@ pub async fn validate_pipeline_config_handler(
     Path(slug): Path<String>,
     Json(payload): Json<ValidatePipelineConfigInput>,
 ) -> ApiObject<Value> {
-    let mut project_root = normalize_optional_string(payload.project_root.as_deref());
+    let project_root_override = normalize_optional_string(payload.project_root.as_deref());
+    let mut project_root = None::<String>;
     let store = state.projects_store.clone();
     let slug_for_lookup = slug.clone();
     let project_check =
@@ -342,11 +343,18 @@ pub async fn validate_pipeline_config_handler(
             ));
         }
     };
-    if project_root.is_none() {
-        let resolved = storage.storage.local.project_root.trim();
-        if !resolved.is_empty() {
-            project_root = Some(resolved.to_string());
-        }
+    if project_root_override.is_some() {
+        return (
+            StatusCode::BAD_REQUEST,
+            into_json(json!({
+                "ok": false,
+                "error": "Field 'project_root' is managed by project storage and cannot be overridden"
+            })),
+        );
+    }
+    let resolved = storage.storage.local.project_root.trim();
+    if !resolved.is_empty() {
+        project_root = Some(resolved.to_string());
     }
 
     let req = PipelineConfigValidationRequest {
@@ -374,7 +382,11 @@ pub async fn validate_pipeline_config_handler(
 }
 
 fn build_trigger_params(payload: &TriggerRunInput) -> Result<TriggerRunParams, String> {
-    let project_root = normalize_optional_string(payload.project_root.as_deref());
+    if normalize_optional_string(payload.project_root.as_deref()).is_some() {
+        return Err(String::from(
+            "Field 'project_root' is managed by project storage and cannot be overridden",
+        ));
+    }
 
     let input_path = normalize_optional_string(payload.input.as_deref());
     let scene_refs = normalize_string_list(payload.scene_refs.as_ref(), "scene_refs")?;
@@ -448,7 +460,7 @@ fn build_trigger_params(payload: &TriggerRunInput) -> Result<TriggerRunParams, S
     }
 
     Ok(TriggerRunParams {
-        project_root,
+        project_root: None,
         input: input_path,
         scene_refs,
         style_refs,

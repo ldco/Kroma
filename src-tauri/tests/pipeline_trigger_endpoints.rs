@@ -212,7 +212,6 @@ async fn pipeline_validate_config_returns_bad_request_for_invalid_manifest_overr
         &format!("/api/projects/{slug}/runs/validate-config"),
         Body::from(
             json!({
-                "project_root": temp_root.join("project-root").to_string_lossy(),
                 "app_settings_path": temp_root.join("missing-app-settings.toml").to_string_lossy(),
                 "manifest_path": missing_manifest.to_string_lossy(),
                 "postprocess_config_path": post_path.to_string_lossy()
@@ -231,6 +230,43 @@ async fn pipeline_validate_config_returns_bad_request_for_invalid_manifest_overr
     assert!(error.contains("planning manifest validation failed"));
 
     let _ = fs::remove_dir_all(temp_root);
+}
+
+#[tokio::test]
+async fn pipeline_validate_config_rejects_project_root_override() {
+    let app = build_router_with_projects_store_dev_bypass(test_store());
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Validate Config Override Rejection"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/validate-config"),
+        Body::from(
+            json!({
+                "project_root": "var/projects/override-attempt"
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(response["ok"], json!(false));
+    assert_eq!(
+        response["error"],
+        json!("Field 'project_root' is managed by project storage and cannot be overridden")
+    );
 }
 
 #[tokio::test]
@@ -424,6 +460,54 @@ async fn pipeline_trigger_injects_project_root_from_rust_storage_when_missing() 
         .as_deref()
         .expect("project root should be injected");
     assert!(injected_root.ends_with("/var/projects/custom-demo"));
+}
+
+#[tokio::test]
+async fn pipeline_trigger_rejects_project_root_override_before_execution() {
+    let store = test_store();
+    let fake = Arc::new(FakeOrchestrator::with_next(Ok(PipelineRunResult {
+        status_code: 0,
+        stdout: String::new(),
+        stderr: String::new(),
+    })));
+    let pipeline_trigger = PipelineTriggerService::new(fake.clone());
+    let app =
+        build_router_with_projects_store_and_pipeline_trigger_dev_bypass(store, pipeline_trigger);
+
+    let created = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Trigger Override Rejection"}"#),
+        StatusCode::OK,
+    )
+    .await;
+    let slug = created["project"]["slug"]
+        .as_str()
+        .expect("project slug should exist")
+        .to_string();
+
+    let response = send_json(
+        app,
+        Method::POST,
+        &format!("/api/projects/{slug}/runs/trigger"),
+        Body::from(
+            json!({
+                "mode":"dry",
+                "scene_refs":["scene_a.png"],
+                "project_root":"var/projects/override-attempt"
+            })
+            .to_string(),
+        ),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+
+    assert_eq!(
+        response["error"],
+        json!("Field 'project_root' is managed by project storage and cannot be overridden")
+    );
+    assert!(fake.take_seen().is_empty());
 }
 
 #[tokio::test]
