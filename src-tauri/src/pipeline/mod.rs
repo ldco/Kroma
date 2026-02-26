@@ -6,6 +6,7 @@ pub mod planning;
 pub mod post_run;
 pub mod postprocess_planning;
 pub mod runlog;
+pub mod runlog_enrich;
 pub mod runlog_patch;
 pub mod runtime;
 pub mod settings_layer;

@@ -39,6 +39,7 @@ use crate::pipeline::postprocess_planning::{
 use crate::pipeline::runlog::{
     format_summary_marker, write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
 };
+use crate::pipeline::runlog_enrich::{build_planned_template, RunLogPlannedTemplateInput};
 use crate::pipeline::runlog_patch::{
     normalize_script_run_log_job_finalization, normalize_script_run_log_job_finalizations_file,
     patch_script_run_log_planned_metadata_file,
@@ -1307,30 +1308,21 @@ fn enrich_script_run_log_planned_metadata_file(
         .map(u64::from)
         .unwrap_or(planned.manifest_candidate_count);
 
-    let execution_jobs = planned
-        .jobs
-        .iter()
-        .cloned()
-        .map(ExecutionPlannedJob::from)
-        .collect::<Vec<_>>();
-    let planned_template = build_planned_run_log_record(
-        ExecutionPlannedRunLogContext {
-            timestamp: String::new(),
-            project_slug: effective.project_slug.clone(),
-            stage: stage.as_str().to_string(),
-            time: time.as_str().to_string(),
-            weather: weather.as_str().to_string(),
-            project_root: path_for_output(app_root, project_root_abs.as_path()),
-            resolved_from_backend: effective.options.project_root.is_some(),
-            candidate_count,
-            max_candidate_count: planned.manifest_max_candidates,
-            planned_postprocess: planned.planned_postprocess.clone(),
-            planned_output_guard: map_manifest_output_guard_to_planned_record(
-                &planned.manifest_output_guard,
-            ),
-        },
-        execution_jobs.as_slice(),
-    );
+    let planned_template = build_planned_template(RunLogPlannedTemplateInput {
+        project_slug: effective.project_slug.clone(),
+        stage: stage.as_str().to_string(),
+        time: time.as_str().to_string(),
+        weather: weather.as_str().to_string(),
+        project_root: path_for_output(app_root, project_root_abs.as_path()),
+        resolved_from_backend: effective.options.project_root.is_some(),
+        candidate_count,
+        max_candidate_count: planned.manifest_max_candidates,
+        planned_postprocess: planned.planned_postprocess.clone(),
+        planned_output_guard: map_manifest_output_guard_to_planned_record(
+            &planned.manifest_output_guard,
+        ),
+        jobs: planned.jobs.clone(),
+    });
 
     patch_script_run_log_planned_metadata_file(app_root, run_log_path, &planned_template)
 }
