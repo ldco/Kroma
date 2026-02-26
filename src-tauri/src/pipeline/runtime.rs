@@ -18,8 +18,8 @@ use crate::pipeline::execution::{
     summarize_output_guard_report, ExecutionCandidateJobOutputs, ExecutionCandidateJobResult,
     ExecutionCandidateRank, ExecutionCandidateResult, ExecutionCandidateStatus,
     ExecutionOutputGuardReport, ExecutionOutputGuardReportFile, ExecutionOutputGuardReportSummary,
-    ExecutionPlannedJob, ExecutionPlannedOutputGuardRecord, ExecutionPlannedPostprocessRecord,
-    ExecutionPlannedRunLogContext, ExecutionPostprocessPathConfig, ExecutionUpscalePathConfig,
+    ExecutionPlannedJob, ExecutionPlannedPostprocessRecord, ExecutionPlannedRunLogContext,
+    ExecutionPostprocessPathConfig, ExecutionUpscalePathConfig,
 };
 use crate::pipeline::pathing::{
     list_image_files_recursive as list_image_files_recursive_shared,
@@ -39,7 +39,10 @@ use crate::pipeline::postprocess_planning::{
 use crate::pipeline::runlog::{
     format_summary_marker, write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
 };
-use crate::pipeline::runlog_enrich::{build_planned_template, RunLogPlannedTemplateInput};
+use crate::pipeline::runlog_enrich::{
+    build_planned_template_from_request, planned_output_guard_from_manifest,
+    RunLogPlannedTemplateRequestInput,
+};
 use crate::pipeline::runlog_patch::{
     normalize_script_run_log_job_finalization, normalize_script_run_log_job_finalizations_file,
     patch_script_run_log_planned_metadata_file,
@@ -620,7 +623,7 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
                 candidate_count,
                 max_candidate_count: planned.manifest_max_candidates,
                 planned_postprocess: planned.planned_postprocess.clone(),
-                planned_output_guard: map_manifest_output_guard_to_planned_record(
+                planned_output_guard: planned_output_guard_from_manifest(
                     &planned.manifest_output_guard,
                 ),
             },
@@ -733,7 +736,7 @@ fn execute_rust_run_mode_with_tool_adapters(
     let run_log_display = path_for_output(app_root, run_log_path_abs.as_path());
     let timestamp = iso_like_timestamp();
     let output_guard_cfg = &planned.manifest_output_guard;
-    let planned_output_guard = map_manifest_output_guard_to_planned_record(output_guard_cfg);
+    let planned_output_guard = planned_output_guard_from_manifest(output_guard_cfg);
     let mut failed_output_guard_jobs = 0_u64;
     let mut jobs_json = Vec::<Value>::with_capacity(planned.jobs.len());
 
@@ -1174,17 +1177,6 @@ fn execution_postprocess_path_config_from_planning(
     }
 }
 
-fn map_manifest_output_guard_to_planned_record(
-    cfg: &PipelinePlanningOutputGuard,
-) -> ExecutionPlannedOutputGuardRecord {
-    ExecutionPlannedOutputGuardRecord {
-        enabled: true,
-        enforce_grayscale: cfg.enforce_grayscale,
-        max_chroma_delta: cfg.max_chroma_delta,
-        fail_on_chroma_exceed: cfg.fail_on_chroma_exceed,
-    }
-}
-
 fn parse_script_run_summary_from_stdout(stdout: &str) -> Option<PipelineScriptRunSummary> {
     const MARKER: &str = "KROMA_PIPELINE_SUMMARY_JSON:";
     if let Some(marker_line) = stdout
@@ -1283,16 +1275,6 @@ fn enrich_script_run_log_planned_metadata_file(
         return Ok(());
     }
 
-    let project_root_abs = effective
-        .options
-        .project_root
-        .as_deref()
-        .map(|v| resolve_under_app_root(app_root, v))
-        .unwrap_or_else(|| {
-            app_root
-                .join("var/projects")
-                .join(effective.project_slug.as_str())
-        });
     let stage = effective
         .options
         .stage
@@ -1302,27 +1284,22 @@ fn enrich_script_run_log_planned_metadata_file(
         .options
         .weather
         .unwrap_or(PipelineWeatherFilter::Clear);
-    let candidate_count = effective
-        .options
-        .candidates
-        .map(u64::from)
-        .unwrap_or(planned.manifest_candidate_count);
-
-    let planned_template = build_planned_template(RunLogPlannedTemplateInput {
-        project_slug: effective.project_slug.clone(),
-        stage: stage.as_str().to_string(),
-        time: time.as_str().to_string(),
-        weather: weather.as_str().to_string(),
-        project_root: path_for_output(app_root, project_root_abs.as_path()),
-        resolved_from_backend: effective.options.project_root.is_some(),
-        candidate_count,
-        max_candidate_count: planned.manifest_max_candidates,
-        planned_postprocess: planned.planned_postprocess.clone(),
-        planned_output_guard: map_manifest_output_guard_to_planned_record(
-            &planned.manifest_output_guard,
-        ),
-        jobs: planned.jobs.clone(),
-    });
+    let planned_template = build_planned_template_from_request(
+        app_root,
+        RunLogPlannedTemplateRequestInput {
+            project_slug: effective.project_slug.clone(),
+            project_root_override: effective.options.project_root.clone(),
+            stage: stage.as_str().to_string(),
+            time: time.as_str().to_string(),
+            weather: weather.as_str().to_string(),
+            requested_candidate_count: effective.options.candidates.map(u64::from),
+            manifest_candidate_count: planned.manifest_candidate_count,
+            manifest_max_candidates: planned.manifest_max_candidates,
+            planned_postprocess: planned.planned_postprocess.clone(),
+            manifest_output_guard: planned.manifest_output_guard.clone(),
+            jobs: planned.jobs.clone(),
+        },
+    );
 
     patch_script_run_log_planned_metadata_file(app_root, run_log_path, &planned_template)
 }
