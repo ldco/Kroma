@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use serde::Deserialize;
 use serde_json::{json, Value};
 use thiserror::Error;
 use uuid::Uuid;
@@ -43,6 +42,7 @@ use crate::pipeline::runlog_enrich::{
     build_planned_template_from_request, planned_output_guard_from_manifest,
     RunLogPlannedTemplateRequestInput,
 };
+use crate::pipeline::runlog_parse::{append_stderr_line, parse_script_run_summary_from_stdout};
 use crate::pipeline::runlog_patch::{
     normalize_script_run_log_job_finalization, normalize_script_run_log_job_finalizations_file,
     patch_script_run_log_planned_metadata_file,
@@ -1133,14 +1133,6 @@ fn parse_execution_output_guard_report(value: &Value) -> ExecutionOutputGuardRep
     ExecutionOutputGuardReport { summary, files }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PipelineScriptRunSummary {
-    run_log_path: PathBuf,
-    project_slug: Option<String>,
-    project_root: Option<String>,
-    jobs: Option<u64>,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 struct RustPlanningPreflightSummary {
     job_ids: Vec<String>,
@@ -1175,88 +1167,6 @@ fn execution_postprocess_path_config_from_planning(
                 .unwrap_or_else(|| cfg.color_default_profile.clone())
         }),
     }
-}
-
-fn parse_script_run_summary_from_stdout(stdout: &str) -> Option<PipelineScriptRunSummary> {
-    const MARKER: &str = "KROMA_PIPELINE_SUMMARY_JSON:";
-    if let Some(marker_line) = stdout
-        .lines()
-        .map(str::trim)
-        .find(|line| line.starts_with(MARKER))
-    {
-        let payload = marker_line.trim_start_matches(MARKER).trim();
-        if !payload.is_empty() {
-            if let Ok(parsed) = serde_json::from_str::<PipelineScriptRunSummaryMarker>(payload) {
-                return Some(PipelineScriptRunSummary {
-                    run_log_path: PathBuf::from(parsed.run_log_path),
-                    project_slug: parsed.project_slug.filter(|v| !v.trim().is_empty()),
-                    project_root: parsed.project_root.filter(|v| !v.trim().is_empty()),
-                    jobs: parsed.jobs,
-                });
-            }
-        }
-    }
-
-    let mut run_log_path = None;
-    let mut project_slug = None;
-    let mut project_root = None;
-    let mut jobs = None;
-
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("Run log:") {
-            let value = value.trim();
-            if !value.is_empty() {
-                run_log_path = Some(PathBuf::from(value));
-            }
-            continue;
-        }
-        if let Some(value) = trimmed.strip_prefix("Project:") {
-            let value = value.trim();
-            if !value.is_empty() {
-                project_slug = Some(value.to_string());
-            }
-            continue;
-        }
-        if let Some(value) = trimmed.strip_prefix("Project root:") {
-            let value = value.trim();
-            if !value.is_empty() {
-                project_root = Some(value.to_string());
-            }
-            continue;
-        }
-        if let Some(value) = trimmed.strip_prefix("Jobs:") {
-            let count_token = value.split_whitespace().next().unwrap_or_default();
-            if let Ok(parsed) = count_token.parse::<u64>() {
-                jobs = Some(parsed);
-            }
-        }
-    }
-
-    Some(PipelineScriptRunSummary {
-        run_log_path: run_log_path?,
-        project_slug,
-        project_root,
-        jobs,
-    })
-}
-
-#[derive(Debug, Deserialize)]
-struct PipelineScriptRunSummaryMarker {
-    run_log_path: String,
-    #[serde(default)]
-    project_slug: Option<String>,
-    #[serde(default)]
-    project_root: Option<String>,
-    #[serde(default)]
-    jobs: Option<u64>,
-}
-
-fn append_stderr_line(stderr: &mut String, line: impl AsRef<str>) {
-    if !stderr.trim().is_empty() {
-        stderr.push('\n');
-    }
-    stderr.push_str(line.as_ref());
 }
 
 fn enrich_script_run_log_planned_metadata_file(
