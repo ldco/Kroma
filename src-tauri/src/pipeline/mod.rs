@@ -7,6 +7,7 @@ pub mod planning_preflight;
 pub mod post_run;
 pub mod postprocess_planning;
 pub mod request_settings;
+pub mod run_mode_execution;
 pub mod runlog;
 pub mod runlog_enrich;
 pub mod runlog_parse;
