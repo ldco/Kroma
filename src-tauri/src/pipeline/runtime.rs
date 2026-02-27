@@ -8,25 +8,15 @@ use crate::db::projects::ProjectsStore;
 use crate::pipeline::backend_ops::{
     default_backend_ops_with_native_ingest, default_script_backend_ops, SharedPipelineBackendOps,
 };
-use crate::pipeline::execution::{
-    build_planned_run_log_record, ensure_generation_mode_dirs, execution_project_dirs,
-    ExecutionPlannedJob, ExecutionPlannedRunLogContext,
-};
-use crate::pipeline::pathing::path_for_output as path_for_output_shared;
+use crate::pipeline::dry_run_execution::execute_rust_dry_run_with_preflight;
 use crate::pipeline::planning_preflight::build_rust_planning_preflight_summary;
 use crate::pipeline::post_run::{
     PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams, PostRunSyncS3Params,
 };
-use crate::pipeline::request_settings::{
-    default_project_root_for_request, effective_pipeline_request_with_layered_settings,
-};
+use crate::pipeline::request_settings::effective_pipeline_request_with_layered_settings;
 use crate::pipeline::run_mode_execution::execute_rust_run_mode_with_tool_adapters;
-use crate::pipeline::runlog::{
-    format_summary_marker, write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
-};
 use crate::pipeline::runlog_enrich::{
-    build_planned_template_from_request, planned_output_guard_from_manifest,
-    RunLogPlannedTemplateRequestInput,
+    build_planned_template_from_request, RunLogPlannedTemplateRequestInput,
 };
 use crate::pipeline::runlog_parse::{append_stderr_line, parse_script_run_summary_from_stdout};
 use crate::pipeline::runlog_patch::{
@@ -433,80 +423,7 @@ impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
         else {
             return self.inner.execute(&request);
         };
-
-        let project_root_abs = default_project_root_for_request(self.app_root.as_path(), &request);
-        let project_dirs = execution_project_dirs(project_root_abs.as_path());
-        ensure_generation_mode_dirs(&project_dirs).map_err(PipelineRuntimeError::Io)?;
-        let run_log_path_abs = project_dirs
-            .runs
-            .join(format!("run_{}.json", make_run_log_stamp()));
-
-        let stage = request.options.stage.unwrap_or(PipelineStageFilter::Style);
-        let time = request.options.time.unwrap_or(PipelineTimeFilter::Day);
-        let weather = request
-            .options
-            .weather
-            .unwrap_or(PipelineWeatherFilter::Clear);
-        let candidate_count = request
-            .options
-            .candidates
-            .map(u64::from)
-            .unwrap_or(planned.manifest_candidate_count);
-        let project_root_display =
-            path_for_output(self.app_root.as_path(), project_dirs.root.as_path());
-        let run_log_display = path_for_output(self.app_root.as_path(), run_log_path_abs.as_path());
-        let timestamp = iso_like_timestamp();
-
-        let execution_jobs = planned
-            .jobs
-            .iter()
-            .cloned()
-            .map(ExecutionPlannedJob::from)
-            .collect::<Vec<_>>();
-        let run_meta = build_planned_run_log_record(
-            ExecutionPlannedRunLogContext {
-                timestamp,
-                project_slug: request.project_slug.clone(),
-                stage: stage.as_str().to_string(),
-                time: time.as_str().to_string(),
-                weather: weather.as_str().to_string(),
-                project_root: project_root_display.clone(),
-                resolved_from_backend: request.options.project_root.is_some(),
-                candidate_count,
-                max_candidate_count: planned.manifest_max_candidates,
-                planned_postprocess: planned.planned_postprocess.clone(),
-                planned_output_guard: planned_output_guard_from_manifest(
-                    &planned.manifest_output_guard,
-                ),
-            },
-            execution_jobs.as_slice(),
-        );
-
-        write_pretty_json_with_newline(run_log_path_abs.as_path(), &run_meta)
-            .map_err(|e| PipelineRuntimeError::Io(std::io::Error::other(e.to_string())))?;
-        let marker = format_summary_marker(&PipelineRunSummaryMarkerPayload {
-            run_log_path: run_log_display.clone(),
-            project_slug: request.project_slug.clone(),
-            project_root: project_root_display.clone(),
-            jobs: planned.job_count(),
-            mode: String::from("dry"),
-        })
-        .map_err(|e| PipelineRuntimeError::Io(std::io::Error::other(e.to_string())))?;
-
-        let stdout = [
-            format!("Run log: {run_log_display}"),
-            format!("Project: {}", request.project_slug),
-            format!("Project root: {project_root_display}"),
-            format!("Jobs: {} (dry/planned)", planned.job_count()),
-            marker,
-        ]
-        .join("\n");
-
-        Ok(PipelineRunResult {
-            status_code: 0,
-            stdout,
-            stderr: String::new(),
-        })
+        execute_rust_dry_run_with_preflight(self.app_root.as_path(), &request, &planned)
     }
 }
 
@@ -618,26 +535,6 @@ fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
     } else {
         Err(PipelineRuntimeError::InvalidProjectSlug)
     }
-}
-
-fn path_for_output(app_root: &Path, path: &Path) -> String {
-    path_for_output_shared(app_root, path)
-}
-
-fn iso_like_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}.{:03}Z", now.as_secs(), now.subsec_millis())
-}
-
-fn make_run_log_stamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}-{:03}", now.as_secs(), now.subsec_millis())
 }
 
 pub fn default_app_root_from_manifest_dir() -> PathBuf {
