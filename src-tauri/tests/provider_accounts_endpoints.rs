@@ -132,6 +132,8 @@ async fn provider_accounts_support_lifecycle() {
         missing_after_delete["error"],
         json!("Provider account not found")
     );
+    assert_eq!(missing_after_delete["error_kind"], json!("validation"));
+    assert_eq!(missing_after_delete["error_code"], json!("not_found"));
 }
 
 #[tokio::test]
@@ -163,6 +165,11 @@ async fn provider_account_validation_is_enforced() {
         missing_provider_code["error"],
         json!("Field 'provider_code' is required")
     );
+    assert_eq!(missing_provider_code["error_kind"], json!("validation"));
+    assert_eq!(
+        missing_provider_code["error_code"],
+        json!("validation_error")
+    );
 
     let _created = send_json(
         app.clone(),
@@ -185,6 +192,8 @@ async fn provider_account_validation_is_enforced() {
         empty_update["error"],
         json!("Provide at least one of: display_name, account_ref, base_url, enabled, config_json")
     );
+    assert_eq!(empty_update["error_kind"], json!("validation"));
+    assert_eq!(empty_update["error_code"], json!("validation_error"));
 }
 
 async fn send_json(

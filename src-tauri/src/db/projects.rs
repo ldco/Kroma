@@ -142,6 +142,16 @@ pub struct AssetLinkSummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentInstructionWorkerLease {
+    pub instruction_id: String,
+    pub project_id: String,
+    pub project_slug: String,
+    pub instruction_text: String,
+    pub attempts: i64,
+    pub max_attempts: i64,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpsertProjectInput {
     #[serde(default)]
@@ -1853,6 +1863,7 @@ pub fn normalize_slug(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::worker::{run_agent_worker_loop, AgentWorkerOptions};
 
     fn temp_repo() -> ProjectsStore {
         let suffix = Uuid::new_v4().to_string();
@@ -1964,5 +1975,341 @@ mod tests {
             .delete_provider_account(slug.as_str(), "!!!")
             .expect_err("invalid provider code should fail validation");
         assert!(matches!(delete_err, ProjectsRepoError::Validation(_)));
+    }
+
+    #[test]
+    fn agent_worker_reserve_and_complete_success() {
+        let repo = temp_repo();
+        let created = repo
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Worker Demo"),
+                slug: Some(String::from("worker_demo")),
+                description: None,
+                username: Some(String::from("local")),
+                user_display_name: Some(String::from("Local User")),
+            })
+            .expect("project should be created");
+        let slug = created.project.slug;
+
+        let instruction = repo
+            .create_agent_instruction(
+                slug.as_str(),
+                CreateAgentInstructionInput {
+                    instruction_text: String::from("Render page one"),
+                },
+            )
+            .expect("instruction should be created");
+        let confirmed = repo
+            .confirm_agent_instruction(
+                slug.as_str(),
+                instruction.id.as_str(),
+                AgentInstructionActionInput {
+                    message: Some(String::from("approved")),
+                },
+            )
+            .expect("instruction should be confirmed");
+        assert_eq!(confirmed.status, "confirmed");
+
+        let lease = repo
+            .reserve_next_agent_instruction("worker-a", 120, 3)
+            .expect("reserve should succeed")
+            .expect("confirmed instruction should be reservable");
+        assert_eq!(lease.project_slug, slug);
+        assert_eq!(lease.attempts, 0);
+        assert_eq!(lease.max_attempts, 3);
+
+        repo.complete_agent_instruction_success(
+            &lease,
+            1,
+            3,
+            "done",
+            &serde_json::json!({"status":"done","run_id":"r1"}),
+            Some(200),
+        )
+        .expect("success completion should persist");
+
+        let detail = repo
+            .get_agent_instruction_detail(slug.as_str(), lease.instruction_id.as_str())
+            .expect("detail should load");
+        assert_eq!(detail.status, "done");
+
+        let events = repo
+            .list_agent_instruction_events(slug.as_str(), lease.instruction_id.as_str())
+            .expect("events should load");
+        assert!(
+            events.iter().any(|event| event.event_type == "result"),
+            "result event should be recorded"
+        );
+    }
+
+    #[test]
+    fn agent_worker_retry_then_fail_updates_status() {
+        let repo = temp_repo();
+        let created = repo
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Worker Retry"),
+                slug: Some(String::from("worker_retry")),
+                description: None,
+                username: Some(String::from("local")),
+                user_display_name: Some(String::from("Local User")),
+            })
+            .expect("project should be created");
+        let slug = created.project.slug;
+
+        let instruction = repo
+            .create_agent_instruction(
+                slug.as_str(),
+                CreateAgentInstructionInput {
+                    instruction_text: String::from("Dispatch with retries"),
+                },
+            )
+            .expect("instruction should be created");
+        let _ = repo
+            .confirm_agent_instruction(
+                slug.as_str(),
+                instruction.id.as_str(),
+                AgentInstructionActionInput {
+                    message: Some(String::from("approved")),
+                },
+            )
+            .expect("instruction should be confirmed");
+
+        let lease = repo
+            .reserve_next_agent_instruction("worker-b", 120, 2)
+            .expect("reserve should succeed")
+            .expect("confirmed instruction should be reservable");
+
+        repo.complete_agent_instruction_retry_or_fail(&lease, 1, 2, 1, "temporary_failure")
+            .expect("retry state should persist");
+        let after_retry = repo
+            .get_agent_instruction_detail(slug.as_str(), lease.instruction_id.as_str())
+            .expect("detail should load");
+        assert_eq!(after_retry.status, "confirmed");
+
+        repo.complete_agent_instruction_retry_or_fail(&lease, 2, 2, 1, "permanent_failure")
+            .expect("final failure should persist");
+        let after_fail = repo
+            .get_agent_instruction_detail(slug.as_str(), lease.instruction_id.as_str())
+            .expect("detail should load");
+        assert_eq!(after_fail.status, "failed");
+    }
+
+    #[test]
+    fn worker_uses_project_secret_dispatch_target_when_cli_target_missing() {
+        let repo = temp_repo();
+        let created = repo
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Worker Secret Target"),
+                slug: Some(String::from("worker_secret_target")),
+                description: None,
+                username: Some(String::from("local")),
+                user_display_name: Some(String::from("Local User")),
+            })
+            .expect("project should be created");
+        let slug = created.project.slug;
+
+        repo.upsert_project_secret(
+            slug.as_str(),
+            UpsertSecretInput {
+                provider_code: String::from("agent_api"),
+                secret_name: String::from("url"),
+                secret_value: String::from("not-a-url"),
+            },
+        )
+        .expect("agent target url secret should be saved");
+
+        let instruction = repo
+            .create_agent_instruction(
+                slug.as_str(),
+                CreateAgentInstructionInput {
+                    instruction_text: String::from("dispatch using secret target"),
+                },
+            )
+            .expect("instruction should be created");
+        let _ = repo
+            .confirm_agent_instruction(
+                slug.as_str(),
+                instruction.id.as_str(),
+                AgentInstructionActionInput {
+                    message: Some(String::from("approved")),
+                },
+            )
+            .expect("instruction should be confirmed");
+
+        let summary = run_agent_worker_loop(
+            &repo,
+            &AgentWorkerOptions {
+                worker_id: String::from("worker-secret"),
+                once: true,
+                poll_interval_seconds: 0.1,
+                max_locked_seconds: 120,
+                default_max_attempts: 1,
+                retry_backoff_seconds: 1,
+                dispatch_timeout_seconds: 0.5,
+                dispatch_retries: 0,
+                dispatch_backoff_seconds: 0.1,
+                agent_api_url: None,
+                agent_api_token: None,
+            },
+        )
+        .expect("worker loop should complete");
+        assert_eq!(summary.processed, 1);
+
+        let detail = repo
+            .get_agent_instruction_detail(slug.as_str(), instruction.id.as_str())
+            .expect("detail should load");
+        assert!(
+            detail.status == "confirmed" || detail.status == "failed",
+            "dispatch failure should remain retryable or fail terminally based on max-attempts policy"
+        );
+
+        let events = repo
+            .list_agent_instruction_events(slug.as_str(), instruction.id.as_str())
+            .expect("events should load");
+        let dispatch_event = events
+            .iter()
+            .find(|event| event.event_type == "error" || event.event_type == "retry_scheduled")
+            .expect("dispatch retry/error event should be present");
+        assert!(
+            !dispatch_event.message.contains("missing_agent_api_url"),
+            "worker should not report missing_agent_api_url when secret target exists"
+        );
+    }
+
+    #[test]
+    fn worker_uses_project_secret_token_when_cli_token_missing() {
+        let repo = temp_repo();
+        let created = repo
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Worker Secret Token"),
+                slug: Some(String::from("worker_secret_token")),
+                description: None,
+                username: Some(String::from("local")),
+                user_display_name: Some(String::from("Local User")),
+            })
+            .expect("project should be created");
+        let slug = created.project.slug;
+
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("test listener should bind");
+        let addr = listener
+            .local_addr()
+            .expect("listener local addr should resolve");
+        let seen_request = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let seen_request_server = std::sync::Arc::clone(&seen_request);
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("test listener should accept");
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                .expect("read timeout should set");
+            let mut buffer = Vec::<u8>::new();
+            let mut chunk = [0u8; 2048];
+            loop {
+                match std::io::Read::read(&mut stream, &mut chunk) {
+                    Ok(0) => break,
+                    Ok(read) => {
+                        buffer.extend_from_slice(&chunk[..read]);
+                        if buffer.windows(4).any(|window| window == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) =>
+                    {
+                        break;
+                    }
+                    Err(error) => panic!("read request headers failed: {error}"),
+                }
+            }
+
+            let raw = String::from_utf8_lossy(buffer.as_slice()).to_string();
+            *seen_request_server
+                .lock()
+                .expect("seen request mutex should not be poisoned") = raw;
+
+            let body = r#"{"status":"done"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            std::io::Write::write_all(&mut stream, response.as_bytes())
+                .expect("test response should write");
+        });
+
+        repo.upsert_project_secret(
+            slug.as_str(),
+            UpsertSecretInput {
+                provider_code: String::from("agent_api"),
+                secret_name: String::from("url"),
+                secret_value: format!("http://{addr}/dispatch"),
+            },
+        )
+        .expect("agent target url secret should be saved");
+        repo.upsert_project_secret(
+            slug.as_str(),
+            UpsertSecretInput {
+                provider_code: String::from("agent_api"),
+                secret_name: String::from("token"),
+                secret_value: String::from("secret-from-db"),
+            },
+        )
+        .expect("agent token secret should be saved");
+
+        let instruction = repo
+            .create_agent_instruction(
+                slug.as_str(),
+                CreateAgentInstructionInput {
+                    instruction_text: String::from("dispatch using secret token"),
+                },
+            )
+            .expect("instruction should be created");
+        let _ = repo
+            .confirm_agent_instruction(
+                slug.as_str(),
+                instruction.id.as_str(),
+                AgentInstructionActionInput {
+                    message: Some(String::from("approved")),
+                },
+            )
+            .expect("instruction should be confirmed");
+
+        let summary = run_agent_worker_loop(
+            &repo,
+            &AgentWorkerOptions {
+                worker_id: String::from("worker-secret-token"),
+                once: true,
+                poll_interval_seconds: 0.1,
+                max_locked_seconds: 120,
+                default_max_attempts: 1,
+                retry_backoff_seconds: 1,
+                dispatch_timeout_seconds: 1.0,
+                dispatch_retries: 0,
+                dispatch_backoff_seconds: 0.1,
+                agent_api_url: None,
+                agent_api_token: None,
+            },
+        )
+        .expect("worker loop should complete");
+        assert_eq!(summary.processed, 1);
+
+        server.join().expect("server thread should join");
+
+        let raw = seen_request
+            .lock()
+            .expect("seen request mutex should not be poisoned")
+            .to_ascii_lowercase();
+        assert!(
+            raw.contains("authorization: bearer secret-from-db"),
+            "worker should use project secret token when CLI token is missing"
+        );
+
+        let detail = repo
+            .get_agent_instruction_detail(slug.as_str(), instruction.id.as_str())
+            .expect("detail should load");
+        assert_eq!(detail.status, "done");
     }
 }

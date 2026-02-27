@@ -1,9 +1,494 @@
 # Next Chat Handoff
 
-Date: 2026-02-25
+Date: 2026-02-27
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `8b3fce3` / `8b3fce3`
-Worktree: dirty (`NEXT_CHAT_HANDOFF.md` update in progress)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `35729af` / `35729af`
+Worktree: dirty (journey/roadmap docs freeze updates + pending runtime refactor files; uncommitted local changes)
+
+## Session Update (2026-02-27, Step A runtime trigger path de-scripting semantics)
+
+### Scope
+
+1. Start Step A follow-through by removing remaining script-fallback semantics from the normal Rust trigger/runtime path.
+2. Keep behavior stable while aligning API contract labels and docs with current Rust-native execution reality.
+
+### What Landed (this session, local/uncommitted)
+
+1. Updated post-run wrapper request behavior:
+   - `src-tauri/src/pipeline/runtime_orchestrators.rs`
+   - `RustPostRunPipelineOrchestrator` now forwards the original request directly to inner runtime execution (no script-era request mutation).
+2. Updated trigger adapter label to Rust-native:
+   - `src-tauri/src/api/runs_assets.rs`: response `pipeline_trigger.adapter` now returns `rust_native`.
+3. Updated test assertions and wrapper expectations:
+   - `src-tauri/tests/pipeline_trigger_endpoints.rs`
+   - `src-tauri/src/pipeline/runtime.rs` wrapper tests now assert request options are preserved rather than force-overridden.
+4. Updated contract/docs wording:
+   - `openapi/backend-api.openapi.yaml`: trigger adapter example updated to `rust_native`.
+   - `docs/ROADMAP.md`: removed stale script-fallback wording for trigger/runtime stack and post-run wrapper semantics.
+
+### Validation
+
+1. `cargo test rust_post_run_wrapper_ --lib` -> passing.
+2. `cargo test --test pipeline_trigger_endpoints --test contract_parity --test http_contract_surface` -> passing.
+
+### Known Gaps / Risks
+
+1. `scripts/image-lab.mjs` still exists for manual utility scripts, but normal `/runs/trigger` path semantics are now explicitly Rust-native.
+2. Full script file removal/deprecation sequencing is still a separate cleanup decision.
+
+### Next Chat Starting Point
+
+1. Continue Step A by deciding whether to retire `scripts/image-lab.mjs` utility npm commands or keep them as explicit non-runtime tools.
+2. Keep extending Rust-owned execution evidence with endpoint-level tests that exercise real tool adapter paths.
+
+## Session Update (2026-02-27, Step B remaining endpoint taxonomy/openapi normalization)
+
+### Scope
+
+1. Continue Step B by closing taxonomy assertion coverage for the remaining endpoint groups called out in the previous handoff.
+2. Align OpenAPI error-schema refs for those same endpoint groups so docs and runtime behavior stay contract-consistent.
+
+### What Landed (this session, local/uncommitted)
+
+1. Expanded endpoint taxonomy assertions in integration tests:
+   - `src-tauri/tests/provider_accounts_endpoints.rs`
+   - `src-tauri/tests/style_guides_endpoints.rs`
+   - `src-tauri/tests/prompt_templates_endpoints.rs`
+   - `src-tauri/tests/characters_endpoints.rs`
+   - `src-tauri/tests/asset_links_endpoints.rs`
+   - `src-tauri/tests/chat_endpoints.rs`
+   - `src-tauri/tests/agent_instructions_endpoints.rs`
+   - `src-tauri/tests/secrets_endpoints.rs`
+2. Updated OpenAPI error-schema refs in `openapi/backend-api.openapi.yaml` for:
+   - `asset-links` list/create/detail/update/delete
+   - `prompt-templates` list/create/detail/update/delete
+   - `provider-accounts` list/create/detail/update/delete
+   - `style-guides` list/create/detail/update/delete
+   - `characters` list/create/detail/update/delete
+   - `chat/sessions` list/create/detail/messages list/create
+   - `agent/instructions` list/create/detail/events/confirm/cancel
+   - `secrets` list/upsert/rotation-status/rotate/delete
+3. Synced Step B docs:
+   - `docs/ROADMAP.md` Step B progress expanded with remaining endpoint coverage.
+   - `docs/BACKEND_CONTRACT_FREEZE.md` verification baseline expanded.
+
+### Validation
+
+1. `cargo test --test provider_accounts_endpoints --test style_guides_endpoints --test prompt_templates_endpoints --test characters_endpoints --test asset_links_endpoints --test chat_endpoints --test agent_instructions_endpoints --test secrets_endpoints --test error_taxonomy_endpoints --test contract_parity --test http_contract_surface` -> passing.
+
+### Known Gaps / Risks
+
+1. Step B coverage is materially broader now, but there is still no explicit single “freeze green” checklist artifact marking Gate 1 complete.
+2. Step A runtime/script-removal work remains open in parallel (`image-lab.mjs` ownership completion and runtime decomposition follow-through).
+
+### Next Chat Starting Point
+
+1. Decide whether to mark Step B Gate 1 complete now or add one more pass for non-journey/secondary endpoints before freezing.
+2. Resume Step A runtime consolidation slices from the latest runtime module decomposition state.
+
+## Session Update (2026-02-27, Step B taxonomy expansion + OpenAPI alignment)
+
+### Scope
+
+1. Continue Step B by expanding taxonomy assertions beyond initial project/run/export coverage.
+2. Align OpenAPI error schemas for additional journey-critical endpoint groups.
+
+### What Landed (this session, local/uncommitted)
+
+1. Expanded endpoint regression assertions for taxonomy fields:
+   - `src-tauri/tests/bootstrap_endpoints.rs`
+   - `src-tauri/tests/reference_sets_endpoints.rs`
+   - `src-tauri/tests/storage_endpoints.rs`
+2. Added bootstrap missing-project taxonomy coverage:
+   - `bootstrap_prompt_missing_project_has_not_found_taxonomy`
+3. Updated OpenAPI contract (`openapi/backend-api.openapi.yaml`):
+   - added `components.schemas.ErrorKind`
+   - added `components.schemas.ErrorResponse`
+   - wired error schema refs for:
+     - `projects` create/detail errors
+     - `bootstrap-prompt` and `bootstrap-import` errors
+     - `storage` read/update errors
+     - `reference-sets` and `reference-set` detail/update/delete errors
+4. Synced Step B docs:
+   - `docs/BACKEND_CONTRACT_FREEZE.md` verification baseline expanded
+   - `docs/ROADMAP.md` Step B kickoff progress expanded
+
+### Validation
+
+1. `cargo test --test bootstrap_endpoints --test reference_sets_endpoints --test storage_endpoints --test error_taxonomy_endpoints` -> passing.
+2. `cargo test --test contract_parity --test http_contract_surface` -> passing.
+
+### Known Gaps / Risks
+
+1. OpenAPI coverage for taxonomy is expanded for Step B baseline paths, but not yet fully normalized across every endpoint family.
+2. Runtime Step A completion items remain open in parallel (`image-lab.mjs` orchestration removal).
+
+### Next Chat Starting Point
+
+1. Finish Step B taxonomy/OpenAPI normalization for remaining endpoint groups (`provider_accounts`, `style_guides`, `prompt_templates`, `characters`, `asset_links`, `chat`, `agent_instructions`, `secrets`).
+2. After Step B Gate 1 is fully green, continue Step A runtime/script-removal completion slices.
+
+## Session Update (2026-02-27, Step B contract-freeze kickoff)
+
+### Scope
+
+1. Continue roadmap execution into Step B (backend contract freeze).
+2. Publish stable error taxonomy for journey-critical backend endpoints.
+3. Add endpoint-level regression tests to lock taxonomy behavior.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added additive error taxonomy fields to API error responses:
+   - `error_kind`
+   - `error_code`
+2. Updated shared API error mapper in `src-tauri/src/api/handler_utils.rs`:
+   - repo validation/not-found/internal paths now emit taxonomy fields.
+3. Updated run/pipeline error mapping in `src-tauri/src/api/runs_assets.rs`:
+   - policy/validation/provider/infra classification for trigger and config-validation failures.
+4. Added new integration tests:
+   - `src-tauri/tests/error_taxonomy_endpoints.rs`
+   - verifies taxonomy on project validation errors, not-found errors, and run spend-policy errors.
+5. Published Step B baseline contract doc:
+   - `docs/BACKEND_CONTRACT_FREEZE.md`
+   - includes journey-critical endpoint surface, error taxonomy baseline, and breaking-change policy.
+6. Synced docs:
+   - `docs/ROADMAP.md` (Step B kickoff progress section)
+   - `docs/BACKEND_ARCHITECTURE_FREEZE.md` (Gate 1 contract-baseline reference)
+   - `docs/README.md` (new doc indexed)
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test --test error_taxonomy_endpoints` -> passing.
+3. `cargo test --test projects_endpoints --test runs_assets_endpoints --test exports_endpoints --test pipeline_trigger_endpoints` -> passing.
+4. `cargo test --test http_contract_surface --test contract_parity` -> passing.
+
+### Known Gaps / Risks
+
+1. This is a Step B kickoff baseline; not every endpoint has explicit code-level taxonomy mapping yet (priority paths are covered).
+2. Existing response shape remains backward-compatible (`ok/error` preserved), so frontend should begin consuming `error_kind/error_code` as preferred fields.
+
+### Next Chat Starting Point
+
+1. Expand taxonomy coverage and assertions to remaining journey-related endpoints (`bootstrap`, `reference_sets`, `storage`) to complete Step B Gate 1.
+2. Add/align OpenAPI error schemas/examples with `error_kind/error_code` baseline to reduce frontend ambiguity.
+3. Continue Step B acceptance checklist until backend freeze is marked green.
+
+## Session Update (2026-02-27, worker hardening follow-up)
+
+### Scope
+
+1. Continue the Rust worker migration slice with reliability hardening.
+2. Close status-mapping edge cases and secret-token dispatch coverage gaps.
+3. Keep worker tests deterministic across environments.
+
+### What Landed (this session, local/uncommitted)
+
+1. Fixed worker remote-status normalization bug in `src-tauri/src/worker/mod.rs`:
+   - `map_remote_status(...)` now uses normalized/trimmed status matching directly.
+   - prevents `" failed "` / `" Running "` from being mis-mapped to `"done"`.
+2. Expanded worker status unit coverage:
+   - `map_remote_status_accepts_known_values` now includes mixed-case + whitespace variants.
+3. Added dispatch auth fallback regression test in `src-tauri/src/db/projects.rs`:
+   - new test `worker_uses_project_secret_token_when_cli_token_missing`.
+   - spins up a local listener, runs `run_agent_worker_loop(...)`, and asserts `Authorization: Bearer <secret>` comes from project secret fallback.
+4. Hardened existing URL fallback test for determinism:
+   - `worker_uses_project_secret_dispatch_target_when_cli_target_missing` now uses an invalid URL (`not-a-url`) instead of a potentially open local port.
+   - assertions now track retry/error event semantics (`retry_scheduled` or `error`) and avoid retry-policy-coupled status assumptions.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test worker_uses_project_secret_` -> passing.
+3. `cargo test map_remote_status_accepts_known_values` -> passing.
+4. `cargo test parse_agent_worker_accepts_once_and_target_url` -> passing.
+
+### Known Gaps / Risks
+
+1. This slice is worker-hardening only; broader Step A/Step B roadmap items remain unchanged.
+2. Full suite was not rerun after this patch (focused worker/CLI targets were rerun and passing).
+
+### Next Chat Starting Point
+
+1. Continue roadmap Step A/B progression from `docs/ROADMAP.md`:
+   - either close remaining runtime/script-removal governance updates
+   - or start Step B contract freeze deliverables (error taxonomy + endpoint contract publication) with tests.
+
+## Session Update (2026-02-27, Rust worker runtime migration slice)
+
+### Scope
+
+1. Continue Step A by starting the Python worker runtime replacement in Rust.
+2. Add Rust-owned queue reserve/dispatch/complete worker flow on top of current `agent_instructions`.
+3. Switch default worker npm entrypoints to the Rust worker CLI while preserving explicit legacy fallback commands.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added Rust worker runtime loop + dispatch client:
+   - expanded `src-tauri/src/worker/mod.rs` with:
+     - `AgentWorkerOptions`
+     - `run_agent_worker_loop(...)`
+     - HTTP dispatch + retry/backoff handling
+     - remote-status mapping parity (`accepted|queued -> done`)
+2. Added worker-oriented DB lease/complete methods in `src-tauri/src/db/projects/chat_instructions.rs`:
+   - `reserve_next_agent_instruction(...)`
+   - `complete_agent_instruction_success(...)`
+   - `complete_agent_instruction_retry_or_fail(...)`
+3. Added/normalized worker support columns on `agent_instructions`:
+   - `attempts`, `max_attempts`, `next_attempt_at`, `last_error`, `locked_by`, `locked_at`, `agent_response_json`
+4. Improved instruction action transitions:
+   - confirm now clears lock/retry/error fields.
+   - cancel now clears lock fields.
+5. Added CLI command for worker runtime in `src-tauri/src/main.rs`:
+   - `cargo run -- agent-worker [flags]`
+   - added parser + usage + unit coverage.
+6. Switched default npm worker commands to Rust, preserved explicit legacy aliases in `package.json`:
+   - `backend:worker` -> Rust `agent-worker`
+   - `backend:worker:once` -> Rust `agent-worker --once`
+   - added `backend:worker:legacy` and `backend:worker:once:legacy`
+7. Added regression tests:
+   - DB worker reserve/success path
+   - DB worker retry/fail path
+   - worker status-mapping unit
+   - CLI parser unit for `agent-worker`
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test parse_agent_worker_accepts_once_and_target_url` -> passing.
+3. `cargo test agent_worker_reserve_and_complete_success` -> passing.
+4. `cargo test agent_worker_retry_then_fail_updates_status` -> passing.
+5. `cargo test` (in `src-tauri`) -> passing (full suite, `0` failed).
+
+### Known Gaps / Risks
+
+1. Rust worker dispatch currently uses CLI/env target URL/token (`IAT_AGENT_API_URL`, `IAT_AGENT_API_TOKEN`) and does not yet resolve per-project encrypted secret fallback automatically.
+2. Full replacement/removal of `scripts/agent_worker.py` and `scripts/agent_dispatch.py` is not complete yet; they remain explicit legacy fallback paths.
+3. Step A still has an open major item: replacing remaining `scripts/image-lab.mjs` generation/post-process orchestration ownership.
+
+### Next Chat Starting Point
+
+1. Extend Rust worker target resolution to support project-scoped secret fallback (`agent_api/url`, `agent_api/token`) with encrypted secret reads.
+2. After parity is confirmed, remove legacy Python worker scripts/paths per script-removal rule.
+3. Continue Step A functional migration on the remaining `image-lab.mjs` orchestration ownership.
+
+## Session Update (2026-02-27, runtime stack/wrapper extraction continuation)
+
+### Scope
+
+1. Continue Step A runtime decomposition from the latest handoff.
+2. Extract remaining orchestration construction/wrapper logic from `runtime.rs` into dedicated modules.
+3. Keep runtime API behavior stable and close validation gaps with focused + full regression runs.
+
+### What Landed (this session, local/uncommitted)
+
+1. Extracted default runtime stack-construction wiring:
+   - added `src-tauri/src/pipeline/runtime_stack.rs`.
+   - moved default orchestrator composition (`default_pipeline_orchestrator_with_*`) and rust-only unsupported fallback orchestrator into the new module.
+2. Extracted wrapper orchestrators from `runtime.rs`:
+   - added `src-tauri/src/pipeline/runtime_orchestrators.rs`.
+   - moved `RustPostRunPipelineOrchestrator`, `RustDryRunPipelineOrchestrator`, and `RustRunModePipelineOrchestrator` plus their `PipelineOrchestrator` impls.
+3. Kept `pipeline::runtime` API stable:
+   - `runtime.rs` now re-exports moved wrappers and default stack constructors.
+   - `validate_project_slug` is now `pub(crate)` for shared runtime module use.
+4. Updated pipeline module exports:
+   - `src-tauri/src/pipeline/mod.rs` now exports `runtime_stack` and `runtime_orchestrators`.
+5. Behavioral impact:
+   - no intended runtime contract or behavior change; this slice is structural decomposition only.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test rust_post_run_wrapper_` -> passing.
+3. `cargo test rust_dry_run_wrapper_` -> passing.
+4. `cargo test rust_run_mode_wrapper_` -> passing.
+5. `cargo test` (in `src-tauri`) -> passing (full suite, `0` failed).
+
+### Known Gaps / Risks
+
+1. `runtime.rs` is still test-heavy; test-module decomposition is still open if we want smaller runtime files.
+2. Step A functional migration is not complete yet:
+   - remaining `scripts/image-lab.mjs` orchestration ownership removal is still pending.
+   - Python worker runtime migration (`agent_worker.py`, `agent_dispatch.py`) is still pending.
+3. Worktree remains intentionally mixed (docs freeze + runtime refactor slices), so commit slicing remains an open decision.
+
+### Next Chat Starting Point
+
+1. Continue Step A functional migration by replacing remaining `image-lab.mjs` generation/post-process orchestration ownership with Rust modules.
+2. Keep script-removal parity per slice, then rerun focused pipeline wrapper tests + full `cargo test`.
+3. Finalize the mixed worktree commit strategy (split docs vs runtime slices, or curate one intentional combined commit) before push.
+
+## Session Update (2026-02-27, journey-map freeze + fixed roadmap execution order)
+
+### Scope
+
+1. Align planning docs with the product north star: project-first comic/graphic-novel continuity.
+2. Convert roadmap into a fixed execution plan with explicit frontend start gate.
+3. Establish canonical user flow/journey map as implementation contract.
+4. Add workflow-level rule that every feature maps to a journey step ID.
+
+### What Landed (this session, local/uncommitted)
+
+1. Added canonical journey contract:
+   - new file `docs/USER_FLOW_JOURNEY_MAP.md`.
+   - defines primary flow `J00-J08`, utility flow `U01`, and recovery flows `R01-R02`.
+   - adds mandatory implementation gate: no feature without journey-step mapping.
+2. Reworked roadmap into fixed sequence:
+   - updated `docs/ROADMAP.md` with `Planning Control Docs`, `Journey-First Execution Rule`, and `Fixed Execution Plan (Step A/B/C)`.
+   - added locked immediate next slices and explicit frontend-start condition (only after Step A + Step B).
+3. Enforced journey traceability in workflow/freeze docs:
+   - `docs/WORKFLOW.md` now requires `Jxx/Uxx/Rxx` mapping plus acceptance evidence in PR/commit notes.
+   - `docs/BACKEND_ARCHITECTURE_FREEZE.md` Gate 5 now requires frozen journey steps in `docs/USER_FLOW_JOURNEY_MAP.md`.
+4. Synced spec/index/root docs to the same planning model:
+   - `docs/README.md` now includes `USER_FLOW_JOURNEY_MAP.md`.
+   - `README.md` now includes `Product Goal (North Star)` and `Planning Source of Truth`.
+   - `docs/TECH_SPEC.md` now includes `4.3 Journey-Driven Scope Gate`.
+   - `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` now states explicit journey-planning contract.
+5. Behavioral/security impact:
+   - no runtime code-path changes in this session.
+   - planning governance tightened: implementation scope and frontend sequencing are now explicit and testable against journey steps.
+
+### Validation
+
+1. `git branch --show-current` -> pass (`master`).
+2. `git rev-parse --short HEAD` -> pass (`35729af`).
+3. `git rev-parse --short origin/$(git branch --show-current)` -> pass (`35729af`).
+4. `git status --short` -> pass (dirty; includes docs planning updates and existing runtime refactor files).
+5. `git diff --stat` -> pass (`13 files changed, 392 insertions(+), 250 deletions(-)` at check time).
+6. `git diff -- docs/ROADMAP.md docs/WORKFLOW.md docs/USER_FLOW_JOURNEY_MAP.md docs/README.md docs/BACKEND_ARCHITECTURE_FREEZE.md docs/TECH_SPEC.md README.md "docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md"` -> pass (verified fixed plan + journey gate diffs).
+7. `python3 /home/ldco/.codex/skills/.system/skill-creator/scripts/quick_validate.py /home/ldco/.codex/skills/general-handoff` -> pass (`Skill is valid!`).
+8. Automated tests -> Not run in this session (docs/planning-only changes).
+
+### Known Gaps / Risks
+
+1. Runtime refactor files from prior slices remain uncommitted and mixed with docs changes (`src-tauri/src/pipeline/*`).
+2. Worktree includes `src-tauri/src/pipeline/post_run_execution.rs` (untracked) plus docs updates; commit slicing decision is still open.
+3. Full Rust test suite was not rerun in this docs-only session; next runtime code step should revalidate with focused tests + `cargo test`.
+
+### Next Chat Starting Point
+
+1. Execute roadmap Step A / Slice 1: continue Rust parity for `J04-J07` by extracting remaining generation/post-process orchestration from scripts into Rust modules.
+2. After code changes, run focused pipeline wrapper tests first, then run `cargo test` in `src-tauri`.
+3. Finalize commit strategy: either split docs-governance updates into a dedicated commit first, then runtime refactor commit(s), or curate one combined commit intentionally.
+
+## Session Update (2026-02-27, runtime post-run extraction + shared run-log helper consolidation)
+
+### Scope
+
+1. Continue runtime decomposition from the latest handoff next steps.
+2. Extract post-run wrapper/finalization orchestration out of `runtime.rs`.
+3. Remove duplicated run-log timestamp/stamp helper logic from dry/run execution modules.
+4. Revalidate focused runtime wrappers and then run full suite for regression safety.
+
+### What Landed (this session, local/uncommitted)
+
+1. Extracted post-run orchestration into a dedicated module:
+   - added `src-tauri/src/pipeline/post_run_execution.rs`.
+   - moved summary parse, project-slug mismatch warning, run-log normalization, planned-metadata enrichment, and backend finalize (ingest + optional S3 sync) flow into that module.
+2. Rewired `src-tauri/src/pipeline/runtime.rs` to delegate post-run finalize behavior:
+   - `RustPostRunPipelineOrchestrator::execute` now calls `run_post_run_finalize_best_effort(...)`.
+   - removed moved post-run helper methods/functions from `runtime.rs`.
+3. Consolidated shared run-log time/stamp helpers:
+   - added `iso_like_timestamp_now()` and `run_log_stamp_now()` in `src-tauri/src/pipeline/runlog.rs`.
+   - updated `src-tauri/src/pipeline/dry_run_execution.rs` and `src-tauri/src/pipeline/run_mode_execution.rs` to use shared helpers.
+   - removed duplicated local helper implementations from both execution modules.
+4. Updated module exports:
+   - `src-tauri/src/pipeline/mod.rs` now exports `post_run_execution`.
+5. Behavioral impact:
+   - no intended API/contract change; refactor keeps existing wrapper behavior while reducing duplication and concentrating post-run orchestration logic.
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing.
+2. `cargo test rust_post_run_wrapper_` -> passing.
+3. `cargo test rust_dry_run_wrapper_` -> passing.
+4. `cargo test rust_run_mode_wrapper_` -> passing.
+5. `cargo test iso_like_timestamp_now_matches_expected_shape` -> passing.
+6. `cargo test run_log_stamp_now_matches_expected_shape` -> passing.
+7. `cargo test` (in `src-tauri`) -> passing (full suite, `0` failed).
+
+### Known Gaps / Risks
+
+1. `runtime.rs` remains large and still contains stack-construction/orchestration glue that can be decomposed further.
+2. Current slice is local/uncommitted (along with this handoff update).
+
+### Next Chat Starting Point
+
+1. Continue runtime decomposition by extracting orchestrator stack-construction/wiring from `src-tauri/src/pipeline/runtime.rs` into a dedicated builder module while preserving behavior.
+2. Run focused runtime wrapper tests after extraction, then rerun `cargo test`.
+3. Finalize/push the accumulated runtime decomposition slice via `[$general-git](/home/ldco/.codex/skills/general-git/SKILL.md)` once ready.
+
+## Session Update (2026-02-27, pipeline runtime modular decomposition continuation)
+
+### Scope
+
+1. Continue iterative runtime decomposition without behavior drift.
+2. Reduce `src-tauri/src/pipeline/runtime.rs` responsibilities by extracting cohesive modules.
+3. Keep focused regression coverage green at each extraction slice.
+4. Commit and push each validated slice to `master`.
+
+### What Landed (this session, local/uncommitted)
+
+1. Landed and pushed 7 refactor commits on `master` (all currently synced to `origin/master`):
+   - `bc16e86` planned run-log template shaping extraction.
+   - `ed455b3` planned run-log enrichment shaping centralization.
+   - `189b50e` run-log summary parsing module extraction.
+   - `5df98f7` planning preflight module extraction.
+   - `daee15b` request settings resolution module extraction.
+   - `938c415` run-mode execution module extraction.
+   - `35729af` dry-run execution module extraction.
+2. Added new runtime-focused modules and rewired orchestration call sites:
+   - `src-tauri/src/pipeline/runlog_enrich.rs`
+   - `src-tauri/src/pipeline/runlog_parse.rs`
+   - `src-tauri/src/pipeline/planning_preflight.rs`
+   - `src-tauri/src/pipeline/request_settings.rs`
+   - `src-tauri/src/pipeline/run_mode_execution.rs`
+   - `src-tauri/src/pipeline/dry_run_execution.rs`
+3. Updated module exports in `src-tauri/src/pipeline/mod.rs` and trimmed `runtime.rs` orchestration to delegate into dedicated modules.
+4. Net file impact from this continuation range (`7b759d3..35729af`):
+   - `8 files changed, 1365 insertions(+), 981 deletions(-)`.
+   - touched files: `src-tauri/src/pipeline/{mod.rs,runtime.rs,runlog_enrich.rs,runlog_parse.rs,planning_preflight.rs,request_settings.rs,run_mode_execution.rs,dry_run_execution.rs}`.
+5. Behavioral impact:
+   - no intended contract/API changes; refactor focused on separation of concerns.
+   - preserved dry-run/run-mode run-log shaping and post-run compatibility behavior through existing wrapper paths.
+6. Local/uncommitted status at handoff write time:
+   - none; all landed changes are committed and pushed (`worktree clean`).
+
+### Validation
+
+1. `cargo fmt` (in `src-tauri`) -> passing (run repeatedly across slices).
+2. `cargo test build_planned_template_shapes_jobs_and_context` -> passing.
+3. `cargo test rust_post_run_wrapper_normalizes_run_log_job_finalization_before_ingest` -> passing.
+4. `cargo test rust_dry_run_wrapper_writes_planned_job_fields_from_typed_builder` -> passing.
+5. `cargo test build_planned_template_from_request_resolves_defaults_and_guard` -> passing.
+6. `cargo test parse_script_run_summary_from_stdout_prefers_marker_payload` -> passing.
+7. `cargo test parses_script_run_summary_from_stdout_lines` -> passing.
+8. `cargo test parses_script_run_summary_from_marker_line` -> passing.
+9. `cargo test rust_post_run_wrapper_warns_when_run_log_line_is_missing` -> passing.
+10. `cargo test rust_dry_run_wrapper_handles_scene_refs_without_inner_script_call` -> passing.
+11. `cargo test rust_dry_run_wrapper_handles_input_path_without_inner_script_call` -> passing.
+12. `cargo test rust_dry_run_wrapper_handles_jobs_file_without_inner_script_call` -> passing.
+13. `cargo test rust_dry_run_wrapper_uses_manifest_generation_defaults_when_candidates_omitted` -> passing.
+14. `cargo test apply_settings_overlay_to_request_fills_missing_postprocess_fields` -> passing.
+15. `cargo test apply_settings_overlay_to_request_keeps_explicit_request_values` -> passing.
+16. `cargo test rust_dry_run_wrapper_applies_project_settings_layer_for_postprocess_defaults` -> passing.
+17. `cargo test rust_run_mode_wrapper_executes_optional_passes_with_script_parity_paths` -> passing.
+18. `cargo test rust_run_mode_wrapper_returns_failure_and_archives_bad_outputs_on_output_guard_fail` -> passing.
+19. `cargo test rust_post_run_wrapper_ingests_rust_run_mode_failure_with_run_log` -> passing.
+20. Failed-attempt evidence:
+   - compile/test runs temporarily failed during extraction with `E0425`/`E0609` (missing moved symbols / incorrect test field path); fixed in-session and rerun to green.
+
+### Known Gaps / Risks
+
+1. `runtime.rs` still contains post-run wrapper flow and orchestration glue that can be further decomposed.
+2. Timestamp/run-log stamp helpers currently live in both run-mode and dry-run execution modules; potential duplication cleanup remains.
+3. Broad full-suite execution (`cargo test` without filter) was not rerun after the final extraction; validation relied on focused regression targets.
+
+### Next Chat Starting Point
+
+1. Extract post-run wrapper/finalization orchestration from `src-tauri/src/pipeline/runtime.rs` into a dedicated module while preserving summary parsing + ingestion/sync behavior.
+2. Consolidate shared runtime helpers (for example run-log timestamp/stamp generation) into a small shared module used by `run_mode_execution` and `dry_run_execution`.
+3. After the next extraction slice, run focused post-run + dry/run wrapper tests first, then run a broader `cargo test` pass to close residual regression risk.
 
 ## Session Update (2026-02-25, backend_ops decoupling continuation)
 

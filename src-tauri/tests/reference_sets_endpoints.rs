@@ -170,6 +170,8 @@ async fn reference_sets_and_items_support_crud() {
     )
     .await;
     assert_eq!(missing_set["error"], json!("Reference set not found"));
+    assert_eq!(missing_set["error_kind"], json!("validation"));
+    assert_eq!(missing_set["error_code"], json!("not_found"));
 }
 
 #[tokio::test]
@@ -198,6 +200,8 @@ async fn reference_set_validation_is_enforced() {
     )
     .await;
     assert_eq!(missing_set_name["error"], json!("Field 'name' is required"));
+    assert_eq!(missing_set_name["error_kind"], json!("validation"));
+    assert_eq!(missing_set_name["error_code"], json!("validation_error"));
 
     let created_set = send_json(
         app.clone(),
@@ -224,6 +228,8 @@ async fn reference_set_validation_is_enforced() {
         duplicate_set_name["error"],
         json!("Reference set name already exists")
     );
+    assert_eq!(duplicate_set_name["error_kind"], json!("validation"));
+    assert_eq!(duplicate_set_name["error_code"], json!("validation_error"));
 
     let empty_set_update = send_json(
         app.clone(),
@@ -237,6 +243,8 @@ async fn reference_set_validation_is_enforced() {
         empty_set_update["error"],
         json!("Provide at least one of: name, description")
     );
+    assert_eq!(empty_set_update["error_kind"], json!("validation"));
+    assert_eq!(empty_set_update["error_code"], json!("validation_error"));
 
     let missing_item_label = send_json(
         app.clone(),
@@ -250,6 +258,8 @@ async fn reference_set_validation_is_enforced() {
         missing_item_label["error"],
         json!("Field 'label' is required")
     );
+    assert_eq!(missing_item_label["error_kind"], json!("validation"));
+    assert_eq!(missing_item_label["error_code"], json!("validation_error"));
 
     let missing_item_content = send_json(
         app.clone(),
@@ -262,6 +272,11 @@ async fn reference_set_validation_is_enforced() {
     assert_eq!(
         missing_item_content["error"],
         json!("Provide at least one of: content_uri, content_text")
+    );
+    assert_eq!(missing_item_content["error_kind"], json!("validation"));
+    assert_eq!(
+        missing_item_content["error_code"],
+        json!("validation_error")
     );
 
     let created_item = send_json(
@@ -291,6 +306,8 @@ async fn reference_set_validation_is_enforced() {
             "Provide at least one of: label, content_uri, content_text, sort_order, metadata_json"
         )
     );
+    assert_eq!(empty_item_update["error_kind"], json!("validation"));
+    assert_eq!(empty_item_update["error_code"], json!("validation_error"));
 }
 
 async fn send_json(

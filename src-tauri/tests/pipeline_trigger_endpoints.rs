@@ -314,7 +314,7 @@ async fn pipeline_trigger_success_path_can_use_injected_fake_orchestrator() {
     assert_eq!(response["pipeline_trigger"]["status_code"], json!(0));
     assert_eq!(
         response["pipeline_trigger"]["adapter"],
-        json!("script_fallback")
+        json!("rust_native")
     );
     assert_eq!(
         response["pipeline_trigger"]["stdout"],

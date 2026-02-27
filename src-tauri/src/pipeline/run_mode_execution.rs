@@ -15,7 +15,8 @@ use crate::pipeline::pathing::path_for_output;
 use crate::pipeline::planning_preflight::RustPlanningPreflightSummary;
 use crate::pipeline::request_settings::default_project_root_for_request;
 use crate::pipeline::runlog::{
-    format_summary_marker, write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
+    format_summary_marker, iso_like_timestamp_now, run_log_stamp_now,
+    write_pretty_json_with_newline, PipelineRunSummaryMarkerPayload,
 };
 use crate::pipeline::runlog_enrich::planned_output_guard_from_manifest;
 use crate::pipeline::runlog_patch::normalize_script_run_log_job_finalization;
@@ -69,11 +70,11 @@ pub(crate) fn execute_rust_run_mode_with_tool_adapters(
     ensure_generation_mode_dirs(&project_dirs).map_err(PipelineRuntimeError::Io)?;
     let run_log_path_abs = project_dirs
         .runs
-        .join(format!("run_{}.json", make_run_log_stamp()));
+        .join(format!("run_{}.json", run_log_stamp_now()));
 
     let project_root_display = path_for_output(app_root, project_dirs.root.as_path());
     let run_log_display = path_for_output(app_root, run_log_path_abs.as_path());
-    let timestamp = iso_like_timestamp();
+    let timestamp = iso_like_timestamp_now();
     let output_guard_cfg = &planned.manifest_output_guard;
     let planned_output_guard = planned_output_guard_from_manifest(output_guard_cfg);
     let mut failed_output_guard_jobs = 0_u64;
@@ -470,20 +471,4 @@ fn parse_execution_output_guard_report(value: &Value) -> ExecutionOutputGuardRep
         })
         .collect::<Vec<_>>();
     ExecutionOutputGuardReport { summary, files }
-}
-
-fn iso_like_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}.{:03}Z", now.as_secs(), now.subsec_millis())
-}
-
-fn make_run_log_stamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}-{:03}", now.as_secs(), now.subsec_millis())
 }

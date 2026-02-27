@@ -108,6 +108,8 @@ async fn characters_support_crud() {
     )
     .await;
     assert_eq!(missing["error"], json!("Character not found"));
+    assert_eq!(missing["error_kind"], json!("validation"));
+    assert_eq!(missing["error_code"], json!("not_found"));
 }
 
 #[tokio::test]
@@ -136,6 +138,8 @@ async fn character_validation_is_enforced() {
     )
     .await;
     assert_eq!(missing_name["error"], json!("Field 'name' is required"));
+    assert_eq!(missing_name["error_kind"], json!("validation"));
+    assert_eq!(missing_name["error_code"], json!("validation_error"));
 
     let _created = send_json(
         app.clone(),
@@ -158,6 +162,8 @@ async fn character_validation_is_enforced() {
         duplicate_name["error"],
         json!("Character name already exists")
     );
+    assert_eq!(duplicate_name["error_kind"], json!("validation"));
+    assert_eq!(duplicate_name["error_code"], json!("validation_error"));
 
     let empty_update = send_json(
         app,
@@ -171,6 +177,8 @@ async fn character_validation_is_enforced() {
         empty_update["error"],
         json!("Provide at least one of: name, description, prompt_text")
     );
+    assert_eq!(empty_update["error_kind"], json!("validation"));
+    assert_eq!(empty_update["error_code"], json!("validation_error"));
 }
 
 async fn send_json(

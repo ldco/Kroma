@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use kroma_backend_core::api::server::serve;
 use kroma_backend_core::db::projects::{ProjectsStore, RotateSecretsInput};
@@ -8,6 +9,7 @@ use kroma_backend_core::pipeline::config_validation::{
     validate_pipeline_config_stack, PipelineConfigValidationRequest,
 };
 use kroma_backend_core::pipeline::runtime::default_app_root_from_manifest_dir;
+use kroma_backend_core::worker::{run_agent_worker_loop, AgentWorkerOptions};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -33,6 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(cli_args.first().map(String::as_str), Some("secrets-rotate")) {
         run_secrets_rotate_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("agent-worker")) {
+        run_agent_worker_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
         return Ok(());
     }
 
@@ -138,6 +144,21 @@ struct SecretsRotateCliArgs {
     force: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct AgentWorkerCliArgs {
+    worker_id: String,
+    once: bool,
+    poll_interval_seconds: f64,
+    max_locked_seconds: i64,
+    default_max_attempts: i64,
+    retry_backoff_seconds: i64,
+    dispatch_timeout: f64,
+    dispatch_retries: i64,
+    dispatch_backoff_seconds: f64,
+    agent_api_url: Option<String>,
+    agent_api_token: Option<String>,
+}
+
 fn parse_secrets_rotation_status_cli_args(
     args: &[String],
 ) -> Result<SecretsRotationStatusCliArgs, Box<dyn std::error::Error>> {
@@ -225,6 +246,105 @@ fn parse_secrets_rotate_cli_args(
     })
 }
 
+fn parse_agent_worker_cli_args(
+    args: &[String],
+) -> Result<AgentWorkerCliArgs, Box<dyn std::error::Error>> {
+    let default_stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let mut parsed = AgentWorkerCliArgs {
+        worker_id: format!("worker-{:x}", default_stamp & 0xffff_ffff),
+        once: false,
+        poll_interval_seconds: 2.0,
+        max_locked_seconds: 120,
+        default_max_attempts: 3,
+        retry_backoff_seconds: 10,
+        dispatch_timeout: 20.0,
+        dispatch_retries: 2,
+        dispatch_backoff_seconds: 1.5,
+        agent_api_url: std::env::var("IAT_AGENT_API_URL")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        agent_api_token: std::env::var("IAT_AGENT_API_TOKEN")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
+    };
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            let Some(value) = args.get(idx + 1) else {
+                return Err(std::io::Error::other(format!("Missing value for {flag}")).into());
+            };
+            Ok(value.clone())
+        };
+
+        match flag {
+            "--worker-id" => {
+                parsed.worker_id = needs_value(i)?.trim().to_string();
+                i += 2;
+            }
+            "--once" => {
+                parsed.once = true;
+                i += 1;
+            }
+            "--poll-interval-seconds" => {
+                parsed.poll_interval_seconds = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--max-locked-seconds" => {
+                parsed.max_locked_seconds = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--default-max-attempts" => {
+                parsed.default_max_attempts = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--retry-backoff-seconds" => {
+                parsed.retry_backoff_seconds = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--dispatch-timeout" => {
+                parsed.dispatch_timeout = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--dispatch-retries" => {
+                parsed.dispatch_retries = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--dispatch-backoff-seconds" => {
+                parsed.dispatch_backoff_seconds = needs_value(i)?.parse()?;
+                i += 2;
+            }
+            "--agent-api-url" => {
+                parsed.agent_api_url =
+                    Some(needs_value(i)?.trim().to_string()).filter(|v| !v.is_empty());
+                i += 2;
+            }
+            "--agent-api-token" => {
+                parsed.agent_api_token =
+                    Some(needs_value(i)?.trim().to_string()).filter(|v| !v.is_empty());
+                i += 2;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if parsed.worker_id.trim().is_empty() {
+        return Err(std::io::Error::other("Field --worker-id must not be empty").into());
+    }
+    Ok(parsed)
+}
+
 fn open_projects_store_for_cli() -> Result<ProjectsStore, Box<dyn std::error::Error>> {
     let repo_root = default_app_root_from_manifest_dir();
     let db_path = match resolve_backend_config(repo_root.as_path()) {
@@ -294,6 +414,44 @@ fn run_secrets_rotate_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+fn run_agent_worker_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
+        print_agent_worker_usage();
+        return Ok(());
+    }
+
+    let parsed = parse_agent_worker_cli_args(args.as_slice())?;
+    let store = open_projects_store_for_cli()?;
+    let summary = run_agent_worker_loop(
+        &store,
+        &AgentWorkerOptions {
+            worker_id: parsed.worker_id.clone(),
+            once: parsed.once,
+            poll_interval_seconds: parsed.poll_interval_seconds,
+            max_locked_seconds: parsed.max_locked_seconds,
+            default_max_attempts: parsed.default_max_attempts,
+            retry_backoff_seconds: parsed.retry_backoff_seconds,
+            dispatch_timeout_seconds: parsed.dispatch_timeout,
+            dispatch_retries: parsed.dispatch_retries,
+            dispatch_backoff_seconds: parsed.dispatch_backoff_seconds,
+            agent_api_url: parsed.agent_api_url.clone(),
+            agent_api_token: parsed.agent_api_token.clone(),
+        },
+    )?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "ok": summary.ok,
+            "worker_id": summary.worker_id,
+            "processed": summary.processed
+        }))?
+    );
+    Ok(())
+}
+
 fn print_validate_pipeline_config_usage() {
     eprintln!(
         concat!(
@@ -324,6 +482,26 @@ fn print_secrets_rotate_usage() {
             "  cargo run -- secrets-rotate --project-slug <slug> [--from-key-ref <key-ref>] [--force]\n"
         )
     );
+}
+
+fn print_agent_worker_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- agent-worker [--once] [--worker-id ID] [--poll-interval-seconds FLOAT] ",
+        "[--max-locked-seconds INT] [--default-max-attempts INT] [--retry-backoff-seconds INT] ",
+        "[--dispatch-timeout FLOAT] [--dispatch-retries INT] [--dispatch-backoff-seconds FLOAT] ",
+        "[--agent-api-url URL] [--agent-api-token TOKEN]\n\n",
+        "Defaults:\n",
+        "  --poll-interval-seconds 2.0\n",
+        "  --max-locked-seconds 120\n",
+        "  --default-max-attempts 3\n",
+        "  --retry-backoff-seconds 10\n",
+        "  --dispatch-timeout 20.0\n",
+        "  --dispatch-retries 2\n",
+        "  --dispatch-backoff-seconds 1.5\n",
+        "  --agent-api-url from IAT_AGENT_API_URL env if set\n",
+        "  --agent-api-token from IAT_AGENT_API_TOKEN env if set\n"
+    ));
 }
 
 #[cfg(test)]
@@ -365,5 +543,23 @@ mod tests {
         assert_eq!(parsed.project_slug, "demo");
         assert_eq!(parsed.from_key_ref.as_deref(), Some("legacy-v1"));
         assert!(parsed.force);
+    }
+
+    #[test]
+    fn parse_agent_worker_accepts_once_and_target_url() {
+        let parsed = parse_agent_worker_cli_args(&[
+            String::from("--once"),
+            String::from("--worker-id"),
+            String::from("worker-a"),
+            String::from("--agent-api-url"),
+            String::from("https://agent.local/run"),
+        ])
+        .expect("parse should succeed");
+        assert!(parsed.once);
+        assert_eq!(parsed.worker_id, "worker-a");
+        assert_eq!(
+            parsed.agent_api_url.as_deref(),
+            Some("https://agent.local/run")
+        );
     }
 }

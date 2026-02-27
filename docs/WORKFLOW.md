@@ -1,6 +1,18 @@
 # Workflow
 
 See `docs/BACKEND_ARCHITECTURE_FREEZE.md` for the backend-first gate and frontend start criteria.
+See `docs/USER_FLOW_JOURNEY_MAP.md` for canonical user journey steps and acceptance criteria.
+See `docs/BACKEND_CONTRACT_FREEZE.md` for Step B contract/error taxonomy baseline.
+
+## Journey Mapping Rule (Mandatory)
+
+1. Every implementation task must map to a journey step ID.
+2. Step type mapping:
+   - `Jxx` for primary project flow
+   - `Uxx` for secondary utility flow
+   - `Rxx` for recovery/error flow
+3. If there is no mapped journey step, do not implement the task yet.
+4. PR/commit notes must include journey step ID(s), user outcome, and acceptance test evidence.
 
 ## Project Rule
 
@@ -29,8 +41,6 @@ Recommended (Rust primary path):
 Transitional/legacy scripts (still available):
 
 - `npm run backend:init`
-- `npm run backend:api` (legacy Python API, port `8787`)
-- `npm run backend:worker`
 - direct `python3 scripts/backend.py ...` commands
 
 ## Staged Process
@@ -49,6 +59,9 @@ Transitional/legacy scripts (still available):
 - Execution order is fixed: `bg_remove(rembg) -> bg_refine_openai -> upscale -> color`
 - `npm run lab -- run --project my_project --confirm-spend --post-bg-remove --post-upscale --upscale-backend python --post-color --post-color-profile cinematic_warm`
 - Multi-candidate production run: `npm run lab -- run --project my_project --confirm-spend --candidates 4`
+
+Implementation note:
+- the staged process maps directly to `J04 -> J07` in `docs/USER_FLOW_JOURNEY_MAP.md`
 
 ## Utility Commands
 

@@ -50,6 +50,22 @@ pub fn format_summary_marker(
     Ok(format!("KROMA_PIPELINE_SUMMARY_JSON: {json}"))
 }
 
+pub(crate) fn iso_like_timestamp_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{:03}Z", now.as_secs(), now.subsec_millis())
+}
+
+pub(crate) fn run_log_stamp_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}-{:03}", now.as_secs(), now.subsec_millis())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,5 +112,29 @@ mod tests {
 
         assert!(line.starts_with("KROMA_PIPELINE_SUMMARY_JSON: "));
         assert!(line.contains("\"project_slug\":\"demo\""));
+    }
+
+    #[test]
+    fn iso_like_timestamp_now_matches_expected_shape() {
+        let value = iso_like_timestamp_now();
+        let (secs, millis_and_z) = value
+            .split_once('.')
+            .expect("timestamp should include fractional separator");
+        assert!(secs.parse::<u64>().is_ok());
+        assert!(millis_and_z.ends_with('Z'));
+        let millis = &millis_and_z[..millis_and_z.len() - 1];
+        assert_eq!(millis.len(), 3);
+        assert!(millis.chars().all(|ch| ch.is_ascii_digit()));
+    }
+
+    #[test]
+    fn run_log_stamp_now_matches_expected_shape() {
+        let value = run_log_stamp_now();
+        let (secs, millis) = value
+            .split_once('-')
+            .expect("stamp should include millis separator");
+        assert!(secs.parse::<u64>().is_ok());
+        assert_eq!(millis.len(), 3);
+        assert!(millis.chars().all(|ch| ch.is_ascii_digit()));
     }
 }

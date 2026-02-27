@@ -108,6 +108,8 @@ async fn storage_local_update_requires_payload_fields() {
         response["error"],
         json!("Provide at least one of: base_dir, project_root")
     );
+    assert_eq!(response["error_kind"], json!("validation"));
+    assert_eq!(response["error_code"], json!("validation_error"));
 }
 
 async fn send_json(

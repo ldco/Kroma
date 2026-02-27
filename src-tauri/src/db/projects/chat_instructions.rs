@@ -1,10 +1,13 @@
+use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::{
     ensure_column, fetch_project_by_slug, normalize_chat_role, normalize_optional_storage_field,
-    normalize_required_text, normalize_slug, now_iso, ProjectsRepoError, ProjectsStore,
+    normalize_required_text, normalize_slug, now_iso, AgentInstructionWorkerLease,
+    ProjectsRepoError, ProjectsStore,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -370,6 +373,10 @@ impl ProjectsStore {
                 SET status = 'confirmed',
                     confirmed_at = ?1,
                     canceled_at = NULL,
+                    next_attempt_at = NULL,
+                    last_error = NULL,
+                    locked_by = NULL,
+                    locked_at = NULL,
                     updated_at = ?1
                 WHERE id = ?2 AND project_id = ?3
             ",
@@ -421,6 +428,8 @@ impl ProjectsStore {
                 UPDATE agent_instructions
                 SET status = 'canceled',
                     canceled_at = ?1,
+                    locked_by = NULL,
+                    locked_at = NULL,
                     updated_at = ?1
                 WHERE id = ?2 AND project_id = ?3
             ",
@@ -440,6 +449,213 @@ impl ProjectsStore {
 
             fetch_agent_instruction_by_id(conn, project.id.as_str(), instruction_id)?
                 .ok_or(ProjectsRepoError::NotFound)
+        })
+    }
+
+    pub(crate) fn reserve_next_agent_instruction(
+        &self,
+        worker_id: &str,
+        max_locked_seconds: i64,
+        default_max_attempts: i64,
+    ) -> Result<Option<AgentInstructionWorkerLease>, ProjectsRepoError> {
+        let safe_worker_id = normalize_required_text(worker_id, "worker_id")?;
+        let max_locked_seconds = max_locked_seconds.max(1);
+        let default_max_attempts = default_max_attempts.max(1);
+        self.with_connection_mut(|conn| {
+            let now = Utc::now();
+            let now_iso = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+            let lock_cutoff = (now - Duration::seconds(max_locked_seconds))
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string();
+
+            let tx = conn.transaction()?;
+            let lease = tx
+                .query_row(
+                    "
+                    SELECT
+                      ai.id AS instruction_id,
+                      ai.project_id AS project_id,
+                      p.slug AS project_slug,
+                      ai.instruction_text AS instruction_text,
+                      COALESCE(ai.attempts, 0) AS attempts,
+                      COALESCE(NULLIF(ai.max_attempts, 0), ?3) AS max_attempts
+                    FROM agent_instructions ai
+                    JOIN projects p ON p.id = ai.project_id
+                    WHERE ai.status = 'confirmed'
+                      AND (ai.next_attempt_at IS NULL OR ai.next_attempt_at <= ?1)
+                      AND (ai.locked_at IS NULL OR ai.locked_at <= ?2)
+                    ORDER BY COALESCE(ai.updated_at, ai.created_at) ASC, ai.id ASC
+                    LIMIT 1
+                    ",
+                    params![now_iso, lock_cutoff, default_max_attempts],
+                    row_to_agent_instruction_worker_lease,
+                )
+                .optional()?;
+            let Some(lease) = lease else {
+                tx.commit()?;
+                return Ok(None);
+            };
+
+            let updated = tx.execute(
+                "
+                UPDATE agent_instructions
+                SET status = 'running',
+                    locked_by = ?1,
+                    locked_at = ?2,
+                    max_attempts = COALESCE(NULLIF(max_attempts, 0), ?3),
+                    updated_at = ?2
+                WHERE id = ?4 AND status = 'confirmed'
+                ",
+                params![
+                    safe_worker_id,
+                    now_iso,
+                    default_max_attempts,
+                    lease.instruction_id
+                ],
+            )?;
+            if updated != 1 {
+                tx.commit()?;
+                return Ok(None);
+            }
+
+            tx.commit()?;
+            Ok(Some(lease))
+        })
+    }
+
+    pub(crate) fn complete_agent_instruction_success(
+        &self,
+        lease: &AgentInstructionWorkerLease,
+        attempts: i64,
+        max_attempts: i64,
+        remote_status: &str,
+        response_json: &Value,
+        http_status: Option<u16>,
+    ) -> Result<(), ProjectsRepoError> {
+        let remote_status = match remote_status.trim().to_ascii_lowercase().as_str() {
+            "done" | "failed" | "running" => remote_status.trim().to_ascii_lowercase(),
+            _ => String::from("done"),
+        };
+        let now = now_iso();
+        let response_serialized = serde_json::to_string(response_json)
+            .unwrap_or_else(|_| String::from("{\"ok\":false,\"error\":\"invalid_response\"}"));
+        self.with_connection_mut(|conn| {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "
+                UPDATE agent_instructions
+                SET status = ?1,
+                    attempts = ?2,
+                    max_attempts = ?3,
+                    next_attempt_at = NULL,
+                    last_error = NULL,
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    agent_response_json = ?4,
+                    updated_at = ?5
+                WHERE id = ?6 AND project_id = ?7
+                ",
+                params![
+                    remote_status,
+                    attempts,
+                    max_attempts,
+                    response_serialized,
+                    now,
+                    lease.instruction_id,
+                    lease.project_id
+                ],
+            )?;
+            record_agent_instruction_event(
+                &tx,
+                lease.project_id.as_str(),
+                lease.instruction_id.as_str(),
+                "result",
+                Some(format!(
+                    "remote_status={}, attempts={}, http_status={}",
+                    remote_status,
+                    attempts,
+                    http_status
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| String::from("none"))
+                )),
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    pub(crate) fn complete_agent_instruction_retry_or_fail(
+        &self,
+        lease: &AgentInstructionWorkerLease,
+        attempts: i64,
+        max_attempts: i64,
+        retry_backoff_seconds: i64,
+        error: &str,
+    ) -> Result<(), ProjectsRepoError> {
+        let retryable = attempts < max_attempts;
+        let next_attempt_at = if retryable {
+            Some(
+                (Utc::now() + Duration::seconds(retry_backoff_seconds.max(1) * attempts))
+                    .format("%Y-%m-%dT%H:%M:%SZ")
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+        let status = if retryable { "confirmed" } else { "failed" };
+        let event_type = if retryable {
+            "retry_scheduled"
+        } else {
+            "error"
+        };
+        let now = now_iso();
+        let clean_error = error.trim();
+        let error_value = if clean_error.is_empty() {
+            String::from("dispatch_failed")
+        } else {
+            clean_error.to_string()
+        };
+        self.with_connection_mut(|conn| {
+            let tx = conn.transaction()?;
+            tx.execute(
+                "
+                UPDATE agent_instructions
+                SET status = ?1,
+                    attempts = ?2,
+                    max_attempts = ?3,
+                    next_attempt_at = ?4,
+                    last_error = ?5,
+                    locked_by = NULL,
+                    locked_at = NULL,
+                    updated_at = ?6
+                WHERE id = ?7 AND project_id = ?8
+                ",
+                params![
+                    status,
+                    attempts,
+                    max_attempts,
+                    next_attempt_at,
+                    error_value,
+                    now,
+                    lease.instruction_id,
+                    lease.project_id
+                ],
+            )?;
+            record_agent_instruction_event(
+                &tx,
+                lease.project_id.as_str(),
+                lease.instruction_id.as_str(),
+                event_type,
+                Some(format!(
+                    "error={}, attempts={}, max_attempts={}, next_attempt_at={}",
+                    error_value,
+                    attempts,
+                    max_attempts,
+                    next_attempt_at.unwrap_or_else(|| String::from("none"))
+                )),
+            )?;
+            tx.commit()?;
+            Ok(())
         })
     }
 }
@@ -559,6 +775,23 @@ pub(super) fn ensure_chat_and_instruction_columns(
     )?;
     ensure_column(conn, "agent_instructions", "confirmed_at", "TEXT")?;
     ensure_column(conn, "agent_instructions", "canceled_at", "TEXT")?;
+    ensure_column(
+        conn,
+        "agent_instructions",
+        "attempts",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "agent_instructions",
+        "max_attempts",
+        "INTEGER NOT NULL DEFAULT 3",
+    )?;
+    ensure_column(conn, "agent_instructions", "next_attempt_at", "TEXT")?;
+    ensure_column(conn, "agent_instructions", "last_error", "TEXT")?;
+    ensure_column(conn, "agent_instructions", "locked_by", "TEXT")?;
+    ensure_column(conn, "agent_instructions", "locked_at", "TEXT")?;
+    ensure_column(conn, "agent_instructions", "agent_response_json", "TEXT")?;
 
     ensure_column(
         conn,
@@ -666,6 +899,19 @@ fn row_to_agent_instruction_summary(
         canceled_at: row
             .get::<_, Option<String>>("canceled_at")?
             .unwrap_or_default(),
+    })
+}
+
+fn row_to_agent_instruction_worker_lease(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<AgentInstructionWorkerLease> {
+    Ok(AgentInstructionWorkerLease {
+        instruction_id: row.get("instruction_id")?,
+        project_id: row.get("project_id")?,
+        project_slug: row.get("project_slug")?,
+        instruction_text: row.get("instruction_text")?,
+        attempts: row.get::<_, Option<i64>>("attempts")?.unwrap_or(0),
+        max_attempts: row.get::<_, Option<i64>>("max_attempts")?.unwrap_or(3),
     })
 }
 

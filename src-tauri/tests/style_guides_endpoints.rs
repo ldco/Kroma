@@ -109,6 +109,8 @@ async fn style_guides_support_crud() {
     )
     .await;
     assert_eq!(missing["error"], json!("Style guide not found"));
+    assert_eq!(missing["error_kind"], json!("validation"));
+    assert_eq!(missing["error_code"], json!("not_found"));
 }
 
 #[tokio::test]
@@ -137,6 +139,8 @@ async fn style_guide_validation_is_enforced() {
     )
     .await;
     assert_eq!(missing_name["error"], json!("Field 'name' is required"));
+    assert_eq!(missing_name["error_kind"], json!("validation"));
+    assert_eq!(missing_name["error_code"], json!("validation_error"));
 
     let missing_instructions = send_json(
         app.clone(),
@@ -149,6 +153,11 @@ async fn style_guide_validation_is_enforced() {
     assert_eq!(
         missing_instructions["error"],
         json!("Field 'instructions' is required")
+    );
+    assert_eq!(missing_instructions["error_kind"], json!("validation"));
+    assert_eq!(
+        missing_instructions["error_code"],
+        json!("validation_error")
     );
 
     let _created = send_json(
@@ -172,6 +181,8 @@ async fn style_guide_validation_is_enforced() {
         duplicate_name["error"],
         json!("Style guide name already exists")
     );
+    assert_eq!(duplicate_name["error_kind"], json!("validation"));
+    assert_eq!(duplicate_name["error_code"], json!("validation_error"));
 
     let empty_update = send_json(
         app,
@@ -185,6 +196,8 @@ async fn style_guide_validation_is_enforced() {
         empty_update["error"],
         json!("Provide at least one of: name, instructions, notes")
     );
+    assert_eq!(empty_update["error_kind"], json!("validation"));
+    assert_eq!(empty_update["error_code"], json!("validation_error"));
 }
 
 async fn send_json(

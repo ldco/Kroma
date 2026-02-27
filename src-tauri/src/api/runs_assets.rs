@@ -2,9 +2,10 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::path::PathBuf;
 
+use crate::api::error::ErrorKind;
 use crate::api::server::AppState;
 use crate::pipeline::config_validation::{
     validate_pipeline_config_stack, PipelineConfigValidationError, PipelineConfigValidationRequest,
@@ -17,7 +18,7 @@ use crate::pipeline::trigger::{
     TriggerRunParams, TriggerStage, TriggerTime, TriggerWeather,
 };
 
-use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
+use super::handler_utils::{error_response, internal_error, into_json, map_repo_error, ApiObject};
 use crate::db::projects::{AssetSummary, RunJobSummary, RunSummary};
 
 const DEFAULT_RUNS_LIMIT: i64 = 200;
@@ -247,9 +248,11 @@ pub async fn trigger_run_handler(
     let mode = match parse_trigger_mode(payload.mode.as_deref()) {
         Ok(mode) => mode,
         Err(message) => {
-            return (
+            return error_response(
                 StatusCode::BAD_REQUEST,
-                into_json(json!({"ok": false, "error": message})),
+                ErrorKind::Validation,
+                "invalid_mode",
+                message,
             );
         }
     };
@@ -257,9 +260,11 @@ pub async fn trigger_run_handler(
     let mut params = match build_trigger_params(&payload) {
         Ok(params) => params,
         Err(message) => {
-            return (
+            return error_response(
                 StatusCode::BAD_REQUEST,
-                into_json(json!({"ok": false, "error": message})),
+                ErrorKind::Validation,
+                "invalid_request",
+                message,
             );
         }
     };
@@ -313,7 +318,7 @@ pub async fn trigger_run_handler(
                     status_code: output.status_code,
                     stdout: output.stdout,
                     stderr: output.stderr,
-                    adapter: "script_fallback",
+                    adapter: "rust_native",
                 },
             }),
         ),
@@ -344,12 +349,11 @@ pub async fn validate_pipeline_config_handler(
         }
     };
     if project_root_override.is_some() {
-        return (
+        return error_response(
             StatusCode::BAD_REQUEST,
-            into_json(json!({
-                "ok": false,
-                "error": "Field 'project_root' is managed by project storage and cannot be overridden"
-            })),
+            ErrorKind::Validation,
+            "project_root_managed",
+            "Field 'project_root' is managed by project storage and cannot be overridden",
         );
     }
     let resolved = storage.storage.local.project_root.trim();
@@ -541,41 +545,40 @@ fn trigger_mode_label(mode: TriggerMode) -> &'static str {
 
 fn map_pipeline_trigger_error(error: PipelineTriggerError) -> ApiObject<Value> {
     match error {
-        PipelineTriggerError::MissingSpendConfirmation => (
+        PipelineTriggerError::MissingSpendConfirmation => error_response(
             StatusCode::BAD_REQUEST,
-            into_json(json!({
-                "ok": false,
-                "error": "Run mode requires explicit spend confirmation"
-            })),
+            ErrorKind::Policy,
+            "spend_confirmation_required",
+            "Run mode requires explicit spend confirmation",
         ),
-        PipelineTriggerError::InvalidRequest(message) => (
+        PipelineTriggerError::InvalidRequest(message) => error_response(
             StatusCode::BAD_REQUEST,
-            into_json(json!({
-                "ok": false,
-                "error": message
-            })),
+            ErrorKind::Validation,
+            "invalid_request",
+            message,
         ),
-        PipelineTriggerError::Runtime(PipelineRuntimeError::InvalidProjectSlug) => (
+        PipelineTriggerError::Runtime(PipelineRuntimeError::InvalidProjectSlug) => error_response(
             StatusCode::BAD_REQUEST,
-            into_json(json!({
-                "ok": false,
-                "error": "Invalid project slug for pipeline run"
-            })),
+            ErrorKind::Validation,
+            "invalid_project_slug",
+            "Invalid project slug for pipeline run",
         ),
-        PipelineTriggerError::Runtime(PipelineRuntimeError::CommandFailed { stderr, .. }) => (
-            StatusCode::BAD_REQUEST,
-            into_json(json!({
-                "ok": false,
-                "error": summarize_pipeline_command_failure(stderr.as_str())
-            })),
-        ),
-        PipelineTriggerError::Runtime(PipelineRuntimeError::PlanningPreflight(message)) => (
-            StatusCode::BAD_REQUEST,
-            into_json(json!({
-                "ok": false,
-                "error": message
-            })),
-        ),
+        PipelineTriggerError::Runtime(PipelineRuntimeError::CommandFailed { stderr, .. }) => {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                ErrorKind::Provider,
+                "pipeline_command_failed",
+                summarize_pipeline_command_failure(stderr.as_str()),
+            )
+        }
+        PipelineTriggerError::Runtime(PipelineRuntimeError::PlanningPreflight(message)) => {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                ErrorKind::Validation,
+                "planning_preflight_failed",
+                message,
+            )
+        }
         PipelineTriggerError::Runtime(PipelineRuntimeError::Io(source)) => {
             internal_error(format!("pipeline command execution error: {source}"))
         }
@@ -586,12 +589,11 @@ fn map_pipeline_trigger_error(error: PipelineTriggerError) -> ApiObject<Value> {
 }
 
 fn map_pipeline_config_validation_error(error: PipelineConfigValidationError) -> ApiObject<Value> {
-    (
+    error_response(
         StatusCode::BAD_REQUEST,
-        into_json(json!({
-            "ok": false,
-            "error": error.to_string()
-        })),
+        ErrorKind::Validation,
+        "config_validation_failed",
+        error.to_string(),
     )
 }
 

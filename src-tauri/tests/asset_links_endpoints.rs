@@ -138,6 +138,8 @@ async fn asset_links_support_crud_and_filters() {
     .await;
     assert_eq!(missing_after_delete["ok"], json!(false));
     assert_eq!(missing_after_delete["error"], json!("Asset link not found"));
+    assert_eq!(missing_after_delete["error_kind"], json!("validation"));
+    assert_eq!(missing_after_delete["error_code"], json!("not_found"));
 }
 
 #[tokio::test]
@@ -183,6 +185,8 @@ async fn asset_link_validation_returns_bad_request() {
         same_parent_child["error"],
         json!("parent_asset_id and child_asset_id must differ")
     );
+    assert_eq!(same_parent_child["error_kind"], json!("validation"));
+    assert_eq!(same_parent_child["error_code"], json!("validation_error"));
 
     let invalid_link_type = send_json(
         app.clone(),
@@ -204,6 +208,8 @@ async fn asset_link_validation_returns_bad_request() {
         invalid_link_type["error"],
         json!("Field 'link_type' must be one of: derived_from, variant_of, mask_for, reference_of")
     );
+    assert_eq!(invalid_link_type["error_kind"], json!("validation"));
+    assert_eq!(invalid_link_type["error_code"], json!("validation_error"));
 
     let empty_update = send_json(
         app,
@@ -218,6 +224,8 @@ async fn asset_link_validation_returns_bad_request() {
         empty_update["error"],
         json!("Provide at least one of: parent_asset_id, child_asset_id, link_type")
     );
+    assert_eq!(empty_update["error_kind"], json!("validation"));
+    assert_eq!(empty_update["error_code"], json!("validation_error"));
 }
 
 fn seed_assets(db_path: &Path, project_id: &str) -> (String, String, String) {

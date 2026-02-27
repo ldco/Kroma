@@ -1,16 +1,27 @@
 # IAT Toolkit - Technical Specification (v1)
 
-Date: 2026-02-20  
+Date: 2026-02-27
 Status: Draft for implementation
 
 ## 1. Product Goal
 
-Build a production-grade toolkit for large visual projects (comics, visual stories, campaigns) where:
+Build a production-grade toolkit for comic/graphic-novel production where:
 
 1. style consistency is mandatory ("one hand");
 2. characters must remain visually stable across many images;
 3. background removal and post-processing are first-class features;
 4. both local models and paid API providers can be used in one pipeline.
+
+## 1.1 Product Philosophy (Project-First)
+
+1. `project` is the primary product unit:
+   - one project represents one story universe (style, characters, references, runs, assets, prompts, and history).
+2. One user/artist can operate multiple projects:
+   - each project must remain isolated to preserve style/character continuity and avoid cross-universe contamination.
+3. Quick utility usage is secondary:
+   - one-off operations (for example remove background or generate a single image without project context) are useful convenience tools, not the primary architecture driver.
+4. Future scope (after image pipeline maturity):
+   - continuity-preserving video generation built on the same project style/identity foundations.
 
 ## 2. What The Application Must Do
 
@@ -20,6 +31,7 @@ Build a production-grade toolkit for large visual projects (comics, visual stori
 2. Each user can own many projects.
 3. Each project has isolated data, runs, assets, storage policy, and exports.
 4. Project must be exportable as a standalone package (DB slice + files).
+5. Project is the canonical continuity boundary for comic/graphic-novel production (story world + heroes + style lock).
 
 ## 2.2 Creative Pipeline
 
@@ -28,6 +40,7 @@ Build a production-grade toolkit for large visual projects (comics, visual stori
 3. Background removal with fallback chain (`rembg`, optional paid APIs, optional refine pass).
 4. Optional post-processing: upscale, color correction, QA guard.
 5. Strict run logging for reproducibility.
+6. Pipeline must support high-volume chapter/page generation while preserving per-project identity continuity.
 
 ## 2.3 Style and Identity Consistency
 
@@ -48,14 +61,20 @@ Build a production-grade toolkit for large visual projects (comics, visual stori
 2. Persist cost and usage per provider/run/project.
 3. Persist failures and retries for provider calls.
 
-## 2.6 Conversational Copilot (Voice + Agent Instructions)
+## 2.6 Conversational Copilot (Text-First + Agent Instructions)
 
-1. Provide chat bot interface that accepts text and voice input.
-2. Convert voice to text (STT), generate assistant response, optionally synthesize voice output (TTS).
+1. Provide chatbot interface with text-first operation for project workflows.
+2. Voice is optional/deferred capability and not required for the current core product loop.
 3. Allow bot to create structured instructions for AI agent via internal API.
 4. Support instruction lifecycle: `draft -> queued -> running -> done|failed|canceled`.
 5. Persist all conversations, messages, instruction payloads, and execution logs.
 6. Enforce guardrails: project scope, allowed actions, confirmation for destructive actions.
+
+## 2.7 Secondary Utility Mode (Non-Project Quick Tools)
+
+1. Support direct utility operations (for example quick background removal or one-off generation) without forcing project setup.
+2. Keep this mode explicitly secondary in UX, planning, and architecture decisions.
+3. Ensure utility-mode outputs never weaken or bypass project-isolation guarantees for project-scoped data.
 
 ## 3. Non-Goals for Initial MVP
 
@@ -85,6 +104,14 @@ Frontend implementation can start only after all backend gates are complete:
 2. Stable command/API contracts for frontend integration.
 3. Stable DB schema + migration policy.
 4. Stable execution pipeline semantics and error model.
+
+## 4.3 Journey-Driven Scope Gate
+
+Implementation scope is controlled by `docs/USER_FLOW_JOURNEY_MAP.md`.
+
+1. Every feature must map to a journey step ID (`Jxx`, `Uxx`, `Rxx`).
+2. Features without journey mapping are out of scope until the journey map is updated.
+3. Frontend slices must be built in primary journey order (`J00 -> J08`) after backend contract freeze.
 
 ## 5. Database Design (Target)
 
@@ -512,7 +539,7 @@ Columns:
 10. `chat_messages(session_id, created_at ASC)`
 11. `agent_instructions(project_id, status, priority, created_at DESC)`
 12. `agent_instruction_events(instruction_id, created_at ASC)`
-13. `voice_requests(project_id, status, created_at DESC)`
+13. `voice_requests(project_id, status, created_at DESC)` (optional/deferred)
 
 ## 7. Data Isolation Rules
 
@@ -541,7 +568,7 @@ Required API groups:
 7. export and snapshot
 8. chatbot sessions/messages
 9. agent instructions and execution events
-10. voice STT/TTS endpoints
+10. optional/deferred voice STT/TTS endpoints
 
 ## 9.1 Required Chatbot/Agent Endpoints (MVP)
 
@@ -562,7 +589,7 @@ Required API groups:
 5. `POST /api/projects/:slug/agent/instructions/:instructionId/cancel`
 6. `GET /api/projects/:slug/agent/instructions/:instructionId/events`
 
-### Voice
+### Optional Voice (Deferred)
 
 1. `POST /api/projects/:slug/voice/stt`
 2. `POST /api/projects/:slug/voice/tts`
@@ -608,3 +635,9 @@ Phase 2:
 2. add human review workflow for candidate ranking;
 3. add advanced scoring models and richer consistency metrics;
 4. add voice STT/TTS pipeline for chatbot (streaming + low-latency mode).
+
+Phase 3 (future):
+
+1. extend project continuity model from images to video shot sequences;
+2. preserve style and character identity across clips/scenes;
+3. keep the same project-scoped reproducibility and audit guarantees for video renders.

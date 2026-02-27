@@ -65,6 +65,12 @@ paths:
       responses:
         "200":
           description: Project created
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}:
     get:
       summary: Get project summary
@@ -75,6 +81,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/bootstrap-prompt:
     get:
       summary: Export project bootstrap prompt for AI configuration
@@ -130,10 +142,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok: { type: boolean }
-                  error: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/bootstrap-import:
     post:
       summary: Import AI-generated bootstrap settings into a project
@@ -282,19 +291,13 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok: { type: boolean }
-                  error: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Project not found
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  ok: { type: boolean }
-                  error: { type: string }
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/storage:
     get:
       summary: Get project storage config
@@ -305,6 +308,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/storage/local:
     put:
       summary: Update local storage settings
@@ -315,6 +324,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/storage/s3:
     put:
       summary: Update S3 storage settings
@@ -325,6 +346,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/runs:
     get:
       summary: List runs for a project
@@ -419,7 +452,7 @@ paths:
                       adapter:
                         type: string
                         description: Current execution backend implementation label.
-                        example: script_fallback
+                        example: rust_native
         "400":
           description: Invalid payload or trigger request
           content:
@@ -563,6 +596,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create asset link
       parameters:
@@ -583,8 +622,18 @@ paths:
                 link_type: { type: string, enum: [derived_from, variant_of, mask_for, reference_of] }
       responses:
         "200": { description: OK }
-        "400": { description: Invalid payload }
-        "404": { description: Project not found }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/asset-links/{linkId}:
     get:
       summary: Get asset link detail
@@ -599,7 +648,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Asset link not found }
+        "404":
+          description: Asset link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       summary: Update asset link
       parameters:
@@ -623,8 +677,18 @@ paths:
                 link_type: { type: string, enum: [derived_from, variant_of, mask_for, reference_of] }
       responses:
         "200": { description: OK }
-        "400": { description: Invalid payload }
-        "404": { description: Asset link not found }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Asset link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete asset link
       parameters:
@@ -638,7 +702,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Asset link not found }
+        "404":
+          description: Asset link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/quality-reports:
     get:
       summary: List quality reports for a project
@@ -706,6 +775,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create prompt template
       parameters:
@@ -725,7 +800,18 @@ paths:
                 template_text: { type: string }
       responses:
         "200": { description: OK }
-        "400": { description: Invalid payload }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/prompt-templates/{templateId}:
     get:
       summary: Get prompt template detail
@@ -740,7 +826,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Prompt template not found }
+        "404":
+          description: Prompt template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       summary: Update prompt template
       parameters:
@@ -763,8 +854,18 @@ paths:
                 template_text: { type: string }
       responses:
         "200": { description: OK }
-        "400": { description: Invalid payload }
-        "404": { description: Prompt template not found }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Prompt template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete prompt template
       parameters:
@@ -778,7 +879,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Prompt template not found }
+        "404":
+          description: Prompt template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/provider-accounts:
     get:
       summary: List provider accounts for a project
@@ -789,6 +895,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create or upsert provider account
       parameters:
@@ -798,7 +910,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "400": { description: Invalid payload }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/provider-accounts/{providerCode}:
     get:
       summary: Get provider account detail
@@ -813,7 +936,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Provider account not found }
+        "404":
+          description: Provider account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       summary: Update provider account
       parameters:
@@ -827,8 +955,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "400": { description: Invalid payload }
-        "404": { description: Provider account not found }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Provider account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete provider account
       parameters:
@@ -842,6 +980,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Provider account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/style-guides:
     get:
       summary: List style guides for a project
@@ -852,6 +996,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create style guide
       parameters:
@@ -861,6 +1011,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/style-guides/{styleGuideId}:
     get:
       summary: Get style guide detail
@@ -875,7 +1037,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Style guide not found }
+        "404":
+          description: Style guide not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       summary: Update style guide
       parameters:
@@ -889,7 +1056,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Style guide not found }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Style guide not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete style guide
       parameters:
@@ -903,6 +1081,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Style guide not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/characters:
     get:
       summary: List characters for a project
@@ -913,6 +1097,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create character
       parameters:
@@ -922,6 +1112,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/characters/{characterId}:
     get:
       summary: Get character detail
@@ -936,7 +1138,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Character not found }
+        "404":
+          description: Character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       summary: Update character
       parameters:
@@ -950,7 +1157,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Character not found }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete character
       parameters:
@@ -964,6 +1182,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/reference-sets:
     get:
       summary: List reference sets for a project
@@ -974,6 +1198,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create reference set
       parameters:
@@ -983,6 +1213,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/reference-sets/{referenceSetId}:
     get:
       summary: Get reference set detail
@@ -997,7 +1239,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Reference set not found }
+        "404":
+          description: Reference set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       summary: Update reference set
       parameters:
@@ -1011,6 +1258,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reference set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete reference set
       parameters:
@@ -1024,6 +1283,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Reference set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/reference-sets/{referenceSetId}/items:
     get:
       summary: List reference items in a reference set
@@ -1120,6 +1385,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create chat session
       parameters:
@@ -1139,6 +1410,12 @@ paths:
                 context_json: { type: object }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/chat/sessions/{sessionId}:
     get:
       summary: Get chat session detail
@@ -1153,7 +1430,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
-        "404": { description: Chat session not found }
+        "404":
+          description: Chat session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/chat/sessions/{sessionId}/messages:
     get:
       summary: List messages in chat session
@@ -1168,6 +1450,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Chat session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create chat message
       parameters:
@@ -1194,6 +1482,18 @@ paths:
                 content_json: { type: object }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Chat session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/agent/instructions:
     get:
       summary: List project instructions
@@ -1204,6 +1504,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create instruction
       parameters:
@@ -1224,6 +1530,18 @@ paths:
                 requires_confirmation: { type: boolean }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/agent/instructions/{instructionId}:
     get:
       summary: Get instruction
@@ -1238,6 +1556,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Agent instruction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/agent/instructions/{instructionId}/events:
     get:
       summary: Get instruction events
@@ -1252,6 +1576,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Agent instruction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/agent/instructions/{instructionId}/confirm:
     post:
       summary: Confirm instruction
@@ -1266,6 +1596,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent instruction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/agent/instructions/{instructionId}/cancel:
     post:
       summary: Cancel instruction
@@ -1280,6 +1622,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent instruction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/secrets:
     get:
       summary: List project secrets (masked)
@@ -1290,6 +1644,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Set project secret
       parameters:
@@ -1299,6 +1659,18 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "400":
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/secrets/rotation-status:
     get:
       summary: Get project secrets encryption status
@@ -1309,6 +1681,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/secrets/rotate:
     post:
       summary: Rotate project secret encryption key
@@ -1319,6 +1697,12 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/projects/{slug}/secrets/{providerCode}/{secretName}:
     delete:
       summary: Delete project secret
@@ -1337,9 +1721,32 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+        "404":
+          description: Secret not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: opaque
+  schemas:
+    ErrorKind:
+      type: string
+      enum: [validation, provider, infra, policy, unknown]
+    ErrorResponse:
+      type: object
+      required: [ok, error, error_kind, error_code]
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          type: string
+        error_kind:
+          $ref: "#/components/schemas/ErrorKind"
+        error_code:
+          type: string

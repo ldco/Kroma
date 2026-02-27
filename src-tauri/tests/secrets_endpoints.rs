@@ -263,6 +263,8 @@ async fn secrets_validation_and_not_found_paths_are_enforced() {
         missing_provider["error"],
         json!("Field 'provider_code' is required")
     );
+    assert_eq!(missing_provider["error_kind"], json!("validation"));
+    assert_eq!(missing_provider["error_code"], json!("validation_error"));
 
     let missing_name = send_json(
         app.clone(),
@@ -282,6 +284,8 @@ async fn secrets_validation_and_not_found_paths_are_enforced() {
         missing_name["error"],
         json!("Field 'secret_name' is required")
     );
+    assert_eq!(missing_name["error_kind"], json!("validation"));
+    assert_eq!(missing_name["error_code"], json!("validation_error"));
 
     let missing_value = send_json(
         app.clone(),
@@ -301,6 +305,8 @@ async fn secrets_validation_and_not_found_paths_are_enforced() {
         missing_value["error"],
         json!("Field 'secret_value' is required")
     );
+    assert_eq!(missing_value["error_kind"], json!("validation"));
+    assert_eq!(missing_value["error_code"], json!("validation_error"));
 
     let missing_secret = send_json(
         app.clone(),
@@ -311,6 +317,8 @@ async fn secrets_validation_and_not_found_paths_are_enforced() {
     )
     .await;
     assert_eq!(missing_secret["error"], json!("Secret not found"));
+    assert_eq!(missing_secret["error_kind"], json!("validation"));
+    assert_eq!(missing_secret["error_code"], json!("not_found"));
 
     let missing_project = send_json(
         app,
@@ -321,6 +329,8 @@ async fn secrets_validation_and_not_found_paths_are_enforced() {
     )
     .await;
     assert_eq!(missing_project["error"], json!("Project not found"));
+    assert_eq!(missing_project["error_kind"], json!("validation"));
+    assert_eq!(missing_project["error_code"], json!("not_found"));
 }
 
 async fn send_json(

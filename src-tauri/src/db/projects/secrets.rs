@@ -72,6 +72,50 @@ pub struct RotateSecretsResult {
 }
 
 impl ProjectsStore {
+    pub(crate) fn get_project_secret_value(
+        &self,
+        slug: &str,
+        provider_code: &str,
+        secret_name: &str,
+    ) -> Result<Option<String>, ProjectsRepoError> {
+        let provider_code = normalize_provider_code(provider_code)?;
+        let secret_name = normalize_required_text(secret_name, "secret_name")?;
+        self.with_connection(|conn| {
+            let safe_slug = normalize_slug(slug).ok_or(ProjectsRepoError::NotFound)?;
+            let project = fetch_project_by_slug(conn, safe_slug.as_str())?
+                .ok_or(ProjectsRepoError::NotFound)?;
+            let stored = conn
+                .query_row(
+                    "
+                    SELECT secret_value
+                    FROM project_secrets
+                    WHERE project_id = ?1 AND provider_code = ?2 AND secret_name = ?3
+                    LIMIT 1
+                    ",
+                    params![project.id, provider_code, secret_name],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            let Some(stored) = stored else {
+                return Ok(None);
+            };
+            let trimmed = stored.trim();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            if trimmed.starts_with(SECRET_CIPHERTEXT_PREFIX) {
+                let current = load_or_create_master_key_bytes(self.repo_root.as_path(), false)?;
+                let mut key_candidates = vec![current];
+                key_candidates.extend(parse_previous_master_keys()?);
+                let decrypted =
+                    decrypt_secret_value_with_candidates(trimmed, key_candidates.as_slice())?;
+                Ok(Some(decrypted))
+            } else {
+                Ok(Some(trimmed.to_string()))
+            }
+        })
+    }
+
     pub fn list_project_secrets(
         &self,
         slug: &str,
@@ -917,5 +961,38 @@ mod tests {
         assert_eq!(status.plaintext, 1);
         assert_eq!(status.empty, 1);
         assert_eq!(status.key_refs.len(), 2);
+    }
+
+    #[test]
+    fn get_project_secret_value_returns_decrypted_payload() {
+        let root =
+            std::env::temp_dir().join(format!("kroma_secrets_get_value_{}", uuid::Uuid::new_v4()));
+        let db = root.join("var/backend/app.db");
+        let store = ProjectsStore::new(db, root);
+        store.initialize().expect("store should initialize");
+        let created = store
+            .upsert_project(UpsertProjectInput {
+                name: String::from("Secrets Read"),
+                ..UpsertProjectInput::default()
+            })
+            .expect("project upsert should succeed");
+        let slug = created.project.slug;
+
+        store
+            .upsert_project_secret(
+                slug.as_str(),
+                UpsertSecretInput {
+                    provider_code: String::from("agent_api"),
+                    secret_name: String::from("url"),
+                    secret_value: String::from("http://127.0.0.1:9/dispatch"),
+                },
+            )
+            .expect("secret upsert should succeed");
+
+        let value = store
+            .get_project_secret_value(slug.as_str(), "agent_api", "url")
+            .expect("secret value should load")
+            .expect("secret value should exist");
+        assert_eq!(value, "http://127.0.0.1:9/dispatch");
     }
 }

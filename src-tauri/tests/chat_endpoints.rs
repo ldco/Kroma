@@ -144,6 +144,8 @@ async fn chat_validation_and_not_found_paths_are_enforced() {
     )
     .await;
     assert_eq!(missing_role["error"], json!("Field 'role' is required"));
+    assert_eq!(missing_role["error_kind"], json!("validation"));
+    assert_eq!(missing_role["error_code"], json!("validation_error"));
 
     let missing_content = send_json(
         app.clone(),
@@ -157,6 +159,8 @@ async fn chat_validation_and_not_found_paths_are_enforced() {
         missing_content["error"],
         json!("Field 'content' is required")
     );
+    assert_eq!(missing_content["error_kind"], json!("validation"));
+    assert_eq!(missing_content["error_code"], json!("validation_error"));
 
     let missing_session = send_json(
         app,
@@ -167,6 +171,8 @@ async fn chat_validation_and_not_found_paths_are_enforced() {
     )
     .await;
     assert_eq!(missing_session["error"], json!("Chat session not found"));
+    assert_eq!(missing_session["error_kind"], json!("validation"));
+    assert_eq!(missing_session["error_code"], json!("not_found"));
 }
 
 async fn send_json(

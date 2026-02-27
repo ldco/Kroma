@@ -4,25 +4,17 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-use crate::db::projects::ProjectsStore;
-use crate::pipeline::backend_ops::{
-    default_backend_ops_with_native_ingest, default_script_backend_ops, SharedPipelineBackendOps,
+#[cfg(test)]
+use crate::pipeline::runlog_parse::parse_script_run_summary_from_stdout;
+pub use crate::pipeline::runtime_orchestrators::{
+    RustDryRunPipelineOrchestrator, RustPostRunPipelineOrchestrator,
+    RustRunModePipelineOrchestrator,
 };
-use crate::pipeline::dry_run_execution::execute_rust_dry_run_with_preflight;
-use crate::pipeline::planning_preflight::build_rust_planning_preflight_summary;
-use crate::pipeline::post_run::{
-    PipelinePostRunService, PostRunFinalizeParams, PostRunIngestParams, PostRunSyncS3Params,
+pub use crate::pipeline::runtime_stack::{
+    default_pipeline_orchestrator_with_native_post_run,
+    default_pipeline_orchestrator_with_rust_post_run,
+    default_pipeline_orchestrator_with_rust_post_run_backend_ops,
 };
-use crate::pipeline::request_settings::effective_pipeline_request_with_layered_settings;
-use crate::pipeline::run_mode_execution::execute_rust_run_mode_with_tool_adapters;
-use crate::pipeline::runlog_enrich::{
-    build_planned_template_from_request, RunLogPlannedTemplateRequestInput,
-};
-use crate::pipeline::runlog_parse::{append_stderr_line, parse_script_run_summary_from_stdout};
-use crate::pipeline::runlog_patch::{
-    normalize_script_run_log_job_finalizations_file, patch_script_run_log_planned_metadata_file,
-};
-use crate::pipeline::tool_adapters::{default_native_tool_adapters, SharedPipelineToolAdapterOps};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineRunMode {
@@ -199,308 +191,9 @@ pub trait PipelineOrchestrator: Send + Sync + 'static {
 
 pub type SharedPipelineOrchestrator = Arc<dyn PipelineOrchestrator>;
 
-#[derive(Debug, Default, Clone)]
-struct RustOnlyUnsupportedPipelineOrchestrator;
-
-impl PipelineOrchestrator for RustOnlyUnsupportedPipelineOrchestrator {
-    fn execute(
-        &self,
-        request: &PipelineRunRequest,
-    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        Err(PipelineRuntimeError::PlanningPreflight(format!(
-            "Rust-only pipeline runtime does not support this {} request shape yet. Provide preflight-supported inputs (manifest, jobs-file, scene_refs, or input path).",
-            request.mode.as_str()
-        )))
-    }
-}
-
 #[cfg(test)]
 fn list_image_files_recursive(input_abs: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
     crate::pipeline::pathing::list_image_files_recursive(input_abs)
-}
-
-#[derive(Clone)]
-pub struct RustPostRunPipelineOrchestrator {
-    inner: SharedPipelineOrchestrator,
-    post_run: PipelinePostRunService,
-    app_root: PathBuf,
-}
-
-impl RustPostRunPipelineOrchestrator {
-    pub fn new(inner: SharedPipelineOrchestrator, post_run: PipelinePostRunService) -> Self {
-        Self {
-            inner,
-            post_run,
-            app_root: default_app_root_from_manifest_dir(),
-        }
-    }
-
-    pub fn with_app_root(mut self, app_root: PathBuf) -> Self {
-        self.app_root = app_root;
-        self
-    }
-
-    fn build_script_request(&self, request: &PipelineRunRequest) -> PipelineRunRequest {
-        let mut script_request = request.clone();
-        // Rust owns backend ingest for the typed HTTP trigger path; prevent duplicate script ingest.
-        script_request.options.backend_db_ingest = Some(false);
-        // Keep S3 sync disabled until the Rust path owns sync policy/options end-to-end.
-        script_request.options.storage_sync_s3 = Some(false);
-        script_request
-    }
-
-    fn build_post_run_sync_s3_params(request: &PipelineRunRequest) -> Option<PostRunSyncS3Params> {
-        if !matches!(request.mode, PipelineRunMode::Run) {
-            return None;
-        }
-        if !request.options.storage_sync_s3.unwrap_or(false) {
-            return None;
-        }
-        Some(PostRunSyncS3Params {
-            project_slug: request.project_slug.clone(),
-            dry_run: false,
-            delete: false,
-            allow_missing_local: false,
-        })
-    }
-
-    fn run_post_run_finalize_best_effort(
-        &self,
-        request: &PipelineRunRequest,
-        stdout: &str,
-        stderr: &mut String,
-    ) {
-        let Some(summary) = parse_script_run_summary_from_stdout(stdout) else {
-            append_stderr_line(
-                stderr,
-                "Rust post-run finalize skipped: missing summary marker or 'Run log:' line in pipeline stdout",
-            );
-            return;
-        };
-        if let Some(project_slug) = summary.project_slug.as_deref() {
-            if project_slug != request.project_slug {
-                append_stderr_line(
-                    stderr,
-                    format!(
-                        "Rust post-run ingest warning: script stdout project '{}' does not match request '{}'",
-                        project_slug, request.project_slug
-                    ),
-                );
-            }
-        }
-        self.normalize_script_run_log_best_effort(summary.run_log_path.as_path(), stderr);
-        self.enrich_script_run_log_planned_metadata_best_effort(
-            request,
-            summary.run_log_path.as_path(),
-            stderr,
-        );
-
-        let finalize = self.post_run.finalize_run(PostRunFinalizeParams {
-            ingest: PostRunIngestParams {
-                run_log_path: summary.run_log_path,
-                project_slug: request.project_slug.clone(),
-                project_name: request.project_slug.clone(),
-                create_project_if_missing: true,
-                compute_hashes: false,
-            },
-            sync_s3: Self::build_post_run_sync_s3_params(request),
-        });
-
-        if let Err(error) = finalize {
-            append_stderr_line(stderr, format!("Rust post-run finalize skipped: {error}"));
-        }
-    }
-
-    fn normalize_script_run_log_best_effort(&self, run_log_path: &Path, stderr: &mut String) {
-        if let Err(error) =
-            normalize_script_run_log_job_finalizations_file(self.app_root.as_path(), run_log_path)
-        {
-            append_stderr_line(
-                stderr,
-                format!("Rust run-log normalization skipped: {error}"),
-            );
-        }
-    }
-
-    fn enrich_script_run_log_planned_metadata_best_effort(
-        &self,
-        request: &PipelineRunRequest,
-        run_log_path: &Path,
-        stderr: &mut String,
-    ) {
-        if let Err(error) = enrich_script_run_log_planned_metadata_file(
-            self.app_root.as_path(),
-            request,
-            run_log_path,
-        ) {
-            append_stderr_line(
-                stderr,
-                format!("Rust planned-metadata run-log patch skipped: {error}"),
-            );
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct RustDryRunPipelineOrchestrator {
-    inner: SharedPipelineOrchestrator,
-    app_root: PathBuf,
-}
-
-impl RustDryRunPipelineOrchestrator {
-    pub fn new(inner: SharedPipelineOrchestrator, app_root: PathBuf) -> Self {
-        Self { inner, app_root }
-    }
-}
-
-#[derive(Clone)]
-pub struct RustRunModePipelineOrchestrator {
-    inner: SharedPipelineOrchestrator,
-    tools: SharedPipelineToolAdapterOps,
-    app_root: PathBuf,
-}
-
-impl RustRunModePipelineOrchestrator {
-    pub fn new(
-        inner: SharedPipelineOrchestrator,
-        tools: SharedPipelineToolAdapterOps,
-        app_root: PathBuf,
-    ) -> Self {
-        Self {
-            inner,
-            tools,
-            app_root,
-        }
-    }
-}
-
-impl PipelineOrchestrator for RustPostRunPipelineOrchestrator {
-    fn execute(
-        &self,
-        request: &PipelineRunRequest,
-    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        match self.inner.execute(&self.build_script_request(request)) {
-            Ok(mut result) => {
-                self.run_post_run_finalize_best_effort(
-                    request,
-                    result.stdout.as_str(),
-                    &mut result.stderr,
-                );
-                Ok(result)
-            }
-            Err(PipelineRuntimeError::CommandFailed {
-                program,
-                status_code,
-                stdout,
-                mut stderr,
-            }) => {
-                self.run_post_run_finalize_best_effort(request, stdout.as_str(), &mut stderr);
-                Err(PipelineRuntimeError::CommandFailed {
-                    program,
-                    status_code,
-                    stdout,
-                    stderr,
-                })
-            }
-            Err(other) => Err(other),
-        }
-    }
-}
-
-impl PipelineOrchestrator for RustDryRunPipelineOrchestrator {
-    fn execute(
-        &self,
-        request: &PipelineRunRequest,
-    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        if !matches!(request.mode, PipelineRunMode::Dry) {
-            return self.inner.execute(request);
-        }
-        validate_project_slug(request.project_slug.as_str())?;
-        let request =
-            effective_pipeline_request_with_layered_settings(self.app_root.as_path(), request)?;
-        let Some(planned) =
-            build_rust_planning_preflight_summary(self.app_root.as_path(), &request)?
-        else {
-            return self.inner.execute(&request);
-        };
-        execute_rust_dry_run_with_preflight(self.app_root.as_path(), &request, &planned)
-    }
-}
-
-impl PipelineOrchestrator for RustRunModePipelineOrchestrator {
-    fn execute(
-        &self,
-        request: &PipelineRunRequest,
-    ) -> Result<PipelineRunResult, PipelineRuntimeError> {
-        if !matches!(request.mode, PipelineRunMode::Run) {
-            return self.inner.execute(request);
-        }
-        validate_project_slug(request.project_slug.as_str())?;
-        let request =
-            effective_pipeline_request_with_layered_settings(self.app_root.as_path(), request)?;
-        let Some(planned) =
-            build_rust_planning_preflight_summary(self.app_root.as_path(), &request)?
-        else {
-            return self.inner.execute(&request);
-        };
-        if !request.confirm_spend {
-            return Err(PipelineRuntimeError::PlanningPreflight(String::from(
-                "Spending is locked. Add --confirm-spend for paid calls.",
-            )));
-        }
-
-        execute_rust_run_mode_with_tool_adapters(
-            self.app_root.as_path(),
-            self.tools.as_ref(),
-            &request,
-            &planned,
-        )
-    }
-}
-
-fn enrich_script_run_log_planned_metadata_file(
-    app_root: &Path,
-    request: &PipelineRunRequest,
-    run_log_path: &Path,
-) -> Result<(), String> {
-    let effective = effective_pipeline_request_with_layered_settings(app_root, request)
-        .map_err(|e| format!("resolve layered settings: {e}"))?;
-    let Some(planned) = build_rust_planning_preflight_summary(app_root, &effective)
-        .map_err(|e| format!("build planning preflight summary: {e}"))?
-    else {
-        return Ok(());
-    };
-    if planned.jobs.is_empty() {
-        return Ok(());
-    }
-
-    let stage = effective
-        .options
-        .stage
-        .unwrap_or(PipelineStageFilter::Style);
-    let time = effective.options.time.unwrap_or(PipelineTimeFilter::Day);
-    let weather = effective
-        .options
-        .weather
-        .unwrap_or(PipelineWeatherFilter::Clear);
-    let planned_template = build_planned_template_from_request(
-        app_root,
-        RunLogPlannedTemplateRequestInput {
-            project_slug: effective.project_slug.clone(),
-            project_root_override: effective.options.project_root.clone(),
-            stage: stage.as_str().to_string(),
-            time: time.as_str().to_string(),
-            weather: weather.as_str().to_string(),
-            requested_candidate_count: effective.options.candidates.map(u64::from),
-            manifest_candidate_count: planned.manifest_candidate_count,
-            manifest_max_candidates: planned.manifest_max_candidates,
-            planned_postprocess: planned.planned_postprocess.clone(),
-            manifest_output_guard: planned.manifest_output_guard.clone(),
-            jobs: planned.jobs.clone(),
-        },
-    );
-
-    patch_script_run_log_planned_metadata_file(app_root, run_log_path, &planned_template)
 }
 
 #[derive(Debug, Error)]
@@ -522,7 +215,7 @@ pub enum PipelineRuntimeError {
     PlannedJobsTempFile(String),
 }
 
-fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
+pub(crate) fn validate_project_slug(value: &str) -> Result<(), PipelineRuntimeError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(PipelineRuntimeError::InvalidProjectSlug);
@@ -544,39 +237,6 @@ pub fn default_app_root_from_manifest_dir() -> PathBuf {
         .to_path_buf()
 }
 
-pub fn default_pipeline_orchestrator_with_rust_post_run() -> RustPostRunPipelineOrchestrator {
-    let backend_ops: SharedPipelineBackendOps = Arc::new(default_script_backend_ops());
-    default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops)
-}
-
-pub fn default_pipeline_orchestrator_with_native_post_run(
-    projects_store: Arc<ProjectsStore>,
-) -> RustPostRunPipelineOrchestrator {
-    let backend_ops: SharedPipelineBackendOps =
-        Arc::new(default_backend_ops_with_native_ingest(projects_store));
-    default_pipeline_orchestrator_with_rust_post_run_backend_ops(backend_ops)
-}
-
-pub fn default_pipeline_orchestrator_with_rust_post_run_backend_ops(
-    backend_ops: SharedPipelineBackendOps,
-) -> RustPostRunPipelineOrchestrator {
-    let app_root = default_app_root_from_manifest_dir();
-    let rust_only_inner: SharedPipelineOrchestrator =
-        Arc::new(RustOnlyUnsupportedPipelineOrchestrator);
-    let dry_inner: SharedPipelineOrchestrator = Arc::new(RustDryRunPipelineOrchestrator::new(
-        rust_only_inner,
-        app_root.clone(),
-    ));
-    let tool_adapters: SharedPipelineToolAdapterOps = Arc::new(default_native_tool_adapters());
-    let inner: SharedPipelineOrchestrator = Arc::new(RustRunModePipelineOrchestrator::new(
-        dry_inner,
-        tool_adapters,
-        app_root.clone(),
-    ));
-    let post_run = PipelinePostRunService::new(backend_ops);
-    RustPostRunPipelineOrchestrator::new(inner, post_run)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -585,9 +245,11 @@ mod tests {
         BackendCommandResult, BackendIngestRunRequest, BackendOpsError,
         BackendSyncProjectS3Request, PipelineBackendOps,
     };
+    use crate::pipeline::post_run::PipelinePostRunService;
     use crate::pipeline::tool_adapters::{
         ArchiveBadRequest, BackgroundRemovePassRequest, ColorPassRequest, GenerateOneImageRequest,
-        PipelineToolAdapterOps, QaCheckRequest, ToolAdapterError, UpscalePassRequest,
+        PipelineToolAdapterOps, QaCheckRequest, SharedPipelineToolAdapterOps, ToolAdapterError,
+        UpscalePassRequest,
     };
     use serde_json::json;
     use std::fs;
@@ -902,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_post_run_wrapper_disables_script_ingest_and_runs_backend_ingest() {
+    fn rust_post_run_wrapper_preserves_request_options_and_runs_backend_ingest() {
         let inner = Arc::new(FakeInnerOrchestrator::with_success_stdout(
             "Run log: var/projects/demo/runs/run_1.json\nProject: demo",
         ));
@@ -932,8 +594,8 @@ mod tests {
             .first()
             .cloned()
             .expect("inner request should be recorded");
-        assert_eq!(seen_request.options.backend_db_ingest, Some(false));
-        assert_eq!(seen_request.options.storage_sync_s3, Some(false));
+        assert_eq!(seen_request.options.backend_db_ingest, None);
+        assert_eq!(seen_request.options.storage_sync_s3, None);
 
         let seen_ingest = backend_ops
             .seen_ingest
@@ -1018,8 +680,8 @@ mod tests {
             .first()
             .cloned()
             .expect("inner request should be recorded");
-        assert_eq!(seen_request.options.backend_db_ingest, Some(false));
-        assert_eq!(seen_request.options.storage_sync_s3, Some(false));
+        assert_eq!(seen_request.options.backend_db_ingest, None);
+        assert_eq!(seen_request.options.storage_sync_s3, Some(true));
 
         assert_eq!(
             backend_ops

@@ -1,6 +1,6 @@
 # Migration Status (Rust vs Scripts)
 
-Last updated: 2026-02-22
+Last updated: 2026-02-27
 Status: Active migration (partial)
 
 ## Summary
@@ -9,7 +9,7 @@ Kroma is in a partial migration state:
 
 1. Rust (`src-tauri`) is now the primary backend for metadata/API.
 2. `scripts/` is still required for pipeline execution and local tool orchestration.
-3. Some Python backend/worker paths remain for compatibility and operational continuity.
+3. Some Python fallback paths remain for compatibility while Rust migration closes remaining gaps.
 
 ## What Is Already in Rust (Primary)
 
@@ -52,8 +52,6 @@ These are still in repo and usable, but no longer the recommended primary path:
 | Subsystem | Current Runtime | Status | Migration Intent |
 | --- | --- | --- | --- |
 | `scripts/backend.py` | Python | `Legacy-Compatible` | Keep temporarily while Rust parity gaps close |
-| `scripts/backend_api.py` | Python stdlib HTTP | `Legacy-Compatible` | Rust API is primary |
-| `scripts/agent_worker.py` + `agent_dispatch.py` | Python | `Transitional` | Candidate for future Rust service/module |
 
 ## Not Yet Migrated to Rust (Key Gaps)
 
@@ -61,7 +59,7 @@ These are still in repo and usable, but no longer the recommended primary path:
 | --- | --- | --- |
 | Pipeline execution mutation parity | `Planned` | Rust API does not yet replace full script-run execution flow |
 | Export mutation parity (`create export`, `sync-s3`) | `Planned / Partial` | Rust has export read APIs; write/sync parity still pending |
-| Agent worker runtime | `Planned` | Python worker still executes queue processing |
+| Agent worker runtime | `Primary (Rust)` | Rust `agent-worker` loop now processes confirmed instructions with retry/backoff and secret fallback target resolution |
 | Auth/token system | `Planned` | No `/auth/*` endpoints yet |
 | `audit_events` schema + API | `Planned` | Table still missing |
 

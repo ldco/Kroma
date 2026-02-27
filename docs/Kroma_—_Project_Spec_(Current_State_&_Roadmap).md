@@ -1,15 +1,36 @@
 # Kroma — Project Spec (Current State & Roadmap)
 
-**Last updated:** 2026-02-22  
+**Last updated:** 2026-02-27
 **Status:** Active development — Rust backend is primary; full Rust app consolidation is in progress (`scripts/` are transitional, not the end state)
 
 ---
 
 ## 1. What Is Kroma?
 
-Kroma (package: `image-api-tool`) is a **self-hosted AI image production pipeline** for large visual projects — comics, visual stories, illustration campaigns, character-consistent series.
+Kroma (package: `image-api-tool`) is a **project-first AI image production system** for comics/graphic novels and other long-form visual universes where style and faces must stay stable across many outputs.
 
 It is **not** a GUI app today. It is a **backend-first, CLI-driven system** that orchestrates AI image generation, quality control, and post-processing in a reproducible, cost-safe, project-isolated way.
+
+### Product Philosophy (Aligned)
+
+1. Main goal:
+   - create comic/graphic-novel universes with persistent style and character identity.
+2. Main unit:
+   - `project` is the core unit (one universe/story world with heroes, references, runs, assets, and settings).
+   - one user/artist can own multiple projects.
+3. Secondary convenience mode:
+   - quick utility actions (for example remove background or one-off generation without project setup) are intentionally supported, but they are not the product driver.
+4. Future expansion (after image pipeline maturity):
+   - continuity-preserving video generation using the same project style/identity foundations.
+
+### Journey Planning Contract
+
+User journey is explicitly planned and tracked in `docs/USER_FLOW_JOURNEY_MAP.md`.
+
+1. `J00-J08` define the primary project-first comic flow.
+2. `U01` defines secondary quick utility mode.
+3. `Rxx` steps define failure/recovery behavior.
+4. New features must map to journey steps before implementation.
 
 ### Core Value Propositions
 
@@ -21,6 +42,7 @@ It is **not** a GUI app today. It is a **backend-first, CLI-driven system** that
 | Quality control | Automated QA guard (chroma/grayscale checks), multi-candidate selection |
 | Project isolation | All data, files, and DB records are scoped to a project slug |
 | Post-processing | Background removal → upscale → color correction, all in one chain |
+| Long-form continuity | Project-centric model keeps story-world style/faces stable across many generations |
 
 ### Current State Snapshot (2026-02-22)
 
@@ -192,7 +214,7 @@ Named color profiles: `neutral`, `cinematic_warm`, `cold_rain`.
 
 ## 6. Database — Current vs Target Schema
 
-The primary schema is now owned by Rust (`src-tauri/src/db/projects.rs` + submodules).  
+The primary schema is now owned by Rust (`src-tauri/src/db/projects.rs` + submodules).
 Tables are created/normalized on startup by the Rust backend.
 
 ### Current Tables (implemented in Rust backend)
@@ -232,7 +254,7 @@ Tables are created/normalized on startup by the Rust backend.
 
 ## 7. REST API Surface
 
-Primary Base URL: `http://127.0.0.1:8788`  
+Primary Base URL: `http://127.0.0.1:8788`
 Contract: `file:openapi/backend-api.openapi.yaml`
 
 ### Implemented Endpoints
@@ -386,6 +408,7 @@ Quality report table and read API exist. Remaining work:
 ### Phase 2 — GUI Frontend
 
 No GUI exists today. The backend-first approach is intentional, but a GUI is the next major milestone.
+Frontend scope is project-first for comic/graphic-novel production continuity.
 
 #### Proposed Frontend Stack
 
@@ -398,12 +421,14 @@ No GUI exists today. The backend-first approach is intentional, but a GUI is the
 | View | Description |
 |---|---|
 | Project Dashboard | List projects, create new, view status |
+| Project Universe Overview | Story metadata, cast continuity anchors, style lock status |
 | Run Viewer | Browse runs, jobs, candidates with thumbnails |
 | Asset Browser | Browse all assets by kind, filter, preview |
 | Chat / Copilot | Text chat interface, send messages, view agent instructions |
 | Instruction Queue | View queued/running/done instructions, confirm/cancel |
 | Settings | Project storage config, secrets management |
 | QA Report | Per-run quality report with pass/fail breakdown |
+| Quick Utility Lab (Secondary) | Fast one-off tools (bg-remove / one-off generate) outside project setup |
 
 #### Project Dashboard Wireframe
 
@@ -606,6 +631,15 @@ Currently the system runs in single-user mode with a hardcoded `local` user. Aut
 
 ---
 
+### Phase 3 — Continuity Video (Future)
+
+1. Extend project style/identity continuity from still images to shot sequences.
+2. Add clip-level continuity checks (face/style drift between adjacent shots).
+3. Reuse project reference/style constraints as conditioning inputs for video generation.
+4. Keep video outputs project-scoped with the same reproducibility/audit requirements.
+
+---
+
 ## 11. Security & Secret Handling
 
 | Rule | Implementation |
@@ -637,6 +671,11 @@ Currently the system runs in single-user mode with a hardcoded `local` user. Aut
 - [ ] Advanced scoring models for candidate ranking
 - [ ] Character consistency metrics
 - [ ] PostgreSQL migration path (from SQLite)
+
+### Phase 3+ (Future)
+
+- [ ] Continuity-preserving video generation with project character/style identity
+- [ ] Shot-sequence consistency metrics and review workflow
 
 ---
 

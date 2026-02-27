@@ -13,6 +13,22 @@
 
 Prompt-driven image workflow tooling with a contract-first backend API, project-scoped storage, and reproducible run logs.
 
+## Product Goal (North Star)
+
+Kroma's main goal is comic/graphic-novel production with AI APIs:
+
+1. Generate many images inside one project universe with consistent style ("one hand").
+2. Keep recurring character faces/identity stable across long runs.
+3. Treat `project` as the primary unit (one story world with its own assets, references, runs, and settings).
+4. Support quick one-off utility actions (for example background removal) as a secondary convenience mode.
+5. Expand later to continuity-preserving video creation using the same project style/identity foundations.
+
+## Planning Source of Truth
+
+- Roadmap and fixed execution order: `docs/ROADMAP.md`
+- Canonical user journey and step gates: `docs/USER_FLOW_JOURNEY_MAP.md`
+- Implementation workflow rules: `docs/WORKFLOW.md`
+
 ## Introduction
 
 Kroma solves a common production pain: image generation/editing pipelines often become hard to reproduce, hard to audit, and hard to scale across multiple projects.
@@ -21,6 +37,7 @@ This repository is for developers who need:
 - a local-first backend API for project/runs/assets metadata
 - deterministic schema + route contract checks
 - CLI-driven image workflows with optional post-processing stages
+- a project-first continuity model for long-form visual storytelling
 
 Why it exists:
 - keep project data isolated
@@ -60,7 +77,7 @@ This keeps local UX fast and zero-ops while preserving a clean upgrade path for 
 
 1. The image generation/post-process pipeline is still script-driven (`scripts/image-lab.mjs`).
 2. Local tool wrappers and setup flows still live in Python/Node scripts.
-3. Some migration paths (`backend.py`, worker scripts) are retained while parity migration continues.
+3. Some migration paths (`backend.py`, legacy worker scripts) are retained while parity migration continues.
 
 So: backend data/API is largely migrated to Rust, but runtime pipeline orchestration is not fully migrated yet.
 

@@ -518,6 +518,8 @@ async fn bootstrap_import_validation_is_enforced() {
         missing_payload["error"],
         json!("Provide either 'settings' or 'ai_response_text'")
     );
+    assert_eq!(missing_payload["error_kind"], json!("validation"));
+    assert_eq!(missing_payload["error_code"], json!("validation_error"));
 
     let invalid_mode = send_json(
         app.clone(),
@@ -541,6 +543,8 @@ async fn bootstrap_import_validation_is_enforced() {
         invalid_mode["error"],
         json!("Field 'mode' must be one of: merge, replace")
     );
+    assert_eq!(invalid_mode["error_kind"], json!("validation"));
+    assert_eq!(invalid_mode["error_code"], json!("validation_error"));
 
     let missing_reference_set_items = send_json(
         app,
@@ -565,6 +569,31 @@ async fn bootstrap_import_validation_is_enforced() {
         missing_reference_set_items["error"],
         json!("Field 'reference_sets[].items' is required (use [] to provide an empty set)")
     );
+    assert_eq!(
+        missing_reference_set_items["error_kind"],
+        json!("validation")
+    );
+    assert_eq!(
+        missing_reference_set_items["error_code"],
+        json!("validation_error")
+    );
+}
+
+#[tokio::test]
+async fn bootstrap_prompt_missing_project_has_not_found_taxonomy() {
+    let app = build_router_with_projects_store_dev_bypass(test_store());
+    let response = send_json(
+        app,
+        Method::GET,
+        "/api/projects/missing/bootstrap-prompt",
+        Body::empty(),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    assert_eq!(response["ok"], json!(false));
+    assert_eq!(response["error"], json!("Project not found"));
+    assert_eq!(response["error_kind"], json!("validation"));
+    assert_eq!(response["error_code"], json!("not_found"));
 }
 
 #[tokio::test]

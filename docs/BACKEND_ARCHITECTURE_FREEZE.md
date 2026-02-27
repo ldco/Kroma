@@ -19,7 +19,7 @@
 ### Gate 1: Domain + Contracts
 
 1. All backend use-cases mapped to explicit command/API contracts.
-2. Request/response payloads versioned and documented.
+2. Request/response payloads versioned and documented (`docs/BACKEND_CONTRACT_FREEZE.md` baseline).
 3. Error taxonomy standardized (validation, provider, infra, policy, unknown).
 
 ### Gate 2: DB + Storage
@@ -49,6 +49,7 @@ Frontend can begin only when:
 1. Gates 1-4 are complete.
 2. Contract smoke tests pass from Tauri command/API boundary.
 3. Breaking-change policy is published.
+4. User journey steps and acceptance criteria are frozen in `docs/USER_FLOW_JOURNEY_MAP.md`.
 
 ## Step-By-Step Execution Order
 

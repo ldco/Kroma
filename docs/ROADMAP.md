@@ -1,7 +1,7 @@
 # Kroma Roadmap (Progress Tracker)
 
-Last updated: 2026-02-25
-Status: Phase 1 in progress (backend + runtime consolidation into Rust)
+Last updated: 2026-02-27
+Status: Phase 1 in progress (Rust runtime consolidation) + journey map freeze active
 
 ## Purpose
 
@@ -9,6 +9,33 @@ This file is the working progress tracker for Kroma.
 
 - `docs/Kroma_—_Project_Spec_(Current_State_&_Roadmap).md` remains the full product/spec document.
 - This file is the day-to-day roadmap status board: what is done, in progress, and next.
+
+## Planning Control Docs (Source of Truth)
+
+1. `docs/ROADMAP.md`:
+   - fixed execution order, phase status, and current priorities
+2. `docs/USER_FLOW_JOURNEY_MAP.md`:
+   - canonical user journey (`J00-J08`, `U01`, recovery flows) and acceptance gates
+3. `docs/WORKFLOW.md`:
+   - implementation rules and required journey-step traceability for every feature
+
+## Product North Star (Aligned 2026-02-27)
+
+1. Primary outcome:
+   - Kroma exists to produce long-form comic/graphic-novel universes with stable style and stable character identity across many generated images.
+2. Primary unit of work:
+   - `project` is the core product unit (one universe/story world with its heroes, style constraints, assets, runs, and history).
+   - a single artist/user can own multiple independent projects.
+3. Secondary convenience mode:
+   - quick one-off graphics utilities (for example background removal or single-image generation without project context) are supported, but they are not the product driver.
+4. Future direction (after core image stack maturity):
+   - continuity-preserving video generation from the same project character/style identity model.
+
+## Journey-First Execution Rule (Frozen)
+
+1. We implement journey steps, not random features.
+2. Any roadmap task must map to `Jxx`, `Uxx`, or `Rxx` in `docs/USER_FLOW_JOURNEY_MAP.md`.
+3. If a proposed task has no mapped journey step, it is out of scope until the journey map is updated first.
 
 ## Architecture Direction (Explicit)
 
@@ -46,7 +73,8 @@ Progress summary:
 
 Status:
 - Planned, but not current priority
-- Depends on continued Phase 1 backend/runtime consolidation
+- Starts after Phase 1 backend/runtime freeze gates are complete for target journey steps
+- Frontend scope is project-first (comic/graphic-novel workflow), not utility-first
 
 ## Completed Work (Done / Pushed)
 
@@ -147,7 +175,7 @@ Status:
 - Split secrets DB code into `src-tauri/src/db/projects/secrets.rs`
 - Removed voice schema remnants from `scripts/backend.py`
 - Updated contract smoke scripts, README, and spec docs to match current scope
-- Legacy npm script entrypoints now explicitly set `KROMA_ENABLE_LEGACY_SCRIPTS=1` for Python fallback commands (`backend:init`, `backend:migrate`, worker scripts), avoiding accidental fallback usage while keeping migration utilities callable
+- Legacy npm script entrypoints now explicitly set `KROMA_ENABLE_LEGACY_SCRIPTS=1` for Python fallback commands (`backend:init`, `backend:migrate`); worker runtime is Rust-owned by default
 
 ## In Progress
 
@@ -158,12 +186,10 @@ Status:
   - `src-tauri/src/pipeline/runtime.rs`
   - `PipelineOrchestrator` trait
   - `PipelineCommandRunner` trait
-  - `ScriptPipelineOrchestrator` (temporary fallback adapter to `scripts/image-lab.mjs`)
-  - `RustPostRunPipelineOrchestrator` wrapper now owns backend ingest for typed HTTP trigger path
-    - disables script-side backend ingest (`--backend-db-ingest false`) to avoid duplicate ingestion
-    - keeps script-side S3 sync disabled (`--storage-sync-s3 false`) to prevent duplicate post-run sync execution
-    - Rust post-run ingest now uses native DB transaction path (`ProjectsStore::ingest_run_log`)
-    - structured script summary marker is emitted and parsed (`KROMA_PIPELINE_SUMMARY_JSON`) with text fallback retained during migration
+  - `RustPostRunPipelineOrchestrator` wrapper owns post-run finalize flow for typed HTTP trigger path
+    - preserves typed request options end-to-end for run execution
+    - Rust post-run ingest uses native DB transaction path (`ProjectsStore::ingest_run_log`)
+    - structured summary marker is emitted and parsed (`KROMA_PIPELINE_SUMMARY_JSON`)
   - `RustDryRunPipelineOrchestrator` now executes typed dry scene-ref and input-path runs in Rust
     - deterministic Rust image discovery for `--input` (sorted recursive listing)
     - generation directory layout creation delegated to `pipeline::execution`
@@ -174,13 +200,13 @@ Status:
   - `PipelineTriggerService`
   - `TriggerMode` (`dry` / `run`)
   - run-mode spend confirmation enforcement
-  - `--confirm-spend` injection for script fallback path
+  - `--confirm-spend` injection for Rust run path
 
 #### 3. Rust-Owned Trigger Endpoint (Initial Slice, WIP)
 
 - `POST /api/projects/{slug}/runs/trigger`
 - Implemented in Rust API handler (`src-tauri/src/api/runs_assets.rs`)
-- Calls Rust trigger service, which then uses script fallback adapter
+- Calls Rust trigger service with Rust-native runtime stack
 - Current request shape:
   - `mode: dry|run`
   - `confirm_spend: bool`
@@ -206,59 +232,97 @@ Status:
   - verifies Rust post-run ingest executes on successful script run output
   - verifies missing `Run log:` stdout line degrades to warning (best-effort ingest)
 
-## Next Work (Priority Queue)
+### Step B Contract Freeze Kickoff (In Progress)
 
-### Immediate Next (Phase 1 / 10.0)
+- Published Step B baseline contract doc:
+  - `docs/BACKEND_CONTRACT_FREEZE.md`
+  - includes journey-critical endpoint surface (`project`, `run/review/postprocess`, `export`)
+  - includes additive frozen error taxonomy fields:
+    - `error_kind`
+    - `error_code`
+  - includes backend/frontend breaking-change policy
+- Rust API error responses now include taxonomy fields on baseline paths while preserving legacy `ok/error` compatibility shape.
+- Contract-freeze regression test added:
+  - `src-tauri/tests/error_taxonomy_endpoints.rs`
+  - validates taxonomy on project validation errors, not-found errors, and run policy errors.
+- Taxonomy assertions expanded on journey endpoints:
+  - `bootstrap_endpoints`
+  - `reference_sets_endpoints`
+  - `storage_endpoints`
+- Taxonomy assertions expanded on additional endpoint groups:
+  - `provider_accounts_endpoints`
+  - `style_guides_endpoints`
+  - `prompt_templates_endpoints`
+  - `characters_endpoints`
+  - `asset_links_endpoints`
+  - `chat_endpoints`
+  - `agent_instructions_endpoints`
+  - `secrets_endpoints`
+- OpenAPI contract now includes shared `ErrorResponse` / `ErrorKind` schemas and Step B path-level error schema references across:
+  - project/bootstrap/storage/reference-set routes
+  - `provider-accounts`, `style-guides`, `prompt-templates`, `characters`
+  - `asset-links`, `chat/sessions`, `agent/instructions`, `secrets`
 
-1. Add success-path test strategy for `POST /api/projects/{slug}/runs/trigger`
-   - Done locally (fake pipeline orchestrator/service injected into test router state)
-2. Replace `extra_args` pass-through with typed request DTO fields
-   - Done locally: Rust API/service/runtime path is typed end-to-end
-   - `extra_args` removed from Rust endpoint + OpenAPI
-   - exact one-of `input`/`scene_refs` invariant added for script parity
-   - next: keep tightening typed validation/rules as real callers are added
-3. Keep script runtime behind explicit Rust interfaces only
-   - no new direct script calls from handlers/routes
-4. Continue replacing script-backed orchestration behavior inside the runtime boundary (without widening the HTTP contract)
-   - current default runtime path routes post-run ingest through Rust `pipeline::post_run` + native `ProjectsStore::ingest_run_log`
-   - post-run backend operations for typed trigger path are now Rust-owned (ingest + S3 sync)
-   - `scripts/image-lab.mjs` post-run backend calls removed; remaining script responsibility is generation/post-process orchestration
-   - next: extract generation/orchestration stages from `scripts/image-lab.mjs` into Rust modules
-  - latest extraction: `pipeline::execution` now owns script-parity helpers for candidate filename, output path sanitization, candidate winner ranking, project directory layout, candidate post-process output path planning, per-job candidate loop expansion into ordered typed plans, output-guard rank summarization, job outcome resolution/finalization, and typed run-log candidate/job/output-guard/planned-job record assembly
-  - runtime cleanup: Rust dry-run run-log job JSON shaping now reuses typed `pipeline::execution` builders (removes duplicated inline JSON shape in `pipeline::runtime`)
-  - follow-up cleanup: Rust dry-run top-level run-log record shaping (generation/postprocess/output-guard/storage/jobs envelope) now also uses typed `pipeline::execution` builder structs; `pipeline::runtime` no longer hand-builds the dry-run log schema
+## Fixed Execution Plan (Frozen 2026-02-27)
 
-### Near-Term Backend / Bootstrap Work
+### Step A — Finish Phase 1 Runtime Consolidation (Now)
 
-1. Decide bootstrap scope for:
-   - chat
-   - agent instructions
-2. Improve OpenAPI response documentation for bootstrap endpoints
-   - Pushed: response bodies for `/bootstrap-prompt` and `/bootstrap-import` are now documented
-   - next: expand nested field schemas/examples if SDK/client generation needs stronger typing
-3. Consider optimizing bootstrap `reference_sets` export loading (`N+1` query risk for large projects)
-   - Pushed: batched `reference_set_items` query replaces per-set item queries in bootstrap export loading
-   - next: profile with larger seed data before spending time on further query tuning
+Goal:
+- full run orchestration ownership in Rust for project journey `J04-J07`
 
-### Phase 1 Remaining (Larger Milestones)
+Must complete:
+1. replace remaining `scripts/image-lab.mjs` generation/post-process orchestration paths with Rust modules
+2. replace Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust service modules
+3. keep external tool/provider calls behind typed Rust adapters only
+4. maintain script-removal parity rule: remove each migrated script path in the same slice
 
-1. Replace `scripts/image-lab.mjs` orchestration with Rust pipeline orchestration modules (desktop app owns generation/post-process flow)
-2. Move run trigger + ingest + sync parity fully into Rust services/endpoints (typed trigger post-run ingest+sync path now Rust-owned; generation/orchestration still script-backed)
-3. Replace Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust worker/service modules
-4. Build typed Rust adapters for external tools/integrations (called from Rust, not shell scripts)
-   - OpenAI image calls
-   - rembg
-   - ESRGAN
-   - S3 sync
-5. Add parity tests plus explicit deprecation/removal milestones for script paths
-6. Delete each script (or migrated script subcommand/path) immediately after Rust parity lands for that responsibility; no "kept just in case" script retention
-6. Remove remaining production runtime dependencies on `scripts/` (retain only dev/setup utilities if still needed)
+Acceptance gate:
+1. app-triggered project runs (`POST /api/projects/{slug}/runs/trigger`) execute without script runtime dependency in normal path
+2. parity tests pass for `J04-J07` flows
+
+### Step B — Backend Contract Freeze for Frontend (Next)
+
+Goal:
+- lock stable backend contracts for UI journey `J00-J08`
+
+Must complete:
+1. publish stable request/response and error taxonomy for project/run/review/postprocess/export steps
+2. complete contract + integration tests for all journey-critical endpoints
+3. publish breaking-change policy for frontend integration
+
+Acceptance gate:
+1. backend freeze checklist is green
+2. frontend can implement without contract churn
+
+### Step C — Frontend Phase Starts (After A+B)
+
+Goal:
+- implement UI by journey order, not by random page list
+
+Execution order:
+1. `J00-J03`: onboarding, project creation, references, bootstrap
+2. `J04-J06`: staged run compose/review/identity continuity
+3. `J07-J08`: post-process and export
+4. `U01`: utility mode only after primary journey baseline works end-to-end
+
+Acceptance gate:
+1. every UI slice cites journey step IDs and done criteria from `docs/USER_FLOW_JOURNEY_MAP.md`
+
+## Immediate Next 3 Slices (Locked)
+
+1. Rust-run parity slice for `J04-J07`:
+   - extract remaining generation/post-process orchestration logic from scripts into Rust runtime modules
+2. Worker migration slice:
+   - replace Python agent worker/dispatch runtime with Rust worker modules
+3. Journey contract freeze slice:
+   - finalize and test backend contracts needed by frontend `J00-J08` implementation
 
 ## Later (Phase 2+)
 
 ### Phase 2 — GUI Frontend
 
 - project dashboard
+- project universe overview (story + core cast continuity)
 - run viewer
 - asset browser
 - chat / copilot
@@ -266,4 +330,10 @@ Status:
 - settings
 - QA reports
 
-This starts after more of Phase 1 runtime consolidation is in place.
+This starts only after Step A + Step B in the fixed execution plan are complete.
+
+### Phase 3+ — Continuity Video (Future)
+
+- keep style and faces consistent across shot sequences
+- reuse project continuity assets/rules from image pipeline as video conditioning inputs
+- remains out of scope until Phase 1 and Phase 2 foundations are stable

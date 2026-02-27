@@ -117,6 +117,8 @@ async fn prompt_template_endpoints_support_crud() {
         missing_after_delete["error"],
         json!("Prompt template not found")
     );
+    assert_eq!(missing_after_delete["error_kind"], json!("validation"));
+    assert_eq!(missing_after_delete["error_code"], json!("not_found"));
 }
 
 #[tokio::test]
@@ -145,6 +147,8 @@ async fn prompt_template_validation_is_enforced() {
     )
     .await;
     assert_eq!(missing_name["error"], json!("Field 'name' is required"));
+    assert_eq!(missing_name["error_kind"], json!("validation"));
+    assert_eq!(missing_name["error_code"], json!("validation_error"));
 
     let missing_template_text = send_json(
         app.clone(),
@@ -157,6 +161,11 @@ async fn prompt_template_validation_is_enforced() {
     assert_eq!(
         missing_template_text["error"],
         json!("Field 'template_text' is required")
+    );
+    assert_eq!(missing_template_text["error_kind"], json!("validation"));
+    assert_eq!(
+        missing_template_text["error_code"],
+        json!("validation_error")
     );
 
     let _created = send_json(
@@ -180,6 +189,8 @@ async fn prompt_template_validation_is_enforced() {
         duplicate_name["error"],
         json!("Prompt template name already exists")
     );
+    assert_eq!(duplicate_name["error_kind"], json!("validation"));
+    assert_eq!(duplicate_name["error_code"], json!("validation_error"));
 
     let empty_update = send_json(
         app,
@@ -193,6 +204,8 @@ async fn prompt_template_validation_is_enforced() {
         empty_update["error"],
         json!("Provide at least one of: name, template_text")
     );
+    assert_eq!(empty_update["error_kind"], json!("validation"));
+    assert_eq!(empty_update["error_code"], json!("validation_error"));
 }
 
 async fn send_json(

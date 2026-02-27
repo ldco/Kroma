@@ -125,6 +125,11 @@ async fn agent_instruction_validation_and_not_found_paths_are_enforced() {
         missing_instruction_text["error"],
         json!("Field 'instruction_text' is required")
     );
+    assert_eq!(missing_instruction_text["error_kind"], json!("validation"));
+    assert_eq!(
+        missing_instruction_text["error_code"],
+        json!("validation_error")
+    );
 
     let created = send_json(
         app.clone(),
@@ -161,6 +166,11 @@ async fn agent_instruction_validation_and_not_found_paths_are_enforced() {
         confirm_after_cancel["error"],
         json!("Instruction is already canceled")
     );
+    assert_eq!(confirm_after_cancel["error_kind"], json!("validation"));
+    assert_eq!(
+        confirm_after_cancel["error_code"],
+        json!("validation_error")
+    );
 
     let missing_instruction = send_json(
         app,
@@ -174,6 +184,8 @@ async fn agent_instruction_validation_and_not_found_paths_are_enforced() {
         missing_instruction["error"],
         json!("Agent instruction not found")
     );
+    assert_eq!(missing_instruction["error_kind"], json!("validation"));
+    assert_eq!(missing_instruction["error_code"], json!("not_found"));
 }
 
 async fn send_json(
