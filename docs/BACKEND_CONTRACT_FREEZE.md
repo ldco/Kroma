@@ -1,7 +1,7 @@
 # Backend Contract Freeze (Step B)
 
-Last updated: 2026-02-27
-Status: In progress (contract baseline published)
+Last updated: 2026-03-01
+Status: Contract baseline complete — freeze checklist green for J00-J08
 
 ## Purpose
 
@@ -11,6 +11,16 @@ It defines:
 1. stable response envelope expectations for journey-critical endpoints
 2. stable error taxonomy (`error_kind`, `error_code`) for failure handling
 3. breaking-change policy for backend/frontend coordination
+
+## Freeze Status (2026-03-01)
+
+**Step B is GREEN for frontend start on J00-J08.**
+
+Completed:
+- ✅ Error taxonomy published and tested across all journey-critical endpoints
+- ✅ Contract tests cover J00-J08 endpoint surface
+- ✅ OpenAPI schemas include `ErrorResponse` / `ErrorKind` components
+- ✅ Breaking-change policy documented
 
 ## Stable Endpoint Surface (Journey-Critical)
 
@@ -87,30 +97,40 @@ Error responses use:
 
 ## Verification Baseline
 
-Current minimum automated evidence:
-1. `src-tauri/tests/error_taxonomy_endpoints.rs` (taxonomy fields on project/run/export error paths)
-2. endpoint suites with taxonomy assertions:
-- `bootstrap_endpoints`
-- `reference_sets_endpoints`
-- `storage_endpoints`
-- `provider_accounts_endpoints`
-- `style_guides_endpoints`
-- `prompt_templates_endpoints`
-- `characters_endpoints`
-- `asset_links_endpoints`
-- `chat_endpoints`
-- `agent_instructions_endpoints`
-- `secrets_endpoints`
-3. endpoint suites:
-- `projects_endpoints`
-- `runs_assets_endpoints`
-- `pipeline_trigger_endpoints`
-- `exports_endpoints`
-4. contract mount/parity suites:
-- `contract_parity`
-- `http_contract_surface`
-5. OpenAPI baseline:
-- `openapi/backend-api.openapi.yaml` includes `ErrorResponse` + `ErrorKind` component schemas and error-schema references for Step B baseline + remaining journey endpoint groups (`provider-accounts`, `style-guides`, `prompt-templates`, `characters`, `asset-links`, `chat/sessions`, `agent/instructions`, `secrets`).
+Current minimum automated evidence (all passing 2026-03-01):
+
+1. **Error taxonomy tests** (`src-tauri/tests/error_taxonomy_endpoints.rs`):
+   - Project validation errors have taxonomy fields
+   - Not-found errors have taxonomy fields
+   - Run trigger spend-confirmation errors have policy taxonomy
+
+2. **Endpoint suites with taxonomy assertions**:
+   - `bootstrap_endpoints` — J03 bootstrap import/export
+   - `reference_sets_endpoints` — J02 continuity references
+   - `storage_endpoints` — J01 project storage config
+   - `provider_accounts_endpoints` — J00 provider setup
+   - `style_guides_endpoints` — J02 style baselines
+   - `prompt_templates_endpoints` — J02/J03 prompt management
+   - `characters_endpoints` — J02 character identity
+   - `asset_links_endpoints` — J07 asset relationships
+   - `chat_endpoints` — copilot session management
+   - `agent_instructions_endpoints` — agent workflow
+   - `secrets_endpoints` — credential management
+   - `runs_assets_endpoints` — J04-J07 run/asset detail (not_found taxonomy)
+   - `exports_endpoints` — J08 export detail (not_found taxonomy)
+
+3. **Core endpoint suites**:
+   - `projects_endpoints` — J00-J01 project CRUD
+   - `pipeline_trigger_endpoints` — J04-J07 run triggering
+   - `auth_endpoints` — token bootstrap
+
+4. **Contract mount/parity suites**:
+   - `contract_parity` — OpenAPI vs runtime parity
+   - `http_contract_surface` — HTTP surface validation
+
+5. **OpenAPI baseline** (`openapi/backend-api.openapi.yaml`):
+   - `ErrorResponse` / `ErrorKind` component schemas defined
+   - Error schema references for all Step B endpoint groups
 
 ## Breaking-Change Policy (Frontend Integration)
 
