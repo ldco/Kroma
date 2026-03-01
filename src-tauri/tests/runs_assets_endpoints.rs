@@ -145,6 +145,8 @@ async fn run_and_asset_detail_return_not_found() {
     .await;
     assert_eq!(run_not_found["ok"], json!(false));
     assert_eq!(run_not_found["error"], json!("Run not found"));
+    assert_eq!(run_not_found["error_kind"], json!("validation"));
+    assert_eq!(run_not_found["error_code"], json!("not_found"));
 
     let asset_not_found = send_json(
         app,
@@ -156,6 +158,8 @@ async fn run_and_asset_detail_return_not_found() {
     .await;
     assert_eq!(asset_not_found["ok"], json!(false));
     assert_eq!(asset_not_found["error"], json!("Asset not found"));
+    assert_eq!(asset_not_found["error_kind"], json!("validation"));
+    assert_eq!(asset_not_found["error_code"], json!("not_found"));
 }
 
 fn seed_run_asset_data(db_path: &Path, project_id: &str) -> SeedIds {

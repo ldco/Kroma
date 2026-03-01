@@ -88,6 +88,8 @@ async fn export_detail_returns_not_found_when_missing() {
     .await;
     assert_eq!(missing_export["ok"], json!(false));
     assert_eq!(missing_export["error"], json!("Project export not found"));
+    assert_eq!(missing_export["error_kind"], json!("validation"));
+    assert_eq!(missing_export["error_code"], json!("not_found"));
 
     let missing_project = send_json(
         app,
@@ -99,6 +101,8 @@ async fn export_detail_returns_not_found_when_missing() {
     .await;
     assert_eq!(missing_project["ok"], json!(false));
     assert_eq!(missing_project["error"], json!("Project not found"));
+    assert_eq!(missing_project["error_kind"], json!("validation"));
+    assert_eq!(missing_project["error_code"], json!("not_found"));
 }
 
 fn seed_exports_data(db_path: &Path, project_id: &str) -> String {
