@@ -1226,14 +1226,14 @@ function pickBestCandidate(candidates) {
 function usage() {
   return [
     "Usage:",
-    "  npm run lab -- dry --project NAME [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N]",
-    "  npm run lab -- run --project NAME --confirm-spend [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N] [--post-upscale] [--upscale-backend ncnn|python] [--post-color] [--post-color-profile PROFILE] [--post-bg-remove]",
-    "  npm run lab -- generate-one --project NAME --prompt TEXT --input-images-file FILE --output PATH [--model MODEL] [--size WxH] [--quality low|medium|high] [--json]",
-    "  npm run lab -- upscale [--project NAME] [--input PATH] [--output PATH] [--upscale-backend ncnn|python] [--upscale-scale 2|3|4]",
-    "  npm run lab -- color [--project NAME] [--input PATH] [--output PATH] [--profile PROFILE] [--color-settings FILE]",
-    "  npm run lab -- bgremove [--project NAME] [--input PATH] [--output PATH] [--bg-remove-backends rembg,photoroom,removebg] [--bg-refine-openai true|false]",
-    "  npm run lab -- qa [--project NAME] [--input PATH] [--output-guard-enabled true|false]",
-    "  npm run lab -- archive-bad --project NAME --input PATH",
+    "  npm run lab:legacy -- dry --project NAME [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N]",
+    "  npm run lab:legacy -- run --project NAME --confirm-spend [--project-root PATH] (--input FILE_OR_DIR | --scene-refs a,b,c) [--style-refs x,y,z] [--stage style|time|weather] [--time day|night] [--weather clear|rain] [--candidates N] [--post-upscale] [--upscale-backend ncnn|python] [--post-color] [--post-color-profile PROFILE] [--post-bg-remove]",
+    "  npm run lab:legacy -- generate-one --project NAME --prompt TEXT --input-images-file FILE --output PATH [--model MODEL] [--size WxH] [--quality low|medium|high] [--json]",
+    "  npm run lab:legacy -- upscale [--project NAME] [--input PATH] [--output PATH] [--upscale-backend ncnn|python] [--upscale-scale 2|3|4]",
+    "  npm run lab:legacy -- color [--project NAME] [--input PATH] [--output PATH] [--profile PROFILE] [--color-settings FILE]",
+    "  npm run lab:legacy -- bgremove [--project NAME] [--input PATH] [--output PATH] [--bg-remove-backends rembg,photoroom,removebg] [--bg-refine-openai true|false]",
+    "  npm run lab:legacy -- qa [--project NAME] [--input PATH] [--output-guard-enabled true|false]",
+    "  npm run lab:legacy -- archive-bad --project NAME --input PATH",
     "",
     "Defaults:",
     "  mode: dry",
@@ -1248,6 +1248,28 @@ function usage() {
     "  post-run backend ingest/s3 sync: handled by Rust desktop runtime (not this script)",
     "  auto-archive on overwrite: enabled (disable with --no-archive-replaced)"
   ].join("\n");
+}
+
+function emitLegacyRuntimeNotice() {
+  const legacyGateEnabled = String(process.env.KROMA_ENABLE_LEGACY_SCRIPTS || "").trim() === "1";
+  console.error(
+    `[legacy-image-lab] Transitional legacy script path in use (KROMA_ENABLE_LEGACY_SCRIPTS=${legacyGateEnabled ? "1" : "0"}).`
+  );
+  if (!legacyGateEnabled) {
+    console.error(
+      "[legacy-image-lab] Prefer Rust runtime APIs; for explicit fallback usage run via npm *:legacy scripts or set KROMA_ENABLE_LEGACY_SCRIPTS=1."
+    );
+  }
+}
+
+function requireLegacyGateEnabled() {
+  const legacyGateEnabled = String(process.env.KROMA_ENABLE_LEGACY_SCRIPTS || "").trim() === "1";
+  if (legacyGateEnabled) {
+    return;
+  }
+  throw new Error(
+    "Legacy script execution requires KROMA_ENABLE_LEGACY_SCRIPTS=1 (use npm run lab:legacy -- ...)."
+  );
 }
 
 function buildFileOutputPath({ outputDir, fileName, suffix = "", extension = ".png" }) {
@@ -1779,6 +1801,9 @@ async function main() {
     console.log(usage());
     return;
   }
+
+  requireLegacyGateEnabled();
+  emitLegacyRuntimeNotice();
 
   if (mode === "upscale") {
     runUpscaleOnlyMode();

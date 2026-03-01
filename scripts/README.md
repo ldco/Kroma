@@ -11,6 +11,8 @@ Rules:
 
 Legacy fallback gate:
 - Set `KROMA_ENABLE_LEGACY_SCRIPTS=1` only when explicitly validating a migration fallback path.
+- Legacy npm script entrypoints are intentionally namespaced as `*:legacy` to avoid accidental use in normal Rust runtime workflows.
+- Direct `node scripts/image-lab.mjs ...` execution is blocked unless `KROMA_ENABLE_LEGACY_SCRIPTS=1` is set.
 
 Removed legacy entrypoint:
 - `scripts/backend_api.py` has already been removed; the Rust HTTP server is the active backend.

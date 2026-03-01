@@ -175,7 +175,7 @@ Status:
 - Split secrets DB code into `src-tauri/src/db/projects/secrets.rs`
 - Removed voice schema remnants from `scripts/backend.py`
 - Updated contract smoke scripts, README, and spec docs to match current scope
-- Legacy npm script entrypoints now explicitly set `KROMA_ENABLE_LEGACY_SCRIPTS=1` for Python fallback commands (`backend:init`, `backend:migrate`); worker runtime is Rust-owned by default
+- Legacy npm script entrypoints now explicitly set `KROMA_ENABLE_LEGACY_SCRIPTS=1` for fallback commands; image-lab utility commands are namespaced as `*:legacy` and direct invocation is gate-blocked without the env flag, while worker runtime is Rust-owned by default
 
 ## In Progress
 

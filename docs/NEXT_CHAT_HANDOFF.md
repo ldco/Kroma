@@ -1,9 +1,96 @@
 # Next Chat Handoff
 
-Date: 2026-02-27
+Date: 2026-02-28
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `35729af` / `35729af`
-Worktree: dirty (journey/roadmap docs freeze updates + pending runtime refactor files; uncommitted local changes)
+HEAD (pre-handoff commit) / upstream (`origin/master`): `bc91256` / `35729af`
+Worktree: dirty (6 local/uncommitted files: `package.json`, `scripts/image-lab.mjs`, `scripts/README.md`, `docs/WORKFLOW.md`, `docs/ROADMAP.md`, `docs/NEXT_CHAT_HANDOFF.md`)
+
+## Session Update (2026-02-28, Step A legacy image-lab hard gate enforcement)
+
+### Scope
+
+1. Finalize the in-progress Step A legacy command quarantine slice.
+2. Enforce explicit legacy gating for direct `scripts/image-lab.mjs` execution.
+3. Refresh handoff state with current repo evidence for next-chat continuity.
+
+### What Landed (this session, local/uncommitted)
+
+1. Enforced direct-execution legacy gate in `scripts/image-lab.mjs`:
+   - added `requireLegacyGateEnabled()` and wired it in `main()` for all non-help modes.
+   - behavior change: direct non-help execution now fails unless `KROMA_ENABLE_LEGACY_SCRIPTS=1`.
+2. Added explicit legacy runtime notice in `scripts/image-lab.mjs`:
+   - logs transitional status and gate-state (`0|1`) on gated execution paths.
+3. Completed command quarantine docs alignment:
+   - `package.json`: legacy image-lab utilities are `*:legacy` and gated.
+   - `docs/WORKFLOW.md`: all script command examples updated to `*:legacy`.
+   - `scripts/README.md`: direct invocation gate requirement documented.
+   - `docs/ROADMAP.md`: Step A script gating note updated.
+4. Updated continuity artifact:
+   - `docs/NEXT_CHAT_HANDOFF.md` entry stack expanded with this session and current repo state.
+
+### Validation
+
+1. `node scripts/image-lab.mjs --help` -> passing (usage shows `lab:legacy` commands).
+2. `node scripts/image-lab.mjs dry` -> blocked with expected gate error:
+   - `Legacy script execution requires KROMA_ENABLE_LEGACY_SCRIPTS=1 ...`
+3. `KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs dry` -> passing expected gate path:
+   - prints legacy notice, then expected `--project` validation error.
+4. `rg -n "npm run (lab|upscale|color|bgremove|qa|archivebad) --" docs/WORKFLOW.md scripts/image-lab.mjs package.json scripts/README.md` -> no matches (stale non-legacy command names removed in active docs/files).
+
+### Known Gaps / Risks
+
+1. `scripts/image-lab.mjs` still exists as transitional fallback utility code; it is now gated but not removed.
+2. Help/usage mode is intentionally not blocked by the legacy gate (execution-only block); keep or tighten this behavior in next slice.
+3. Local changes are not committed yet for this slice.
+
+### Next Chat Starting Point
+
+1. Commit current Step A legacy-gate slice (`package.json`, `scripts/image-lab.mjs`, `scripts/README.md`, `docs/WORKFLOW.md`, `docs/ROADMAP.md`, `docs/NEXT_CHAT_HANDOFF.md`).
+2. Decide Step A direction for `scripts/image-lab.mjs`: full removal vs retained gated fallback.
+3. If retention is chosen, add one focused regression test/documented operator flow that validates `*:legacy` command behavior under both gate states.
+
+## Session Update (2026-02-27, Step A legacy image-lab command quarantine)
+
+### Scope
+
+1. Continue Step A by reducing accidental script-path usage while preserving explicit fallback utilities.
+2. Make legacy script invocation visibly opt-in at npm command level.
+
+### What Landed (this session, local/uncommitted)
+
+1. Renamed image-lab npm commands to explicit legacy names in `package.json`:
+   - `lab` -> `lab:legacy`
+   - `upscale` -> `upscale:legacy`
+   - `color` -> `color:legacy`
+   - `bgremove` -> `bgremove:legacy`
+   - `qa` -> `qa:legacy`
+   - `archivebad` -> `archivebad:legacy`
+   - each now explicitly sets `KROMA_ENABLE_LEGACY_SCRIPTS=1`.
+2. Updated workflow command examples in `docs/WORKFLOW.md` to use `*:legacy` command names.
+3. Updated legacy script policy notes:
+   - `scripts/README.md`
+   - `docs/ROADMAP.md`
+4. Added startup legacy-only runtime notice in `scripts/image-lab.mjs`:
+   - logs explicit transitional context on non-help execution
+   - includes gate state (`KROMA_ENABLE_LEGACY_SCRIPTS=0|1`)
+   - direct non-help execution is now blocked unless the legacy gate is enabled.
+
+### Validation
+
+1. `node scripts/image-lab.mjs --help` -> passing (usage banner aligned to `lab:legacy` naming).
+2. command-reference consistency check passed for active files (`docs/WORKFLOW.md`, `scripts/image-lab.mjs`, `package.json`, `scripts/README.md`).
+3. `node scripts/image-lab.mjs dry` -> blocked with explicit legacy-gate error.
+4. `KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs dry` -> prints gated legacy notice + expected project-validation error.
+
+### Known Gaps / Risks
+
+1. This change intentionally preserves `scripts/image-lab.mjs`; it only reduces accidental invocation via npm naming and explicit env gate.
+2. Full removal of `scripts/image-lab.mjs` remains a future Step A scope decision once utility parity is no longer needed.
+
+### Next Chat Starting Point
+
+1. Decide whether to fully remove `scripts/image-lab.mjs` and its legacy npm aliases or retain them for explicit operator fallback.
+2. If retained, decide whether the hard gate should also apply to help/usage mode or remain execution-only (current behavior).
 
 ## Session Update (2026-02-27, Step A runtime trigger path de-scripting semantics)
 

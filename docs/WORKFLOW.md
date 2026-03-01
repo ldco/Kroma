@@ -38,7 +38,7 @@ Recommended (Rust primary path):
 4. Optional S3 storage config
 - `curl -s -X PUT http://127.0.0.1:8788/api/projects/my_project/storage/s3 -H 'Content-Type: application/json' -d '{"enabled":true,"bucket":"my-art-bucket","prefix":"iat-prod","region":"us-east-1"}'`
 
-Transitional/legacy scripts (still available):
+Transitional/legacy scripts (explicit opt-in only):
 
 - `npm run backend:init`
 - direct `python3 scripts/backend.py ...` commands
@@ -46,19 +46,19 @@ Transitional/legacy scripts (still available):
 ## Staged Process
 
 1. Style lock
-- `npm run lab -- dry --project my_project --stage style`
+- `npm run lab:legacy -- dry --project my_project --stage style`
 - Optional: add `--candidates 3` to plan multi-candidate run.
 
 2. Time/light lock
-- `npm run lab -- dry --project my_project --stage time --time day`
+- `npm run lab:legacy -- dry --project my_project --stage time --time day`
 
 3. Weather/effects lock
-- `npm run lab -- dry --project my_project --stage weather --time day --weather rain`
+- `npm run lab:legacy -- dry --project my_project --stage weather --time day --weather rain`
 
 4. Optional post chain
 - Execution order is fixed: `bg_remove(rembg) -> bg_refine_openai -> upscale -> color`
-- `npm run lab -- run --project my_project --confirm-spend --post-bg-remove --post-upscale --upscale-backend python --post-color --post-color-profile cinematic_warm`
-- Multi-candidate production run: `npm run lab -- run --project my_project --confirm-spend --candidates 4`
+- `npm run lab:legacy -- run --project my_project --confirm-spend --post-bg-remove --post-upscale --upscale-backend python --post-color --post-color-profile cinematic_warm`
+- Multi-candidate production run: `npm run lab:legacy -- run --project my_project --confirm-spend --candidates 4`
 
 Implementation note:
 - the staged process maps directly to `J04 -> J07` in `docs/USER_FLOW_JOURNEY_MAP.md`
@@ -66,16 +66,16 @@ Implementation note:
 ## Utility Commands
 
 - Upscale only:
-`npm run upscale -- --project my_project --input /data/iat/my_project/outputs --output /data/iat/my_project/upscaled --upscale-backend python --upscale-scale 2`
+`npm run upscale:legacy -- --project my_project --input /data/iat/my_project/outputs --output /data/iat/my_project/upscaled --upscale-backend python --upscale-scale 2`
 
 - Color only:
-`npm run color -- --project my_project --input /data/iat/my_project/upscaled --output /data/iat/my_project/color_corrected --profile cinematic_warm`
+`npm run color:legacy -- --project my_project --input /data/iat/my_project/upscaled --output /data/iat/my_project/color_corrected --profile cinematic_warm`
 
 - Background remove only:
-`npm run bgremove -- --project my_project --input /data/iat/my_project/outputs --output /data/iat/my_project/background_removed --bg-remove-backends rembg --bg-refine-openai true`
+`npm run bgremove:legacy -- --project my_project --input /data/iat/my_project/outputs --output /data/iat/my_project/background_removed --bg-remove-backends rembg --bg-refine-openai true`
 
 - Archive bad files:
-`npm run archivebad -- --project my_project --input /data/iat/my_project/background_removed`
+`npm run archivebad:legacy -- --project my_project --input /data/iat/my_project/background_removed`
 
 - QA only (no generation):
-`npm run qa -- --project my_project --input /data/iat/my_project/background_removed`
+`npm run qa:legacy -- --project my_project --input /data/iat/my_project/background_removed`
