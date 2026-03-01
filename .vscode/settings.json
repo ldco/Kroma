@@ -1,0 +1,10 @@
+{
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "terminal.integrated.profiles.linux": {
+    "zsh": {
+      "path": "/usr/bin/zsh",
+      "args": ["-l"]
+    }
+  },
+  "window.newWindowDimensions": "maximized"
+}
