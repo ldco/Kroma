@@ -8,7 +8,11 @@ use kroma_backend_core::db::{resolve_backend_config, DatabaseBackendConfig};
 use kroma_backend_core::pipeline::config_validation::{
     validate_pipeline_config_stack, PipelineConfigValidationRequest,
 };
-use kroma_backend_core::pipeline::runtime::default_app_root_from_manifest_dir;
+use kroma_backend_core::pipeline::runtime::{default_app_root_from_manifest_dir, StdPipelineCommandRunner};
+use kroma_backend_core::pipeline::tool_adapters::{
+    ArchiveBadRequest, BackgroundRemovePassRequest, ColorPassRequest, GenerateOneImageRequest,
+    NativeToolAdapters, PipelineToolAdapterOps, QaCheckRequest, UpscalePassRequest,
+};
 use kroma_backend_core::worker::{run_agent_worker_loop, AgentWorkerOptions};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
@@ -39,6 +43,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if matches!(cli_args.first().map(String::as_str), Some("agent-worker")) {
         run_agent_worker_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("generate-one")) {
+        run_generate_one_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("upscale")) {
+        run_upscale_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("color")) {
+        run_color_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("bgremove")) {
+        run_bgremove_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("qa")) {
+        run_qa_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("archive-bad")) {
+        run_archive_bad_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
         return Ok(());
     }
 
@@ -502,6 +530,585 @@ fn print_agent_worker_usage() {
         "  --agent-api-url from IAT_AGENT_API_URL env if set\n",
         "  --agent-api-token from IAT_AGENT_API_TOKEN env if set\n"
     ));
+}
+
+fn print_generate_one_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- generate-one --project-slug <slug> --prompt <text> --input-images-file <file> --output <path>\n",
+        "  [--model MODEL] [--size WxH] [--quality low|medium|high] [--project-root PATH] [--json]\n\n",
+        "Defaults:\n",
+        "  --model from OPENAI_IMAGE_MODEL or gpt-image-1\n",
+        "  --size from OPENAI_IMAGE_SIZE or 1024x1536\n",
+        "  --quality from OPENAI_IMAGE_QUALITY or high\n"
+    ));
+}
+
+fn print_upscale_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- upscale --project-slug <slug> [--input PATH] [--output PATH]\n",
+        "  [--upscale-backend ncnn|python] [--upscale-scale 2|3|4] [--project-root PATH] [--json]\n\n",
+        "Defaults:\n",
+        "  --input from project outputs dir\n",
+        "  --output from project upscaled dir\n",
+        "  --upscale-backend from postprocess config or ncnn\n"
+    ));
+}
+
+fn print_color_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- color --project-slug <slug> [--input PATH] [--output PATH] [--profile PROFILE]\n",
+        "  [--project-root PATH] [--json]\n\n",
+        "Defaults:\n",
+        "  --input from project outputs dir\n",
+        "  --output from project color dir\n",
+        "  --profile from postprocess config or neutral\n"
+    ));
+}
+
+fn print_bgremove_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- bgremove --project-slug <slug> [--input PATH] [--output PATH]\n",
+        "  [--bg-remove-backends rembg,photoroom,removebg] [--bg-refine-openai true|false]\n",
+        "  [--project-root PATH] [--json]\n\n",
+        "Defaults:\n",
+        "  --input from project outputs dir\n",
+        "  --output from project background_removed dir\n",
+        "  --bg-remove-backends from postprocess config or [rembg]\n"
+    ));
+}
+
+fn print_qa_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- qa --project-slug <slug> [--input PATH] [--output-guard-enabled true|false]\n",
+        "  [--project-root PATH] [--json]\n\n",
+        "Defaults:\n",
+        "  --input from project outputs dir\n",
+        "  --output-guard-enabled true\n"
+    ));
+}
+
+fn print_archive_bad_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- archive-bad --project-slug <slug> --input PATH [--project-root PATH]\n"
+    ));
+}
+
+fn run_generate_one_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_generate_one_usage();
+        return Ok(());
+    }
+
+    let mut project_slug = String::new();
+    let mut project_root = None::<String>;
+    let mut prompt = String::new();
+    let mut input_images_file = String::new();
+    let mut output_path = String::new();
+    let mut model = None::<String>;
+    let mut size = None::<String>;
+    let mut quality = None::<String>;
+    let mut json_output = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--project-slug" => {
+                project_slug = needs_value(i)?;
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--prompt" => {
+                prompt = needs_value(i)?;
+                i += 2;
+            }
+            "--input-images-file" => {
+                input_images_file = needs_value(i)?;
+                i += 2;
+            }
+            "--output" => {
+                output_path = needs_value(i)?;
+                i += 2;
+            }
+            "--model" => {
+                model = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--size" => {
+                size = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--quality" => {
+                quality = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if project_slug.is_empty() {
+        return Err(std::io::Error::other("Missing --project-slug").into());
+    }
+    if prompt.is_empty() {
+        return Err(std::io::Error::other("Missing --prompt").into());
+    }
+    if input_images_file.is_empty() {
+        return Err(std::io::Error::other("Missing --input-images-file").into());
+    }
+    if output_path.is_empty() {
+        return Err(std::io::Error::other("Missing --output").into());
+    }
+
+    let app_root = default_app_root_from_manifest_dir();
+    let adapters = NativeToolAdapters::<StdPipelineCommandRunner>::new(app_root, StdPipelineCommandRunner);
+    let resp = adapters.generate_one(&GenerateOneImageRequest {
+        project_slug,
+        project_root,
+        prompt,
+        input_images_file,
+        output_path,
+        model,
+        size,
+        quality,
+    })?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&resp)?);
+    } else {
+        println!(
+            "Generated image: {} ({} bytes, {}, {}, {})",
+            resp.output, resp.bytes_written, resp.model, resp.size, resp.quality
+        );
+    }
+    Ok(())
+}
+
+fn run_upscale_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_upscale_usage();
+        return Ok(());
+    }
+
+    let mut project_slug = String::new();
+    let mut project_root = None::<String>;
+    let mut input_path = None::<String>;
+    let mut output_path = None::<String>;
+    let mut upscale_backend = None::<String>;
+    let mut upscale_scale = None::<u8>;
+    let mut json_output = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--project-slug" => {
+                project_slug = needs_value(i)?;
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--input" => {
+                input_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--output" => {
+                output_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--upscale-backend" => {
+                upscale_backend = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--upscale-scale" => {
+                upscale_scale = Some(needs_value(i)?.parse()?);
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if project_slug.is_empty() {
+        return Err(std::io::Error::other("Missing --project-slug").into());
+    }
+
+    let app_root = default_app_root_from_manifest_dir();
+    let adapters = NativeToolAdapters::<StdPipelineCommandRunner>::new(app_root, StdPipelineCommandRunner);
+    let req = UpscalePassRequest {
+        project_slug,
+        project_root,
+        input_path: input_path.unwrap_or_default(),
+        output_path: output_path.unwrap_or_default(),
+        postprocess_config_path: None,
+        upscale_backend,
+        upscale_scale,
+        upscale_format: None,
+    };
+    let resp = adapters.upscale(&req)?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&resp)?);
+    } else {
+        println!(
+            "Upscale done: {} -> {} (backend {}, scale x{}, model {})",
+            resp.input, resp.output, resp.backend, resp.scale, resp.model
+        );
+    }
+    Ok(())
+}
+
+fn run_color_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_color_usage();
+        return Ok(());
+    }
+
+    let mut project_slug = String::new();
+    let mut project_root = None::<String>;
+    let mut input_path = None::<String>;
+    let mut output_path = None::<String>;
+    let mut profile = None::<String>;
+    let mut json_output = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--project-slug" => {
+                project_slug = needs_value(i)?;
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--input" => {
+                input_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--output" => {
+                output_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--profile" => {
+                profile = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if project_slug.is_empty() {
+        return Err(std::io::Error::other("Missing --project-slug").into());
+    }
+
+    let app_root = default_app_root_from_manifest_dir();
+    let adapters = NativeToolAdapters::<StdPipelineCommandRunner>::new(app_root, StdPipelineCommandRunner);
+    let req = ColorPassRequest {
+        project_slug,
+        project_root,
+        input_path: input_path.unwrap_or_default(),
+        output_path: output_path.unwrap_or_default(),
+        postprocess_config_path: None,
+        profile,
+        color_settings_path: None,
+    };
+    let resp = adapters.color(&req)?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&resp)?);
+    } else {
+        println!("Color done: {} -> {} (profile {})", resp.input, resp.output, resp.profile);
+    }
+    Ok(())
+}
+
+fn run_bgremove_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_bgremove_usage();
+        return Ok(());
+    }
+
+    let mut project_slug = String::new();
+    let mut project_root = None::<String>;
+    let mut input_path = None::<String>;
+    let mut output_path = None::<String>;
+    let mut backends = None::<Vec<String>>;
+    let mut bg_refine_openai = None::<bool>;
+    let mut json_output = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--project-slug" => {
+                project_slug = needs_value(i)?;
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--input" => {
+                input_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--output" => {
+                output_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--bg-remove-backends" => {
+                backends = Some(needs_value(i)?.split(',').map(|s| s.trim().to_string()).collect());
+                i += 2;
+            }
+            "--bg-refine-openai" => {
+                let val = needs_value(i)?;
+                bg_refine_openai = Some(val.parse()?);
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if project_slug.is_empty() {
+        return Err(std::io::Error::other("Missing --project-slug").into());
+    }
+
+    let app_root = default_app_root_from_manifest_dir();
+    let adapters = NativeToolAdapters::<StdPipelineCommandRunner>::new(app_root, StdPipelineCommandRunner);
+    let req = BackgroundRemovePassRequest {
+        project_slug,
+        project_root,
+        input_path: input_path.unwrap_or_default(),
+        output_path: output_path.unwrap_or_default(),
+        postprocess_config_path: None,
+        backends: backends.unwrap_or_default(),
+        bg_refine_openai,
+        bg_refine_openai_required: None,
+    };
+    let resp = adapters.bgremove(&req)?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&resp)?);
+    } else {
+        println!("Background remove done: {} files processed", resp.processed);
+    }
+    Ok(())
+}
+
+fn run_qa_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_qa_usage();
+        return Ok(());
+    }
+
+    let mut project_slug = String::new();
+    let mut project_root = None::<String>;
+    let mut input_path = None::<String>;
+    let mut output_guard_enabled = None::<bool>;
+    let mut json_output = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--project-slug" => {
+                project_slug = needs_value(i)?;
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--input" => {
+                input_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--output-guard-enabled" => {
+                let val = needs_value(i)?;
+                output_guard_enabled = Some(val.parse()?);
+                i += 2;
+            }
+            "--json" => {
+                json_output = true;
+                i += 1;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if project_slug.is_empty() {
+        return Err(std::io::Error::other("Missing --project-slug").into());
+    }
+
+    let app_root = default_app_root_from_manifest_dir();
+    let adapters = NativeToolAdapters::<StdPipelineCommandRunner>::new(app_root, StdPipelineCommandRunner);
+    let req = QaCheckRequest {
+        project_slug,
+        project_root,
+        input_path: input_path.unwrap_or_default(),
+        manifest_path: None,
+        output_guard_enabled,
+        enforce_grayscale: None,
+        max_chroma_delta: None,
+        fail_on_chroma_exceed: None,
+    };
+    let resp = adapters.qa(&req)?;
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&resp)?);
+    } else {
+        println!("QA check complete: ok={}", resp.ok);
+    }
+    Ok(())
+}
+
+fn run_archive_bad_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_archive_bad_usage();
+        return Ok(());
+    }
+
+    let mut project_slug = String::new();
+    let mut project_root = None::<String>;
+    let mut input_path = String::new();
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--project-slug" => {
+                project_slug = needs_value(i)?;
+                i += 2;
+            }
+            "--project-root" => {
+                project_root = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--input" => {
+                input_path = needs_value(i)?;
+                i += 2;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if project_slug.is_empty() {
+        return Err(std::io::Error::other("Missing --project-slug").into());
+    }
+    if input_path.is_empty() {
+        return Err(std::io::Error::other("Missing --input").into());
+    }
+
+    let app_root = default_app_root_from_manifest_dir();
+    let adapters = NativeToolAdapters::<StdPipelineCommandRunner>::new(app_root, StdPipelineCommandRunner);
+    let req = ArchiveBadRequest {
+        project_slug,
+        project_root,
+        input_path,
+    };
+    let resp = adapters.archive_bad(&req)?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "ok": true,
+            "moved": resp.moved
+        }))?
+    );
+    Ok(())
 }
 
 #[cfg(test)]

@@ -5,12 +5,6 @@
   "type": "module",
   "description": "Prompt-driven staged image edits tool with safety gates and reproducible run logs.",
   "scripts": {
-    "lab:legacy": "KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs",
-    "upscale:legacy": "KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs upscale",
-    "color:legacy": "KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs color",
-    "bgremove:legacy": "KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs bgremove",
-    "qa:legacy": "KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs qa",
-    "archivebad:legacy": "KROMA_ENABLE_LEGACY_SCRIPTS=1 node scripts/image-lab.mjs archive-bad",
     "backend:init": "KROMA_ENABLE_LEGACY_SCRIPTS=1 python3 scripts/backend.py init-db --with-default-user",
     "backend:migrate": "KROMA_ENABLE_LEGACY_SCRIPTS=1 python3 scripts/db_migrate.py",
     "backend:user:local": "KROMA_ENABLE_LEGACY_SCRIPTS=1 python3 scripts/backend.py ensure-user --username local --display-name \"Local User\"",

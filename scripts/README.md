@@ -12,7 +12,17 @@ Rules:
 Legacy fallback gate:
 - Set `KROMA_ENABLE_LEGACY_SCRIPTS=1` only when explicitly validating a migration fallback path.
 - Legacy npm script entrypoints are intentionally namespaced as `*:legacy` to avoid accidental use in normal Rust runtime workflows.
-- Direct `node scripts/image-lab.mjs ...` execution is blocked unless `KROMA_ENABLE_LEGACY_SCRIPTS=1` is set.
 
-Removed legacy entrypoint:
-- `scripts/backend_api.py` has already been removed; the Rust HTTP server is the active backend.
+Removed legacy entrypoints:
+- `scripts/backend_api.py` - removed; Rust HTTP server is the active backend.
+- `scripts/image-lab.mjs` - removed; Rust CLI commands (`cargo run -- generate-one|upscale|color|bgremove|qa|archive-bad`) are the active runtime.
+
+Rust CLI utility commands (replacement for image-lab.mjs):
+```bash
+cargo run -- generate-one --project-slug <slug> --prompt <text> --input-images-file <file> --output <path>
+cargo run -- upscale --project-slug <slug> [--input PATH] [--output PATH] [--upscale-backend ncnn|python]
+cargo run -- color --project-slug <slug> [--input PATH] [--output PATH] [--profile PROFILE]
+cargo run -- bgremove --project-slug <slug> [--input PATH] [--output PATH]
+cargo run -- qa --project-slug <slug> [--input PATH]
+cargo run -- archive-bad --project-slug <slug> --input PATH
+```
