@@ -1,9 +1,66 @@
 # Next Chat Handoff
 
-Date: 2026-02-28
+Date: 2026-03-01
 Branch: `master`
-HEAD (pre-handoff commit) / upstream (`origin/master`): `bc91256` / `35729af`
-Worktree: dirty (6 local/uncommitted files: `package.json`, `scripts/image-lab.mjs`, `scripts/README.md`, `docs/WORKFLOW.md`, `docs/ROADMAP.md`, `docs/NEXT_CHAT_HANDOFF.md`)
+HEAD: `eb807f5` (3 commits ahead of `origin/master`)
+Worktree: clean (untracked: `.vscode/`, `codeu.sh`)
+
+## Session Update (2026-03-01, Step A COMPLETE — legacy script removal)
+
+### Scope
+
+1. Complete Step A by removing `scripts/image-lab.mjs` entirely.
+2. Add Rust CLI commands as replacement for all utility workflows.
+3. Update roadmap and handoff docs with completion status.
+
+### What Landed (this session, committed)
+
+**Commit 1 (b59b742):** Enforced legacy script gating
+- Renamed npm commands to `*:legacy` with `KROMA_ENABLE_LEGACY_SCRIPTS=1` gate
+- Added `requireLegacyGateEnabled()` in `scripts/image-lab.mjs`
+- Updated docs (`WORKFLOW.md`, `ROADMAP.md`, `scripts/README.md`)
+
+**Commit 2 (eb807f5):** Removed legacy script entirely
+- Deleted `scripts/image-lab.mjs` (1849 lines removed)
+- Removed all `*:legacy` npm commands from `package.json`
+- Added Rust CLI commands to `src-tauri/src/main.rs`:
+  - `generate-one`, `upscale`, `color`, `bgremove`, `qa`, `archive-bad`
+- Updated `scripts/README.md` with Rust CLI replacement docs
+- Updated `ROADMAP.md` marking Step A as COMPLETE
+
+### Rust CLI Commands (Replacement for image-lab.mjs)
+
+```bash
+cargo run -- generate-one --project-slug <slug> --prompt <text> --input-images-file <file> --output <path>
+cargo run -- upscale --project-slug <slug> [--input PATH] [--output PATH] [--upscale-backend ncnn|python]
+cargo run -- color --project-slug <slug> [--input PATH] [--output PATH] [--profile PROFILE]
+cargo run -- bgremove --project-slug <slug> [--input PATH] [--output PATH]
+cargo run -- qa --project-slug <slug> [--input PATH]
+cargo run -- archive-bad --project-slug <slug> --input PATH
+```
+
+### Validation
+
+1. `cargo check` (in `src-tauri`) → passing
+2. `cargo test --lib pipeline::` → 109 passed, 0 failed
+3. `git log -3 --oneline` → 3 local commits visible
+4. `git status` → clean worktree
+
+### Known Gaps / Risks
+
+1. Step A is now COMPLETE — no legacy script runtime remains.
+2. Step B (Backend Contract Freeze) is the next active focus.
+3. Two pre-existing test failures unrelated to this change (encryption key setup in test environment).
+
+### Next Chat Starting Point
+
+1. **Step B: Backend Contract Freeze** — continue with endpoint contract coverage:
+   - Review error taxonomy coverage gaps across journey-critical endpoints
+   - Add missing endpoint contract tests
+   - Publish Step B freeze checklist
+2. Once Step B is green, frontend implementation can begin (Step C).
+
+---
 
 ## Session Update (2026-02-28, Step A legacy image-lab hard gate enforcement)
 

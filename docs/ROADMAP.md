@@ -1,7 +1,7 @@
 # Kroma Roadmap (Progress Tracker)
 
-Last updated: 2026-02-27
-Status: Phase 1 in progress (Rust runtime consolidation) + journey map freeze active
+Last updated: 2026-03-01
+Status: Step A COMPLETE — Phase 1 runtime consolidation done. Step B (contract freeze) next.
 
 ## Purpose
 
@@ -77,6 +77,30 @@ Status:
 - Frontend scope is project-first (comic/graphic-novel workflow), not utility-first
 
 ## Completed Work (Done / Pushed)
+
+### Phase 1 Runtime Consolidation — Step A (COMPLETE 2026-03-01)
+
+**Goal:** Full run orchestration ownership in Rust for project journey `J04-J07`
+
+**Completed:**
+1. ✅ Replaced `scripts/image-lab.mjs` generation/post-process orchestration with Rust modules
+2. ✅ Replaced Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust service
+3. ✅ External tool/provider calls behind typed Rust adapters only
+4. ✅ Script-removal parity rule maintained: each migrated script path removed in same slice
+
+**Acceptance gate:**
+1. ✅ App-triggered project runs execute without script runtime dependency
+2. ✅ Parity tests pass for `J04-J07` flows (`cargo test --lib pipeline::` — 109 passed)
+
+**Rust CLI utility commands (replacement for image-lab.mjs):**
+```bash
+cargo run -- generate-one --project-slug <slug> --prompt <text> --input-images-file <file> --output <path>
+cargo run -- upscale --project-slug <slug> [--input PATH] [--output PATH] [--upscale-backend ncnn|python]
+cargo run -- color --project-slug <slug> [--input PATH] [--output PATH] [--profile PROFILE]
+cargo run -- bgremove --project-slug <slug> [--input PATH] [--output PATH]
+cargo run -- qa --project-slug <slug> [--input PATH]
+cargo run -- archive-bad --project-slug <slug> --input PATH
+```
 
 ### Backend Core / API Foundation
 
@@ -175,124 +199,60 @@ Status:
 - Split secrets DB code into `src-tauri/src/db/projects/secrets.rs`
 - Removed voice schema remnants from `scripts/backend.py`
 - Updated contract smoke scripts, README, and spec docs to match current scope
-- Legacy npm script entrypoints now explicitly set `KROMA_ENABLE_LEGACY_SCRIPTS=1` for fallback commands; image-lab utility commands are namespaced as `*:legacy` and direct invocation is gate-blocked without the env flag, while worker runtime is Rust-owned by default
+- **Removed `scripts/image-lab.mjs` entirely (2026-03-01)** — all utility workflows now Rust CLI commands:
+  - `cargo run -- generate-one`, `upscale`, `color`, `bgremove`, `qa`, `archive-bad`
+- Worker runtime is Rust-owned by default (`cargo run -- agent-worker`)
 
 ## In Progress
 
-### Phase 1 Runtime Consolidation Into Rust (Started)
+### Step B — Backend Contract Freeze for Frontend (ACTIVE)
 
-#### 1. Rust Pipeline Runtime Boundary (WIP)
+**Goal:** Lock stable backend contracts for UI journey `J00-J08`
 
-  - `src-tauri/src/pipeline/runtime.rs`
-  - `PipelineOrchestrator` trait
-  - `PipelineCommandRunner` trait
-  - `RustPostRunPipelineOrchestrator` wrapper owns post-run finalize flow for typed HTTP trigger path
-    - preserves typed request options end-to-end for run execution
-    - Rust post-run ingest uses native DB transaction path (`ProjectsStore::ingest_run_log`)
-    - structured summary marker is emitted and parsed (`KROMA_PIPELINE_SUMMARY_JSON`)
-  - `RustDryRunPipelineOrchestrator` now executes typed dry scene-ref and input-path runs in Rust
-    - deterministic Rust image discovery for `--input` (sorted recursive listing)
-    - generation directory layout creation delegated to `pipeline::execution`
+**Must complete:**
+1. Publish stable request/response and error taxonomy for project/run/review/postprocess/export steps
+2. Complete contract + integration tests for all journey-critical endpoints
+3. Publish breaking-change policy for frontend integration
 
-#### 2. Rust Pipeline Trigger Service (WIP)
+**Acceptance gate:**
+1. Backend freeze checklist is green
+2. Frontend can implement without contract churn
 
-- `src-tauri/src/pipeline/trigger.rs`
-  - `PipelineTriggerService`
-  - `TriggerMode` (`dry` / `run`)
-  - run-mode spend confirmation enforcement
-  - `--confirm-spend` injection for Rust run path
+**Current progress:**
+- ✅ Published `docs/BACKEND_CONTRACT_FREEZE.md` baseline
+- ✅ Error taxonomy fields (`error_kind`, `error_code`) added to Rust API responses
+- ✅ Contract-freeze regression tests added (`error_taxonomy_endpoints.rs`)
+- ✅ Taxonomy assertions expanded across 10+ endpoint groups
+- ✅ OpenAPI `ErrorResponse` / `ErrorKind` schemas published
+- ⏳ Remaining: finalize journey-critical endpoint coverage and freeze checklist
 
-#### 3. Rust-Owned Trigger Endpoint (Initial Slice, WIP)
+### Phase 1 Runtime Consolidation Into Rust (COMPLETE)
 
-- `POST /api/projects/{slug}/runs/trigger`
-- Implemented in Rust API handler (`src-tauri/src/api/runs_assets.rs`)
-- Calls Rust trigger service with Rust-native runtime stack
-- Current request shape:
-  - `mode: dry|run`
-  - `confirm_spend: bool`
-  - typed fields only: `project_root`, `input`, `scene_refs`, `style_refs`, `stage`, `time`, `weather`, `candidates`
-  - no raw CLI arg pass-through (`extra_args` removed)
-  - `input` and `scene_refs` now follow script parity: exactly one is required
+All Step A items completed 2026-03-01. See "Phase 1 Runtime Consolidation — Step A (COMPLETE)" above.
 
-#### 4. Tests (WIP)
+## Fixed Execution Plan (Frozen 2026-02-27, Updated 2026-03-01)
 
-- Unit tests for runtime/orchestrator and trigger service
-- Endpoint tests for safe non-script paths:
-  - invalid mode
-  - missing project
-  - missing spend confirmation for `run`
-- Endpoint success-path test with fake orchestrator injection (no `node` dependency)
-  - validates Rust-owned endpoint flow without requiring script runtime
-- Typed-field request translation + validation tests for `runs/trigger`
-  - typed request compiles into typed runtime request, then CLI flags inside runtime orchestrator
-  - validation runs before project lookup
-  - exact one-of validation for `input` / `scene_refs` enforced in Rust and covered by tests
-- Runtime wrapper tests
-  - verifies script backend-ingest disable flags are injected
-  - verifies Rust post-run ingest executes on successful script run output
-  - verifies missing `Run log:` stdout line degrades to warning (best-effort ingest)
+### Step A — Finish Phase 1 Runtime Consolidation (COMPLETE ✅)
 
-### Step B Contract Freeze Kickoff (In Progress)
+**Goal:** Full run orchestration ownership in Rust for project journey `J04-J07`
 
-- Published Step B baseline contract doc:
-  - `docs/BACKEND_CONTRACT_FREEZE.md`
-  - includes journey-critical endpoint surface (`project`, `run/review/postprocess`, `export`)
-  - includes additive frozen error taxonomy fields:
-    - `error_kind`
-    - `error_code`
-  - includes backend/frontend breaking-change policy
-- Rust API error responses now include taxonomy fields on baseline paths while preserving legacy `ok/error` compatibility shape.
-- Contract-freeze regression test added:
-  - `src-tauri/tests/error_taxonomy_endpoints.rs`
-  - validates taxonomy on project validation errors, not-found errors, and run policy errors.
-- Taxonomy assertions expanded on journey endpoints:
-  - `bootstrap_endpoints`
-  - `reference_sets_endpoints`
-  - `storage_endpoints`
-- Taxonomy assertions expanded on additional endpoint groups:
-  - `provider_accounts_endpoints`
-  - `style_guides_endpoints`
-  - `prompt_templates_endpoints`
-  - `characters_endpoints`
-  - `asset_links_endpoints`
-  - `chat_endpoints`
-  - `agent_instructions_endpoints`
-  - `secrets_endpoints`
-- OpenAPI contract now includes shared `ErrorResponse` / `ErrorKind` schemas and Step B path-level error schema references across:
-  - project/bootstrap/storage/reference-set routes
-  - `provider-accounts`, `style-guides`, `prompt-templates`, `characters`
-  - `asset-links`, `chat/sessions`, `agent/instructions`, `secrets`
+**Status:** COMPLETED 2026-03-01
 
-## Fixed Execution Plan (Frozen 2026-02-27)
+**Completed:**
+1. ✅ Replaced `scripts/image-lab.mjs` generation/post-process orchestration with Rust modules
+2. ✅ Replaced Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust service
+3. ✅ External tool/provider calls behind typed Rust adapters only
+4. ✅ Script-removal parity rule maintained: each migrated script path removed in same slice
 
-### Step A — Finish Phase 1 Runtime Consolidation (Now)
+**Acceptance gate:**
+1. ✅ App-triggered project runs execute without script runtime dependency
+2. ✅ Parity tests pass for `J04-J07` flows
 
-Goal:
-- full run orchestration ownership in Rust for project journey `J04-J07`
+### Step B — Backend Contract Freeze for Frontend (ACTIVE)
 
-Must complete:
-1. replace remaining `scripts/image-lab.mjs` generation/post-process orchestration paths with Rust modules
-2. replace Python worker runtime (`agent_worker.py`, `agent_dispatch.py`) with Rust service modules
-3. keep external tool/provider calls behind typed Rust adapters only
-4. maintain script-removal parity rule: remove each migrated script path in the same slice
+**Goal:** Lock stable backend contracts for UI journey `J00-J08`
 
-Acceptance gate:
-1. app-triggered project runs (`POST /api/projects/{slug}/runs/trigger`) execute without script runtime dependency in normal path
-2. parity tests pass for `J04-J07` flows
-
-### Step B — Backend Contract Freeze for Frontend (Next)
-
-Goal:
-- lock stable backend contracts for UI journey `J00-J08`
-
-Must complete:
-1. publish stable request/response and error taxonomy for project/run/review/postprocess/export steps
-2. complete contract + integration tests for all journey-critical endpoints
-3. publish breaking-change policy for frontend integration
-
-Acceptance gate:
-1. backend freeze checklist is green
-2. frontend can implement without contract churn
+**Status:** IN PROGRESS — see "In Progress" section above for details
 
 ### Step C — Frontend Phase Starts (After A+B)
 
@@ -310,12 +270,15 @@ Acceptance gate:
 
 ## Immediate Next 3 Slices (Locked)
 
-1. Rust-run parity slice for `J04-J07`:
-   - extract remaining generation/post-process orchestration logic from scripts into Rust runtime modules
-2. Worker migration slice:
-   - replace Python agent worker/dispatch runtime with Rust worker modules
+**Completed:**
+1. ✅ Rust-run parity slice for `J04-J07` — COMPLETE (image-lab.mjs removed, Rust CLI commands active)
+2. ✅ Worker migration slice — COMPLETE (Rust `agent-worker` active, Python scripts removed)
+
+**Next:**
 3. Journey contract freeze slice:
-   - finalize and test backend contracts needed by frontend `J00-J08` implementation
+   - Finalize and test backend contracts needed by frontend `J00-J08` implementation
+   - Complete Step B acceptance checklist
+   - Mark backend freeze as green for frontend start
 
 ## Later (Phase 2+)
 
