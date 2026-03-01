@@ -243,6 +243,12 @@ impl ProjectsStore {
         self.with_connection(|_| Ok(()))
     }
 
+    pub fn ensure_user(&self, username: &str, display_name: &str) -> Result<String, ProjectsRepoError> {
+        self.with_connection(|conn| {
+            ensure_user(conn, username, display_name)
+        })
+    }
+
     fn with_connection<T, F>(&self, func: F) -> Result<T, ProjectsRepoError>
     where
         F: FnOnce(&Connection) -> Result<T, ProjectsRepoError>,

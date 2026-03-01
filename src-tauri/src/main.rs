@@ -69,6 +69,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_archive_bad_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
         return Ok(());
     }
+    if matches!(cli_args.first().map(String::as_str), Some("db:init")) {
+        run_db_init_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
+    if matches!(cli_args.first().map(String::as_str), Some("db:ensure-user")) {
+        run_db_ensure_user_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
 
     let bind =
         std::env::var("KROMA_BACKEND_BIND").unwrap_or_else(|_| String::from("127.0.0.1:8788"));
@@ -1106,6 +1114,150 @@ fn run_archive_bad_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Erro
         serde_json::to_string_pretty(&json!({
             "ok": true,
             "moved": resp.moved
+        }))?
+    );
+    Ok(())
+}
+
+fn print_db_init_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- db:init [--db PATH]\n\n",
+        "Defaults:\n",
+        "  --db from KROMA_BACKEND_DB or var/backend/app.db\n"
+    ));
+}
+
+fn print_db_ensure_user_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- db:ensure-user --username <name> --display-name <name> [--db PATH]\n\n",
+        "Defaults:\n",
+        "  --db from KROMA_BACKEND_DB or var/backend/app.db\n"
+    ));
+}
+
+fn run_db_init_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_db_init_usage();
+        return Ok(());
+    }
+
+    let mut db_path = None::<String>;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--db" => {
+                db_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    let repo_root = std::env::current_dir()?;
+    let db_path = db_path.unwrap_or_else(|| String::from("var/backend/app.db"));
+    let db_path = if db_path.starts_with('/') {
+        PathBuf::from(db_path)
+    } else {
+        repo_root.join(db_path)
+    };
+
+    let store = ProjectsStore::new(db_path.clone(), repo_root.clone());
+    store.initialize()?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "ok": true,
+            "db": db_path.display().to_string(),
+            "message": "Database initialized successfully"
+        }))?
+    );
+    Ok(())
+}
+
+fn run_db_ensure_user_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_db_ensure_user_usage();
+        return Ok(());
+    }
+
+    let mut db_path = None::<String>;
+    let mut username = String::new();
+    let mut display_name = String::new();
+
+    let mut i = 0usize;
+    while i < args.len() {
+        let flag = args[i].as_str();
+        let needs_value = |idx: usize| -> Result<String, Box<dyn std::error::Error>> {
+            args.get(idx + 1)
+                .ok_or_else(|| std::io::Error::other(format!("Missing value for {flag}")).into())
+                .map(|v| v.clone())
+        };
+
+        match flag {
+            "--db" => {
+                db_path = Some(needs_value(i)?);
+                i += 2;
+            }
+            "--username" => {
+                username = needs_value(i)?;
+                i += 2;
+            }
+            "--display-name" => {
+                display_name = needs_value(i)?;
+                i += 2;
+            }
+            unknown => {
+                return Err(std::io::Error::other(format!(
+                    "Unknown argument: {unknown}\n\nUse --help for usage."
+                ))
+                .into());
+            }
+        }
+    }
+
+    if username.is_empty() {
+        return Err(std::io::Error::other("Missing --username").into());
+    }
+    if display_name.is_empty() {
+        return Err(std::io::Error::other("Missing --display-name").into());
+    }
+
+    let repo_root = std::env::current_dir()?;
+    let db_path = db_path.unwrap_or_else(|| String::from("var/backend/app.db"));
+    let db_path = if db_path.starts_with('/') {
+        PathBuf::from(db_path)
+    } else {
+        repo_root.join(db_path)
+    };
+
+    let store = ProjectsStore::new(db_path.clone(), repo_root.clone());
+    store.initialize()?;
+
+    let user_id = store.ensure_user(&username, &display_name)?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "ok": true,
+            "user_id": user_id,
+            "username": username,
+            "display_name": display_name
         }))?
     );
     Ok(())
