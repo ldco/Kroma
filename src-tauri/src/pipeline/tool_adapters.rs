@@ -1000,12 +1000,11 @@ where
         &self,
         input_abs: &Path,
         output_abs: &Path,
-        rembg_python: &str,
+        _rembg_python: &str,
         cfg: &BgRemoveAdapterConfig,
     ) -> Result<(), ToolAdapterError> {
+        // Call rembg CLI directly: rembg i -m <model> input output
         let args = vec![
-            String::from("-m"),
-            String::from("rembg"),
             String::from("i"),
             String::from("-m"),
             cfg.rembg_model.clone(),
@@ -1015,14 +1014,14 @@ where
         let output = self
             .runner
             .run(&CommandSpec {
-                program: rembg_python.to_string(),
+                program: String::from("rembg"),
                 args,
                 cwd: self.app_root.clone(),
             })
             .map_err(ToolAdapterError::CommandRunner)?;
         if output.status_code != 0 {
             return Err(ToolAdapterError::CommandFailed {
-                program: rembg_python.to_string(),
+                program: String::from("rembg"),
                 status_code: output.status_code,
                 stdout: output.stdout,
                 stderr: output.stderr,
@@ -1726,7 +1725,7 @@ mod tests {
             .expect("input should exist");
         std::fs::write(
             app_root.join("config/postprocess.json"),
-            r#"{"bg_remove":{"backends":["rembg"],"format":"webp","rembg":{"python_bin":"python3","model":"u2net_human_seg"},"openai":{"enabled":false,"required":false}}}"#,
+            r#"{"bg_remove":{"backends":["rembg"],"format":"webp","rembg":{"model":"birefnet-general"},"openai":{"enabled":false,"required":false}}}"#,
         )
         .expect("postprocess config should exist");
 
@@ -1756,14 +1755,12 @@ mod tests {
         assert_eq!(resp.results[0].backend, "rembg");
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-m"));
-        assert!(seen[0].args.windows(2).any(|w| w == ["-m", "rembg"]));
+        assert_eq!(seen[0].program, "rembg");
         assert!(seen[0].args.iter().any(|v| v == "i"));
         assert!(seen[0]
             .args
             .windows(2)
-            .any(|w| w == ["-m", "u2net_human_seg"]));
+            .any(|w| w == ["-m", "birefnet-general"]));
 
         let _ = std::fs::remove_dir_all(app_root);
     }
@@ -1821,7 +1818,7 @@ mod tests {
             .expect("input should exist");
         std::fs::write(
             app_root.join("config/postprocess.json"),
-            r#"{"bg_remove":{"backends":["photoroom","rembg"],"format":"png","rembg":{"python_bin":"python3","model":"u2net"},"photoroom":{"api_key_env":"PHOTOROOM_TEST_API_KEY_MISSING","endpoint":"https://example.invalid/photoroom"}}}"#,
+            r#"{"bg_remove":{"backends":["photoroom","rembg"],"format":"png","rembg":{"model":"birefnet-general"},"photoroom":{"api_key_env":"PHOTOROOM_TEST_API_KEY_MISSING","endpoint":"https://example.invalid/photoroom"}}}"#,
         )
         .expect("postprocess config should exist");
 
@@ -1849,8 +1846,7 @@ mod tests {
         assert_eq!(resp.results[0].backend, "rembg");
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-m"));
+        assert_eq!(seen[0].program, "rembg");
 
         let _ = std::fs::remove_dir_all(app_root);
     }
@@ -1867,7 +1863,7 @@ mod tests {
             .expect("nested input should exist");
         std::fs::write(
             app_root.join("config/postprocess.json"),
-            r#"{"bg_remove":{"backends":["rembg"],"format":"webp","rembg":{"python_bin":"python3","model":"u2net"}}}"#,
+            r#"{"bg_remove":{"backends":["rembg"],"format":"webp","rembg":{"model":"birefnet-general"}}}"#,
         )
         .expect("postprocess config should exist");
 
@@ -1900,10 +1896,7 @@ mod tests {
             .any(|r| r.output == "var/projects/demo/background_removed/sub/b.webp"));
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 2);
-        assert!(seen.iter().all(|cmd| cmd.program == "python3"));
-        assert!(seen
-            .iter()
-            .all(|cmd| cmd.args.first().map(String::as_str) == Some("-m")));
+        assert!(seen.iter().all(|cmd| cmd.program == "rembg"));
         assert!(!seen.iter().any(|cmd| cmd.program == "node"));
 
         let _ = std::fs::remove_dir_all(app_root);
@@ -1919,7 +1912,7 @@ mod tests {
             .expect("input should exist");
         std::fs::write(
             app_root.join("config/postprocess.json"),
-            r#"{"bg_remove":{"backends":["rembg"],"format":"png","rembg":{"python_bin":"python3","model":"u2net"},"openai":{"enabled":true,"required":false,"api_key_env":"BG_REFINE_TEST_API_KEY_MISSING"}}}"#,
+            r#"{"bg_remove":{"backends":["rembg"],"format":"png","rembg":{"model":"birefnet-general"},"openai":{"enabled":true,"required":false,"api_key_env":"BG_REFINE_TEST_API_KEY_MISSING"}}}"#,
         )
         .expect("postprocess config should exist");
 
@@ -1956,8 +1949,7 @@ mod tests {
 
         let seen = runner.take_seen();
         assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].program, "python3");
-        assert_eq!(seen[0].args.first().map(String::as_str), Some("-m"));
+        assert_eq!(seen[0].program, "rembg");
         assert!(!seen.iter().any(|cmd| cmd.program == "node"));
 
         let _ = std::fs::remove_dir_all(app_root);

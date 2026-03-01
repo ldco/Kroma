@@ -31,18 +31,18 @@ pub(super) struct BgRemoveAdapterConfig {
 impl Default for BgRemoveAdapterConfig {
     fn default() -> Self {
         Self {
-            backends: vec![String::from("rembg")],
+            backends: vec![String::from("photoroom"), String::from("rembg")],
             format: String::from("png"),
             size: String::from("auto"),
             crop: false,
-            rembg_python_bin: String::from("tools/rembg/.venv/bin/python"),
-            rembg_model: String::from("u2net"),
+            rembg_python_bin: String::from("python3"),
+            rembg_model: String::from("birefnet-general"),
             photoroom_endpoint: String::from("https://sdk.photoroom.com/v1/segment"),
             photoroom_api_key_env: String::from("PHOTOROOM_API_KEY"),
             removebg_endpoint: String::from("https://api.remove.bg/v1.0/removebg"),
             removebg_api_key_env: String::from("REMOVE_BG_API_KEY"),
             openai_enabled: true,
-            openai_required: true,
+            openai_required: false,
             openai_api_key_env: String::from("OPENAI_API_KEY"),
             openai_model: None,
             openai_quality: None,

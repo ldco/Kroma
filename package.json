@@ -16,7 +16,7 @@
     "backend:contract:smoke": "cd src-tauri && cargo test --test contract_smoke",
     "realesrgan:setup": "cd src-tauri && cargo run -- tools:install realesrgan-ncnn",
     "realesrgan:python:setup": "echo 'DEPRECATED: Use Rust CLI commands instead'",
-    "rembg:setup": "echo 'DEPRECATED: Use Rust CLI commands instead'",
+    "rembg:setup": "pip3 install rembg onnxruntime && echo 'rembg installed - use BiRefNet model for best quality'",
     "tools:setup": "cd src-tauri && cargo run -- tools:install all"
   },
   "engines": {
