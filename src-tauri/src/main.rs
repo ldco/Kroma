@@ -77,6 +77,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_db_ensure_user_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
         return Ok(());
     }
+    if matches!(cli_args.first().map(String::as_str), Some("tools:install")) {
+        run_tools_install_cli(cli_args.into_iter().skip(1).collect::<Vec<_>>())?;
+        return Ok(());
+    }
 
     let bind =
         std::env::var("KROMA_BACKEND_BIND").unwrap_or_else(|_| String::from("127.0.0.1:8788"));
@@ -1260,6 +1264,174 @@ fn run_db_ensure_user_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::E
             "display_name": display_name
         }))?
     );
+    Ok(())
+}
+
+fn print_tools_install_usage() {
+    eprintln!(concat!(
+        "Usage:\n",
+        "  cargo run -- tools:install <tool>\n\n",
+        "Tools:\n",
+        "  realesrgan-ncnn  - Download Real-ESRGAN ncnn-vulkan binary\n",
+        "  all              - Install all available tools\n\n",
+        "Note: Python-based tools (realesrgan-python, rembg) are deprecated.\n",
+        "Use native Rust implementations instead.\n"
+    ));
+}
+
+fn run_tools_install_cli(args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    if args.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+        print_tools_install_usage();
+        return Ok(());
+    }
+
+    if args.is_empty() {
+        print_tools_install_usage();
+        return Err(std::io::Error::other("Missing tool name. Use --help for usage.").into());
+    }
+
+    let tool = args[0].as_str();
+
+    match tool {
+        "realesrgan-ncnn" => {
+            install_realesrgan_ncnn()?;
+        }
+        "all" => {
+            install_realesrgan_ncnn()?;
+        }
+        "realesrgan-python" | "rembg" => {
+            eprintln!("⚠️  Python-based tool '{tool}' is deprecated.");
+            eprintln!("   Native Rust implementation is now available.");
+            eprintln!("   Use Rust CLI commands instead:");
+            eprintln!("     cargo run -- upscale   (for upscaling)");
+            eprintln!("     cargo run -- bgremove  (for background removal)");
+            return Err(std::io::Error::other("Python tools are deprecated").into());
+        }
+        unknown => {
+            print_tools_install_usage();
+            return Err(std::io::Error::other(format!("Unknown tool: {unknown}")).into());
+        }
+    }
+
+    println!("✅ Tool installation complete!");
+    Ok(())
+}
+
+fn install_realesrgan_ncnn() -> Result<(), Box<dyn std::error::Error>> {
+    use std::fs;
+    use std::io::{Read, Write};
+
+    let repo_root = std::env::current_dir()?;
+    let tools_dir = repo_root.join("tools").join("realesrgan");
+    fs::create_dir_all(&tools_dir)?;
+
+    let exe_name = if cfg!(windows) {
+        "realesrgan-ncnn-vulkan.exe"
+    } else {
+        "realesrgan-ncnn-vulkan"
+    };
+
+    let target_exe = tools_dir.join(exe_name);
+    if target_exe.exists() {
+        println!("✅ Real-ESRGAN ncnn already installed: {}", target_exe.display());
+        return Ok(());
+    }
+
+    println!("🔍 Fetching Real-ESRGAN releases from GitHub...");
+    
+    // Detect platform
+    let platform = if cfg!(target_os = "linux") {
+        "ubuntu"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        return Err(std::io::Error::other("Unsupported platform").into());
+    };
+
+    println!("🎯 Platform: {}", platform);
+
+    // Fetch releases
+    let releases_url = "https://api.github.com/repos/xinntao/Real-ESRGAN/releases?per_page=10";
+    let client = ureq::AgentBuilder::new()
+        .user_agent("kroma-tools-installer")
+        .build();
+    
+    let response = client.get(releases_url).call()?;
+    let releases: Vec<serde_json::Value> = response.into_json()?;
+
+    // Find matching asset
+    let mut chosen_asset: Option<(String, String)> = None;
+    
+    for release in &releases {
+        if let Some(assets) = release.get("assets").and_then(|v| v.as_array()) {
+            for asset in assets {
+                let name = asset.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let download_url = asset.get("browser_download_url").and_then(|v| v.as_str()).unwrap_or("");
+                
+                let name_lower = name.to_lowercase();
+                if name_lower.contains("realesrgan-ncnn-vulkan") 
+                    && name_lower.contains(platform)
+                    && name_lower.ends_with(".zip") 
+                {
+                    chosen_asset = Some((name.to_string(), download_url.to_string()));
+                    break;
+                }
+            }
+        }
+        if chosen_asset.is_some() {
+            break;
+        }
+    }
+
+    let (asset_name, asset_url) = chosen_asset
+        .ok_or_else(|| std::io::Error::other("No matching Real-ESRGAN release found for your platform"))?;
+
+    println!("📦 Downloading: {}", asset_name);
+    println!("🔗 URL: {}", asset_url);
+
+    // Download and extract
+    let response = client.get(&asset_url).call()?;
+    let mut zip_data = Vec::new();
+    response.into_reader().read_to_end(&mut zip_data)?;
+
+    println!("📥 Extracting...");
+    
+    let cursor = std::io::Cursor::new(zip_data);
+    let mut archive = zip::ZipArchive::new(cursor)?;
+
+    let mut found_exe = false;
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let file_name = file.name();
+        
+        if file_name.contains(exe_name) {
+            let out_path = target_exe.clone();
+            let mut outfile = fs::File::create(&out_path)?;
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)?;
+            outfile.write_all(&contents)?;
+            
+            // Make executable on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = outfile.metadata()?.permissions();
+                perms.set_mode(0o755);
+                outfile.set_permissions(perms)?;
+            }
+            
+            found_exe = true;
+            println!("✅ Extracted: {}", out_path.display());
+            break;
+        }
+    }
+
+    if !found_exe {
+        return Err(std::io::Error::other("Executable not found in archive").into());
+    }
+
     Ok(())
 }
 
