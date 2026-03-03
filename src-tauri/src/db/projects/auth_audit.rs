@@ -9,6 +9,34 @@ use super::{
     normalize_slug, now_iso, ProjectsRepoError, ProjectsStore,
 };
 
+/// Validate and normalize an expiration timestamp.
+/// Accepts ISO8601 format and returns normalized UTC timestamp.
+/// Returns Validation error for malformed dates.
+fn validate_expires_at(expires_at: Option<&str>) -> Result<Option<String>, ProjectsRepoError> {
+    match expires_at {
+        None | Some("") => Ok(None),
+        Some(value) => {
+            // Try to parse as ISO8601 timestamp
+            let result: Result<String, ()> = chrono::DateTime::parse_from_rfc3339(value)
+                .map(|dt| dt.to_utc().to_rfc3339())
+                .or_else(|_| {
+                    // Try parsing as simple date (YYYY-MM-DD)
+                    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+                        .map(|date| date.and_hms_opt(23, 59, 59).unwrap().and_utc().to_rfc3339())
+                })
+                .map_err(|_| ());
+            
+            match result {
+                Ok(ts) => Ok(Some(ts)),
+                Err(()) => Err(ProjectsRepoError::Validation(format!(
+                    "Invalid expires_at format: '{}'. Expected ISO8601 (YYYY-MM-DDTHH:MM:SSZ) or date (YYYY-MM-DD)",
+                    value
+                ))),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct CreateApiTokenInput {
     #[serde(default)]
@@ -140,7 +168,8 @@ impl ProjectsStore {
             .chars()
             .take(200)
             .collect::<String>();
-        let expires_at = normalize_optional_text(input.expires_at.as_deref());
+        // Validate and normalize expires_at timestamp
+        let expires_at = validate_expires_at(input.expires_at.as_deref())?;
 
         self.with_connection_mut(|conn| {
             let user_id = ensure_user(conn, "local", "Local User")?;

@@ -166,19 +166,69 @@ pub trait PipelineCommandRunner: Send + Sync + 'static {
 #[derive(Debug, Default, Clone)]
 pub struct StdPipelineCommandRunner;
 
+impl StdPipelineCommandRunner {
+    /// Default maximum command runtime in seconds (5 minutes)
+    /// Can be overridden via KROMA_COMMAND_TIMEOUT_SECONDS env var
+    fn command_timeout() -> std::time::Duration {
+        std::env::var("KROMA_COMMAND_TIMEOUT_SECONDS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(std::time::Duration::from_secs)
+            .unwrap_or_else(|| std::time::Duration::from_secs(300))
+    }
+}
+
 impl PipelineCommandRunner for StdPipelineCommandRunner {
     fn run(&self, spec: &CommandSpec) -> Result<CommandOutput, PipelineRuntimeError> {
-        let output = Command::new(spec.program.as_str())
+        use std::io::{Read, BufReader};
+        use std::process::{Command, Stdio};
+        
+        let timeout = Self::command_timeout();
+        
+        let mut child = Command::new(spec.program.as_str())
             .args(spec.args.iter().map(String::as_str))
             .current_dir(spec.cwd.as_path())
-            .output()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(PipelineRuntimeError::Io)?;
 
-        Ok(CommandOutput {
-            status_code: output.status.code().unwrap_or(-1),
-            stdout: String::from_utf8_lossy(output.stdout.as_slice()).to_string(),
-            stderr: String::from_utf8_lossy(output.stderr.as_slice()).to_string(),
-        })
+        // Wait for command with timeout
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().map_err(PipelineRuntimeError::Io)? {
+                // Command completed - read stdout/stderr
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                if let Some(mut stdout_pipe) = child.stdout.take() {
+                    let _ = BufReader::new(stdout_pipe).read_to_string(&mut stdout);
+                }
+                if let Some(mut stderr_pipe) = child.stderr.take() {
+                    let _ = BufReader::new(stderr_pipe).read_to_string(&mut stderr);
+                }
+                
+                return Ok(CommandOutput {
+                    status_code: status.code().unwrap_or(-1),
+                    stdout,
+                    stderr,
+                });
+            }
+
+            if start.elapsed() > timeout {
+                // Timeout exceeded - terminate child process
+                let _ = child.kill();
+                let _ = child.wait();
+                
+                return Err(PipelineRuntimeError::CommandFailed {
+                    program: spec.program.clone(),
+                    status_code: -1,
+                    stdout: String::from(""),
+                    stderr: format!("Command timed out after {} seconds", timeout.as_secs()),
+                });
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
 }
 

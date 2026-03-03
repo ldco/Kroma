@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -58,6 +59,9 @@ const ASSET_LINK_TYPE_DERIVED_FROM: &str = "derived_from";
 const ASSET_LINK_TYPE_VARIANT_OF: &str = "variant_of";
 const ASSET_LINK_TYPE_MASK_FOR: &str = "mask_for";
 const ASSET_LINK_TYPE_REFERENCE_OF: &str = "reference_of";
+
+/// One-time schema initialization guard to avoid repeated schema checks on every request.
+static SCHEMA_INITIALIZED: OnceLock<()> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectSummary {
@@ -240,13 +244,32 @@ impl ProjectsStore {
     }
 
     pub fn initialize(&self) -> Result<(), ProjectsRepoError> {
-        self.with_connection(|_| Ok(()))
+        // Run schema initialization once per process
+        // Use get_or_init with unwrap since schema init should not fail silently
+        SCHEMA_INITIALIZED.get_or_init(|| {
+            self.with_connection_no_schema(|_| Ok(()))
+                .expect("Schema initialization should succeed");
+        });
+        Ok(())
     }
 
     pub fn ensure_user(&self, username: &str, display_name: &str) -> Result<String, ProjectsRepoError> {
         self.with_connection(|conn| {
             ensure_user(conn, username, display_name)
         })
+    }
+
+    /// Internal connection helper without schema checks (for initialization)
+    fn with_connection_no_schema<T, F>(&self, func: F) -> Result<T, ProjectsRepoError>
+    where
+        F: FnOnce(&Connection) -> Result<T, ProjectsRepoError>,
+    {
+        if let Some(parent) = self.db_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let conn = Connection::open(self.db_path.as_path())?;
+        configure_connection(&conn)?;
+        func(&conn)
     }
 
     fn with_connection<T, F>(&self, func: F) -> Result<T, ProjectsRepoError>
@@ -258,7 +281,7 @@ impl ProjectsStore {
         }
         let conn = Connection::open(self.db_path.as_path())?;
         configure_connection(&conn)?;
-        ensure_schema(&conn)?;
+        // Schema already initialized at startup via initialize()
         func(&conn)
     }
 
@@ -271,7 +294,7 @@ impl ProjectsStore {
         }
         let mut conn = Connection::open(self.db_path.as_path())?;
         configure_connection(&conn)?;
-        ensure_schema(&conn)?;
+        // Schema already initialized at startup via initialize()
         func(&mut conn)
     }
 }

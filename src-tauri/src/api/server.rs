@@ -87,9 +87,12 @@ pub fn build_router() -> Router {
             Arc::new(ProjectsStore::new(sqlite.app_db_path, repo_root))
         }
         DatabaseBackendConfig::Postgres(pg) => {
+            // Redact credentials from database URL for safe logging
+            let db_url = &pg.database_url;
+            let redacted_url = redact_database_url(db_url);
             panic!(
                 "KROMA_BACKEND_DB_URL is set ({}), but PostgreSQL backend wiring is not implemented yet. Unset KROMA_BACKEND_DB_URL to use SQLite.",
-                pg.database_url
+                redacted_url
             );
         }
     };
@@ -97,6 +100,21 @@ pub fn build_router() -> Router {
         .initialize()
         .expect("projects store should initialize schema");
     build_router_with_projects_store(projects_store)
+}
+
+/// Redact credentials from a database URL for safe logging.
+/// Shows only backend type and host, hiding username/password.
+fn redact_database_url(url: &str) -> String {
+    // Parse URL and redact sensitive parts
+    if let Ok(parsed) = url::Url::parse(url) {
+        let host = parsed.host_str().unwrap_or("<unknown>");
+        let port = parsed.port().map(|p| format!(":{}", p)).unwrap_or_default();
+        let path = parsed.path();
+        format!("postgres://<redacted>@{}{}{}", host, port, path)
+    } else {
+        // If parsing fails, return a safe placeholder
+        String::from("postgres://<redacted>")
+    }
 }
 
 pub fn build_router_with_projects_store(projects_store: Arc<ProjectsStore>) -> Router {

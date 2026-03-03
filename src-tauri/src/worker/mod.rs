@@ -182,13 +182,20 @@ fn resolve_agent_target(
     Ok((target_url, token))
 }
 
+/// Map remote agent status to local instruction state.
+/// Known statuses map to their expected local state.
+/// Unknown statuses are treated as retryable failures to prevent silent work loss.
 fn map_remote_status(remote_status: &str) -> &'static str {
     match remote_status.trim().to_ascii_lowercase().as_str() {
         "done" => "done",
         "failed" => "failed",
         "running" => "running",
+        // accepted/queued mean the remote agent has taken the work but not completed
+        // map to "done" to release the lease and allow re-polling
         "accepted" | "queued" => "done",
-        _ => "done",
+        // Unknown statuses are treated as retryable failures to prevent silent work loss
+        // The raw remote status is preserved in audit events for diagnostics
+        _ => "failed",
     }
 }
 
@@ -296,5 +303,9 @@ mod tests {
         assert_eq!(map_remote_status(" Running "), "running");
         assert_eq!(map_remote_status("accepted"), "done");
         assert_eq!(map_remote_status("queued"), "done");
+        // Unknown statuses should map to "failed" to prevent silent work loss
+        assert_eq!(map_remote_status("unknown_status"), "failed");
+        assert_eq!(map_remote_status("pending"), "failed");
+        assert_eq!(map_remote_status("  UNKNOWN "), "failed");
     }
 }

@@ -377,7 +377,10 @@ where
             form = form.part("image[]", part);
         }
 
+        // HTTP client with bounded timeouts to prevent hung requests
         let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(120))  // Total request timeout
+            .connect_timeout(std::time::Duration::from_secs(30))  // Connection timeout
             .build()
             .map_err(|e| ToolAdapterError::Native(format!("http client init failed: {e}")))?;
         let resp = client
@@ -1072,7 +1075,10 @@ where
             form = form.text("crop", String::from("true"));
         }
 
+        // HTTP client with bounded timeouts to prevent hung requests
         let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(60))  // Total request timeout
+            .connect_timeout(std::time::Duration::from_secs(15))  // Connection timeout
             .build()
             .map_err(|e| ToolAdapterError::Native(format!("http client init failed: {e}")))?;
         let resp = client
@@ -1154,7 +1160,10 @@ where
                     .map_err(|e| ToolAdapterError::Native(format!("invalid mime '{mime}': {e}")))?,
             );
 
+        // HTTP client with bounded timeouts to prevent hung requests
         let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(120))  // Total request timeout
+            .connect_timeout(std::time::Duration::from_secs(30))  // Connection timeout
             .build()
             .map_err(|e| ToolAdapterError::Native(format!("http client init failed: {e}")))?;
         let resp = client
