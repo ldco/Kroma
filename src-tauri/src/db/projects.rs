@@ -1,5 +1,6 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{LazyLock, Mutex};
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -60,8 +61,9 @@ const ASSET_LINK_TYPE_VARIANT_OF: &str = "variant_of";
 const ASSET_LINK_TYPE_MASK_FOR: &str = "mask_for";
 const ASSET_LINK_TYPE_REFERENCE_OF: &str = "reference_of";
 
-/// One-time schema initialization guard to avoid repeated schema checks on every request.
-static SCHEMA_INITIALIZED: OnceLock<()> = OnceLock::new();
+/// Per-database-path schema initialization guard.
+/// Tracks which database files have been initialized to avoid repeated schema checks.
+static INITIALIZED_DB_PATHS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectSummary {
@@ -244,13 +246,30 @@ impl ProjectsStore {
     }
 
     pub fn initialize(&self) -> Result<(), ProjectsRepoError> {
-        // Run schema initialization once per process
-        // Use get_or_init with unwrap since schema init should not fail silently
-        SCHEMA_INITIALIZED.get_or_init(|| {
-            self.with_connection_no_schema(|_| Ok(()))
-                .expect("Schema initialization should succeed");
-        });
-        Ok(())
+        // Check if this database path has already been initialized
+        let db_path_str = self.db_path.to_string_lossy().to_string();
+        
+        {
+            let initialized = INITIALIZED_DB_PATHS.lock().map_err(|e| {
+                ProjectsRepoError::Validation(format!("Lock poisoned: {e}"))
+            })?;
+            if initialized.contains(&db_path_str) {
+                return Ok(());
+            }
+        }
+        
+        // Run schema initialization for this database path
+        self.with_connection_no_schema(|conn| {
+            ensure_schema(conn)?;
+            
+            // Mark as initialized
+            let mut initialized = INITIALIZED_DB_PATHS.lock().map_err(|e| {
+                ProjectsRepoError::Validation(format!("Lock poisoned: {e}"))
+            })?;
+            initialized.insert(db_path_str.clone());
+            
+            Ok(())
+        })
     }
 
     pub fn ensure_user(&self, username: &str, display_name: &str) -> Result<String, ProjectsRepoError> {

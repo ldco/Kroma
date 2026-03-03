@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -180,8 +179,10 @@ impl StdPipelineCommandRunner {
 
 impl PipelineCommandRunner for StdPipelineCommandRunner {
     fn run(&self, spec: &CommandSpec) -> Result<CommandOutput, PipelineRuntimeError> {
-        use std::io::{Read, BufReader};
         use std::process::{Command, Stdio};
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+        use std::io::{BufRead, BufReader};
         
         let timeout = Self::command_timeout();
         
@@ -193,41 +194,103 @@ impl PipelineCommandRunner for StdPipelineCommandRunner {
             .spawn()
             .map_err(PipelineRuntimeError::Io)?;
 
+        // Take stdout/stderr pipes for background reading
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
+        
+        // Shared buffers for output
+        let stdout_buf = Arc::new(Mutex::new(String::new()));
+        let stderr_buf = Arc::new(Mutex::new(String::new()));
+        
+        // Spawn threads to continuously drain stdout/stderr (prevents pipe buffer deadlock)
+        let stdout_thread = stdout_pipe.map(|pipe| {
+            let buf = Arc::clone(&stdout_buf);
+            thread::spawn(move || {
+                let reader = BufReader::new(pipe);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        let mut buf = buf.lock().unwrap();
+                        buf.push_str(&line);
+                        buf.push('\n');
+                    }
+                }
+            })
+        });
+        
+        let stderr_thread = stderr_pipe.map(|pipe| {
+            let buf = Arc::clone(&stderr_buf);
+            thread::spawn(move || {
+                let reader = BufReader::new(pipe);
+                for line in reader.lines() {
+                    if let Ok(line) = line {
+                        let mut buf = buf.lock().unwrap();
+                        buf.push_str(&line);
+                        buf.push('\n');
+                    }
+                }
+            })
+        });
+
         // Wait for command with timeout
         let start = std::time::Instant::now();
-        loop {
+        let exit_status = loop {
             if let Some(status) = child.try_wait().map_err(PipelineRuntimeError::Io)? {
-                // Command completed - read stdout/stderr
-                let mut stdout = String::new();
-                let mut stderr = String::new();
-                if let Some(mut stdout_pipe) = child.stdout.take() {
-                    let _ = BufReader::new(stdout_pipe).read_to_string(&mut stdout);
-                }
-                if let Some(mut stderr_pipe) = child.stderr.take() {
-                    let _ = BufReader::new(stderr_pipe).read_to_string(&mut stderr);
-                }
-                
-                return Ok(CommandOutput {
-                    status_code: status.code().unwrap_or(-1),
-                    stdout,
-                    stderr,
-                });
+                break Some(status);
             }
 
             if start.elapsed() > timeout {
                 // Timeout exceeded - terminate child process
                 let _ = child.kill();
                 let _ = child.wait();
-                
-                return Err(PipelineRuntimeError::CommandFailed {
-                    program: spec.program.clone(),
-                    status_code: -1,
-                    stdout: String::from(""),
-                    stderr: format!("Command timed out after {} seconds", timeout.as_secs()),
-                });
+                break None;
             }
 
             std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+
+        // Wait for output threads to finish
+        if let Some(thread) = stdout_thread {
+            let _ = thread.join();
+        }
+        if let Some(thread) = stderr_thread {
+            let _ = thread.join();
+        }
+        
+        // Collect output
+        let stdout = Arc::try_unwrap(stdout_buf)
+            .map_err(|_| PipelineRuntimeError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to collect stdout"
+            )))?
+            .into_inner()
+            .map_err(|_| PipelineRuntimeError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Mutex poisoned"
+            )))?;
+        
+        let stderr = Arc::try_unwrap(stderr_buf)
+            .map_err(|_| PipelineRuntimeError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Failed to collect stderr"
+            )))?
+            .into_inner()
+            .map_err(|_| PipelineRuntimeError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Mutex poisoned"
+            )))?;
+
+        match exit_status {
+            Some(status) => Ok(CommandOutput {
+                status_code: status.code().unwrap_or(-1),
+                stdout,
+                stderr,
+            }),
+            None => Err(PipelineRuntimeError::CommandFailed {
+                program: spec.program.clone(),
+                status_code: -1,
+                stdout,
+                stderr: format!("Command timed out after {} seconds\n{}", timeout.as_secs(), stderr),
+            }),
         }
     }
 }

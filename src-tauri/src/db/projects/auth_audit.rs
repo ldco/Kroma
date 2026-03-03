@@ -227,7 +227,8 @@ impl ProjectsStore {
             .chars()
             .take(200)
             .collect::<String>();
-        let expires_at = normalize_optional_text(input.expires_at.as_deref());
+        // Validate and normalize expires_at timestamp (same as create_api_token_local)
+        let expires_at = validate_expires_at(input.expires_at.as_deref())?;
 
         self.with_connection_mut(|conn| {
             let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;

@@ -13,7 +13,7 @@ pub fn resolve_under_root(root: &Path, value: &str) -> PathBuf {
 /// Resolve a request path under root with canonical path containment check.
 /// Prevents symlink traversal attacks by resolving the final target and verifying
 /// it remains within the app root boundary.
-/// For non-existent paths, performs lexical containment check only.
+/// For non-existent paths, validates the nearest existing ancestor against canonical root.
 pub fn resolve_request_path_under_root(
     root: &Path,
     value: &str,
@@ -39,16 +39,27 @@ pub fn resolve_request_path_under_root(
     let candidate = root.join(path);
     
     // Canonical path containment check to prevent symlink traversal
-    // Only performed if both paths exist (skip for new file creation)
-    if root.exists() && candidate.exists() {
-        let canonical_root = root.canonicalize()
-            .map_err(|e| format!("Failed to resolve app root: {e}"))?;
-        let canonical_candidate = candidate.canonicalize()
-            .map_err(|e| format!("Failed to resolve path: {e}"))?;
-        
-        if !canonical_candidate.starts_with(&canonical_root) {
-            return Err(format!("{field} resolved outside app root (symlink traversal detected)"));
+    // For existing paths: check the path itself
+    // For non-existent paths: check the nearest existing ancestor
+    let canonical_root = root.canonicalize()
+        .map_err(|e| format!("Failed to resolve app root: {e}"))?;
+    
+    let check_path = if candidate.exists() {
+        candidate.canonicalize()
+            .map_err(|e| format!("Failed to resolve path: {e}"))?
+    } else {
+        // Find nearest existing ancestor
+        let mut ancestor = candidate.as_path();
+        while !ancestor.exists() {
+            ancestor = ancestor.parent()
+                .ok_or_else(|| format!("{field} has no valid ancestor within root"))?;
         }
+        ancestor.canonicalize()
+            .map_err(|e| format!("Failed to resolve ancestor path: {e}"))?
+    };
+    
+    if !check_path.starts_with(&canonical_root) {
+        return Err(format!("{field} resolved outside app root (symlink traversal detected)"));
     }
     
     Ok(candidate)
