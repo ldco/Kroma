@@ -583,10 +583,27 @@ async fn bootstrap_import_validation_is_enforced() {
 async fn bootstrap_prompt_missing_project_has_not_found_taxonomy() {
     let app = build_router_with_projects_store_dev_bypass(test_store());
     let response = send_json(
-        app,
+        app.clone(),
         Method::GET,
         "/api/projects/missing/bootstrap-prompt",
         Body::empty(),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    assert_eq!(response["ok"], json!(false));
+    assert_eq!(response["error"], json!("Project not found"));
+    assert_eq!(response["error_kind"], json!("validation"));
+    assert_eq!(response["error_code"], json!("not_found"));
+}
+
+#[tokio::test]
+async fn bootstrap_import_missing_project_has_not_found_taxonomy() {
+    let app = build_router_with_projects_store_dev_bypass(test_store());
+    let response = send_json(
+        app,
+        Method::POST,
+        "/api/projects/missing/bootstrap-import",
+        Body::from(json!({"mode":"merge","settings":{"style_guides":[{"name":"Test","instructions":"test"}]}}).to_string()),
         StatusCode::NOT_FOUND,
     )
     .await;

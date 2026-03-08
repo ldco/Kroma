@@ -173,7 +173,7 @@ async fn agent_instruction_validation_and_not_found_paths_are_enforced() {
     );
 
     let missing_instruction = send_json(
-        app,
+        app.clone(),
         Method::GET,
         &format!("/api/projects/{slug}/agent/instructions/missing"),
         Body::empty(),
@@ -186,6 +186,36 @@ async fn agent_instruction_validation_and_not_found_paths_are_enforced() {
     );
     assert_eq!(missing_instruction["error_kind"], json!("validation"));
     assert_eq!(missing_instruction["error_code"], json!("not_found"));
+
+    let missing_project_instructions = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/projects/missing/agent/instructions",
+        Body::empty(),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    assert_eq!(
+        missing_project_instructions["error"],
+        json!("Project not found")
+    );
+    assert_eq!(missing_project_instructions["error_kind"], json!("validation"));
+    assert_eq!(missing_project_instructions["error_code"], json!("not_found"));
+
+    let missing_project_create = send_json(
+        app,
+        Method::POST,
+        "/api/projects/missing/agent/instructions",
+        Body::from(json!({"instruction_text":"Test"}).to_string()),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    assert_eq!(
+        missing_project_create["error"],
+        json!("Project not found")
+    );
+    assert_eq!(missing_project_create["error_kind"], json!("validation"));
+    assert_eq!(missing_project_create["error_code"], json!("not_found"));
 }
 
 async fn send_json(

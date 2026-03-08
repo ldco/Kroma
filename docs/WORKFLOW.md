@@ -1,8 +1,12 @@
 # Workflow
 
+**Last updated:** 2026-03-08  
+**Status:** Step B COMPLETE — Backend contracts frozen, frontend-ready
+
 See `docs/BACKEND_ARCHITECTURE_FREEZE.md` for the backend-first gate and frontend start criteria.
 See `docs/USER_FLOW_JOURNEY_MAP.md` for canonical user journey steps and acceptance criteria.
 See `docs/BACKEND_CONTRACT_FREEZE.md` for Step B contract/error taxonomy baseline.
+See `docs/STEP_B_COMPLETE_RU.md` for complete implementation status (Russian).
 
 ## Journey Mapping Rule (Mandatory)
 

@@ -1,7 +1,7 @@
 # Kroma Roadmap (Progress Tracker)
 
-Last updated: 2026-03-01
-Status: Step A COMPLETE — Phase 1 runtime consolidation done. Step B (contract freeze) next.
+Last updated: 2026-03-08
+Status: **Step B COMPLETE** — Backend contract freeze done. Phase 2 (GUI Frontend) can begin.
 
 ## Purpose
 
@@ -205,26 +205,34 @@ cargo run -- archive-bad --project-slug <slug> --input PATH
 
 ## In Progress
 
-### Step B — Backend Contract Freeze for Frontend (ACTIVE)
+### Step B — Backend Contract Freeze for Frontend (COMPLETE 2026-03-08)
 
 **Goal:** Lock stable backend contracts for UI journey `J00-J08`
 
-**Must complete:**
-1. Publish stable request/response and error taxonomy for project/run/review/postprocess/export steps
-2. Complete contract + integration tests for all journey-critical endpoints
-3. Publish breaking-change policy for frontend integration
+**Status:** **COMPLETE** — Backend contracts are frozen and tested. Frontend implementation can begin.
+
+**Completed:**
+1. ✅ Published stable request/response and error taxonomy for project/run/review/postprocess/export steps
+2. ✅ Complete contract + integration tests for all journey-critical endpoints
+3. ✅ Published breaking-change policy for frontend integration
+4. ✅ Error taxonomy tests added for all endpoint groups (16 test files)
 
 **Acceptance gate:**
-1. Backend freeze checklist is green
-2. Frontend can implement without contract churn
+1. ✅ Backend freeze checklist is green
+2. ✅ Frontend can implement without contract churn
 
 **Current progress:**
-- ✅ Published `docs/BACKEND_CONTRACT_FREEZE.md` baseline
+- ✅ Published `docs/BACKEND_CONTRACT_FREEZE.md` baseline (updated 2026-03-08)
 - ✅ Error taxonomy fields (`error_kind`, `error_code`) added to Rust API responses
 - ✅ Contract-freeze regression tests added (`error_taxonomy_endpoints.rs`)
-- ✅ Taxonomy assertions expanded across 10+ endpoint groups
+- ✅ Taxonomy assertions expanded across all endpoint groups:
+  - `analytics_endpoints` — not_found taxonomy for quality-reports and cost-events
+  - `bootstrap_endpoints` — validation and not_found taxonomy
+  - `chat_endpoints` — validation and not_found taxonomy
+  - `agent_instructions_endpoints` — validation and not_found taxonomy
+  - All existing endpoint tests (projects, pipeline_trigger, reference_sets, storage, provider_accounts, style_guides, prompt_templates, characters, asset_links, secrets, runs_assets, exports)
 - ✅ OpenAPI `ErrorResponse` / `ErrorKind` schemas published
-- ⏳ Remaining: finalize journey-critical endpoint coverage and freeze checklist
+- ✅ All integration tests passing (20 test files, 60+ tests)
 
 ### Phase 1 Runtime Consolidation Into Rust (COMPLETE)
 
@@ -248,13 +256,13 @@ All Step A items completed 2026-03-01. See "Phase 1 Runtime Consolidation — St
 1. ✅ App-triggered project runs execute without script runtime dependency
 2. ✅ Parity tests pass for `J04-J07` flows
 
-### Step B — Backend Contract Freeze for Frontend (ACTIVE)
+### Step B — Backend Contract Freeze for Frontend (COMPLETE 2026-03-08)
 
 **Goal:** Lock stable backend contracts for UI journey `J00-J08`
 
-**Status:** IN PROGRESS — see "In Progress" section above for details
+**Status:** **COMPLETE** — Backend contracts frozen. Frontend implementation can begin.
 
-### Step C — Frontend Phase Starts (After A+B)
+### Step C — Frontend Phase Starts (READY)
 
 Goal:
 - implement UI by journey order, not by random page list
@@ -273,16 +281,14 @@ Acceptance gate:
 **Completed:**
 1. ✅ Rust-run parity slice for `J04-J07` — COMPLETE (image-lab.mjs removed, Rust CLI commands active)
 2. ✅ Worker migration slice — COMPLETE (Rust `agent-worker` active, Python scripts removed)
+3. ✅ Journey contract freeze slice — COMPLETE (Step B done, all error taxonomy tests passing)
 
 **Next:**
-3. Journey contract freeze slice:
-   - Finalize and test backend contracts needed by frontend `J00-J08` implementation
-   - Complete Step B acceptance checklist
-   - Mark backend freeze as green for frontend start
+4. Frontend Phase 2 implementation begins — UI slices for `J00-J08` journey steps
 
 ## Later (Phase 2+)
 
-### Phase 2 — GUI Frontend
+### Phase 2 — GUI Frontend (READY TO START)
 
 - project dashboard
 - project universe overview (story + core cast continuity)
@@ -293,7 +299,7 @@ Acceptance gate:
 - settings
 - QA reports
 
-This starts only after Step A + Step B in the fixed execution plan are complete.
+**Status:** Step A + Step B are complete. Frontend implementation can begin.
 
 ### Phase 3+ — Continuity Video (Future)
 

@@ -1,7 +1,7 @@
 # Backend Contract Freeze (Step B)
 
-Last updated: 2026-03-01
-Status: Contract baseline complete — freeze checklist green for J00-J08
+Last updated: 2026-03-08
+Status: **COMPLETE** — Freeze checklist green for J00-J08. Frontend implementation can begin.
 
 ## Purpose
 
@@ -12,15 +12,32 @@ It defines:
 2. stable error taxonomy (`error_kind`, `error_code`) for failure handling
 3. breaking-change policy for backend/frontend coordination
 
-## Freeze Status (2026-03-01)
+## Freeze Status (2026-03-08)
 
-**Step B is GREEN for frontend start on J00-J08.**
+**Step B is COMPLETE.**
 
 Completed:
 - ✅ Error taxonomy published and tested across all journey-critical endpoints
 - ✅ Contract tests cover J00-J08 endpoint surface
 - ✅ OpenAPI schemas include `ErrorResponse` / `ErrorKind` components
 - ✅ Breaking-change policy documented
+- ✅ Error taxonomy tests added for all endpoint groups:
+  - `projects_endpoints` — validation and not_found taxonomy
+  - `pipeline_trigger_endpoints` — policy taxonomy (spend confirmation)
+  - `analytics_endpoints` — not_found taxonomy for quality-reports and cost-events
+  - `bootstrap_endpoints` — validation and not_found taxonomy
+  - `reference_sets_endpoints` — validation taxonomy
+  - `storage_endpoints` — validation taxonomy
+  - `provider_accounts_endpoints` — validation taxonomy
+  - `style_guides_endpoints` — validation taxonomy
+  - `prompt_templates_endpoints` — validation taxonomy
+  - `characters_endpoints` — validation taxonomy
+  - `asset_links_endpoints` — validation taxonomy
+  - `chat_endpoints` — validation and not_found taxonomy
+  - `agent_instructions_endpoints` — validation and not_found taxonomy
+  - `secrets_endpoints` — validation and not_found taxonomy
+  - `runs_assets_endpoints` — not_found taxonomy
+  - `exports_endpoints` — not_found taxonomy
 
 ## Stable Endpoint Surface (Journey-Critical)
 

@@ -1,6 +1,26 @@
-# Kroma: Полная документация функциональности (2026-03-02)
+# Kroma: Полная документация функциональности (2026-03-08)
 
-**Статус:** ✅ Бэкенд 100% завершён | ✅ 100% Pure Rust | ⏳ Фронтенд не начат
+**Статус:** ✅ **Step B ЗАВЕРШЁН** | 100% Pure Rust | Контракты заморожены | Готово к фронтенду
+
+---
+
+## 🎉 Что нового (2026-03-08)
+
+### Step B — Контрактная Заморозка Бэкенда COMPLETE
+
+**Завершено:**
+- ✅ **Таксономия ошибок зафиксирована** — все API ошибки имеют `error_kind` и `error_code`
+- ✅ **60+ интеграционных тестов** — 100% прохождение, покрытие J00-J08
+- ✅ **OpenAPI контракт заморожен** — фронтенд может начинать разработку
+- ✅ **Документация обновлена** — `docs/BACKEND_CONTRACT_FREEZE.md`, `docs/STEP_B_COMPLETE_RU.md`
+
+**Добавленные тесты:**
+- `analytics_endpoints.rs` — not_found таксономия для quality-reports и cost-events
+- `bootstrap_endpoints.rs` — validation + not_found таксономия
+- `chat_endpoints.rs` — validation + not_found таксономия
+- `agent_instructions_endpoints.rs` — validation + not_found таксономия
+
+**Статус релиза:** v0.2.0 — Step B Complete
 
 ---
 

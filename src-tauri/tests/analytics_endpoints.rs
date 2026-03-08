@@ -79,6 +79,8 @@ async fn analytics_endpoints_return_not_found_for_unknown_project() {
     .await;
     assert_eq!(quality_not_found["ok"], json!(false));
     assert_eq!(quality_not_found["error"], json!("Project not found"));
+    assert_eq!(quality_not_found["error_kind"], json!("validation"));
+    assert_eq!(quality_not_found["error_code"], json!("not_found"));
 
     let cost_not_found = send_json(
         app,
@@ -90,6 +92,8 @@ async fn analytics_endpoints_return_not_found_for_unknown_project() {
     .await;
     assert_eq!(cost_not_found["ok"], json!(false));
     assert_eq!(cost_not_found["error"], json!("Project not found"));
+    assert_eq!(cost_not_found["error_kind"], json!("validation"));
+    assert_eq!(cost_not_found["error_code"], json!("not_found"));
 }
 
 fn seed_analytics_data(db_path: &Path, project_id: &str) {

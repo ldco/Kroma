@@ -3,7 +3,7 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/license-GPLv3-green)](./LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/ldco/Kroma)
+[![Version](https://img.shields.io/badge/version-0.2.0--step--b-blue)](https://github.com/ldco/Kroma)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/ldco/Kroma/ci.yml)](https://github.com/ldco/Kroma/actions)
 [![Language](https://img.shields.io/badge/language-100%25%20Rust-orange)](https://github.com/ldco/Kroma)
 [![Pure Rust](https://img.shields.io/badge/Python-0%25-green)](https://github.com/ldco/Kroma)
@@ -66,9 +66,9 @@ Current product architecture is explicitly desktop-first:
 
 This keeps local UX fast and zero-ops while preserving a clean upgrade path for paid cloud features.
 
-## Current Backend State (2026-03-02)
+## Current Backend State (2026-03-08)
 
-**🎉 100% Pure Rust Backend - COMPLETE**
+**🎉 Step B COMPLETE — Backend Contract Freeze Done**
 
 - Primary backend is Rust (`src-tauri`), started with `npm run backend:rust` on `127.0.0.1:8788`.
 - Rust API contract mounts **68 routes** covered by contract + endpoint tests.
@@ -80,9 +80,24 @@ This keeps local UX fast and zero-ops while preserving a clean upgrade path for 
   - ✅ Color correction → `cargo run -- color` (native Rust, image crate)
   - ✅ QA checks → `cargo run -- qa` (native Rust, chroma delta calculation)
   - ✅ Worker runtime → `cargo run -- agent-worker`
+- **Error taxonomy frozen** — all API errors have consistent `error_kind` and `error_code` fields
+- **60+ integration tests passing** — full coverage for J00-J08 journey endpoints
+- **OpenAPI contract frozen** — frontend implementation can begin
 - Bootstrap prompt exchange is implemented:
   - `GET /api/projects/{slug}/bootstrap-prompt`
   - `POST /api/projects/{slug}/bootstrap-import` (`merge`, `replace`, `dry_run`)
+
+### Release Status: v0.2.0 — Step B Complete
+
+**What this means:**
+- Step A (Pure Rust runtime): ✅ COMPLETE (2026-03-01)
+- Step B (Contract freeze): ✅ **COMPLETE (2026-03-08)**
+- Step C (GUI Frontend): ⏳ READY TO START
+
+**Frontend integration:**
+- All API contracts are stable and documented in `openapi/backend-api.openapi.yaml`
+- Error taxonomy is fixed and tested across all endpoints
+- Breaking-change policy documented in `docs/BACKEND_CONTRACT_FREEZE.md`
 
 ### Scripts Directory
 

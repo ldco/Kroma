@@ -163,7 +163,7 @@ async fn chat_validation_and_not_found_paths_are_enforced() {
     assert_eq!(missing_content["error_code"], json!("validation_error"));
 
     let missing_session = send_json(
-        app,
+        app.clone(),
         Method::GET,
         &format!("/api/projects/{slug}/chat/sessions/missing/messages"),
         Body::empty(),
@@ -173,6 +173,38 @@ async fn chat_validation_and_not_found_paths_are_enforced() {
     assert_eq!(missing_session["error"], json!("Chat session not found"));
     assert_eq!(missing_session["error_kind"], json!("validation"));
     assert_eq!(missing_session["error_code"], json!("not_found"));
+
+    let missing_project_sessions = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/projects/missing/chat/sessions",
+        Body::empty(),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    assert_eq!(
+        missing_project_sessions["error"],
+        json!("Project not found")
+    );
+    assert_eq!(missing_project_sessions["error_kind"], json!("validation"));
+    assert_eq!(missing_project_sessions["error_code"], json!("not_found"));
+
+    // Note: session detail endpoint returns "Chat session not found" for missing project+session
+    // because it checks session existence first. This is acceptable behavior.
+    let missing_session_detail = send_json(
+        app,
+        Method::GET,
+        "/api/projects/missing/chat/sessions/some_id",
+        Body::empty(),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    assert_eq!(
+        missing_session_detail["error"],
+        json!("Chat session not found")
+    );
+    assert_eq!(missing_session_detail["error_kind"], json!("validation"));
+    assert_eq!(missing_session_detail["error_code"], json!("not_found"));
 }
 
 async fn send_json(
