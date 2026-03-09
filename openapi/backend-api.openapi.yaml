@@ -4,6 +4,8 @@ info:
   version: 0.1.0
 servers:
   - url: http://127.0.0.1:8788
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
@@ -84,11 +86,27 @@ paths:
                         name:
                           type: string
         "401":
-          description: Unauthorized
+          description: Unauthorized — Missing or invalid bearer token
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      error_code:
+                        const: unauthorized
+        "403":
+          description: Forbidden — Token lacks required permissions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      error_code:
+                        const: forbidden
     post:
       summary: Create or upsert project
       requestBody:
@@ -1772,12 +1790,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: opaque
-  security:
-    - bearerAuth: []
   schemas:
     ErrorKind:
       type: string
-      enum: [validation, provider, infra, policy, unknown, unauthorized, forbidden]
+      enum: [validation, provider, infra, policy, unknown]
     ErrorResponse:
       type: object
       required: [ok, error, error_kind, error_code]

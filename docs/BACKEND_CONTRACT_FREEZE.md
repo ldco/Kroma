@@ -108,10 +108,24 @@ Error responses use:
 
 - `internal_error`
 
-### Auth
+### Auth (401/403)
 
-- `unauthorized` — Missing or invalid bearer token (401)
-- `forbidden` — Token lacks required permissions (403)
+Auth failures use `error_kind: "validation"` with specific `error_code` values:
+
+| HTTP Status | error_kind | error_code | Description |
+|-------------|------------|------------|-------------|
+| 401 | `validation` | `unauthorized` | Missing or invalid bearer token |
+| 403 | `validation` | `forbidden` | Token lacks required permissions |
+
+**Example 401 response:**
+```json
+{
+  "ok": false,
+  "error": "Missing Authorization: Bearer token",
+  "error_kind": "validation",
+  "error_code": "unauthorized"
+}
+```
 
 ### Unknown
 
