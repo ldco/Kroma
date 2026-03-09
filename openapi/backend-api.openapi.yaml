@@ -8,12 +8,25 @@ paths:
   /health:
     get:
       summary: Health check
+      security: []
       responses:
         "200":
           description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  status:
+                    type: string
+                  service:
+                    type: string
   /auth/token:
     post:
       summary: Create API token for local user (dev bootstrap / local single-user mode)
+      security: []
       requestBody:
         required: false
         content:
@@ -50,6 +63,32 @@ paths:
       responses:
         "200":
           description: Project list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  count:
+                    type: integer
+                  projects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        slug:
+                          type: string
+                        name:
+                          type: string
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create or upsert project
       requestBody:
@@ -1733,10 +1772,12 @@ components:
       type: http
       scheme: bearer
       bearerFormat: opaque
+  security:
+    - bearerAuth: []
   schemas:
     ErrorKind:
       type: string
-      enum: [validation, provider, infra, policy, unknown]
+      enum: [validation, provider, infra, policy, unknown, unauthorized, forbidden]
     ErrorResponse:
       type: object
       required: [ok, error, error_kind, error_code]
