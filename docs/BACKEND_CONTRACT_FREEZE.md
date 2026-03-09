@@ -108,6 +108,11 @@ Error responses use:
 
 - `internal_error`
 
+### Auth
+
+- `unauthorized` — Missing or invalid bearer token (401)
+- `forbidden` — Token lacks required permissions (403)
+
 ### Unknown
 
 - reserved for future unmapped failures (not used by current Step B baseline)

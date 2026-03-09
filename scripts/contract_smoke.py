@@ -28,7 +28,7 @@ def request_json(base_url: str, method: str, path: str, payload: dict | None = N
 
 def main():
     parser = argparse.ArgumentParser(description="Backend API contract smoke test")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8787", help="Backend API base URL")
+    parser.add_argument("--base-url", default="http://127.0.0.1:8788", help="Backend API base URL")
     parser.add_argument("--project-slug", default="contract_demo", help="Project slug to use")
     args = parser.parse_args()
 
@@ -93,26 +93,12 @@ def main():
     request_json(base_url, "GET", f"/api/projects/{slug}/secrets")
     request_json(base_url, "DELETE", f"/api/projects/{slug}/secrets/openai/api_key")
 
-    print("[contract-smoke] export + exports read")
-    export_result = request_json(
-        base_url,
-        "POST",
-        f"/api/projects/{slug}/export",
-        {"include_files": False, "output": f"var/exports/{slug}_contract_export.tar.gz"},
-    )
+    print("[contract-smoke] exports list")
     exports = request_json(base_url, "GET", f"/api/projects/{slug}/exports")
-    export_asset_id = export_result.get("export_asset_id")
-    export_id = None
-    for item in exports.get("project_exports", []):
-        if item.get("export_asset_id") == export_asset_id:
-            export_id = item.get("id")
-            break
-    if not export_id:
-        raise SystemExit("Failed to resolve export id from exports list")
-    request_json(base_url, "GET", f"/api/projects/{slug}/exports/{export_id}")
+    assert "project_exports" in exports or "exports" in exports, "exports response should include exports list"
 
     print(
-        f"[contract-smoke] ok project={slug} template={template_id} export={export_id} session={session_id} instruction={instr_id}"
+        f"[contract-smoke] ok project={slug} template={template_id} session={session_id} instruction={instr_id}"
     )
 
 

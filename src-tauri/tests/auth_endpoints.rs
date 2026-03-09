@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -81,6 +81,68 @@ async fn protected_projects_endpoint_requires_bearer_when_dev_bypass_is_off() {
     )
     .await;
     assert_eq!(authenticated.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn projects_list_requires_authentication() {
+    let app = build_router_with_projects_store_auth_mode(test_store(), false, true);
+
+    let unauth_list = send_json(app.clone(), Method::GET, "/api/projects", Body::empty()).await;
+    assert_eq!(unauth_list.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(unauth_list.1["ok"], json!(false));
+    assert_eq!(unauth_list.1["error_kind"], json!("validation"));
+    assert_eq!(unauth_list.1["error_code"], json!("unauthorized"));
+
+    let bootstrap = send_json(app.clone(), Method::POST, "/auth/token", Body::from("{}")).await;
+    assert_eq!(bootstrap.0, StatusCode::OK);
+    let token = bootstrap.1["auth_token"]["token"]
+        .as_str()
+        .expect("bootstrap response should include token")
+        .to_string();
+
+    let auth_list = send_json_with_bearer(app, Method::GET, "/api/projects", Body::empty(), token.as_str()).await;
+    assert_eq!(auth_list.0, StatusCode::OK);
+    assert_eq!(auth_list.1["ok"], json!(true));
+}
+
+#[tokio::test]
+async fn auth_failures_include_error_taxonomy_fields() {
+    let app = build_router_with_projects_store_auth_mode(test_store(), false, true);
+
+    let missing_auth = send_json(app.clone(), Method::GET, "/api/projects", Body::empty()).await;
+    assert_eq!(missing_auth.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(missing_auth.1["ok"], json!(false));
+    assert_eq!(missing_auth.1["error_kind"], json!("validation"));
+    assert_eq!(missing_auth.1["error_code"], json!("unauthorized"));
+
+    let bootstrap = send_json(app.clone(), Method::POST, "/auth/token", Body::from("{}")).await;
+    assert_eq!(bootstrap.0, StatusCode::OK);
+    let token = bootstrap.1["auth_token"]["token"]
+        .as_str()
+        .expect("bootstrap response should include token")
+        .to_string();
+
+    let _project = send_json_with_bearer(
+        app.clone(),
+        Method::POST,
+        "/api/projects",
+        Body::from(r#"{"name":"Taxonomy Test","slug":"taxonomy_test"}"#),
+        token.as_str(),
+    )
+    .await;
+
+    let invalid_token = send_json_with_bearer(
+        app,
+        Method::GET,
+        "/api/projects/taxonomy_test",
+        Body::empty(),
+        "invalid_token_value",
+    )
+    .await;
+    assert_eq!(invalid_token.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(invalid_token.1["ok"], json!(false));
+    assert_eq!(invalid_token.1["error_kind"], json!("validation"));
+    assert_eq!(invalid_token.1["error_code"], json!("unauthorized"));
 }
 
 async fn send_json(

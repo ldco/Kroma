@@ -7,14 +7,14 @@ use axum::response::{IntoResponse, Response};
 use axum::Extension;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
+use crate::api::error::ErrorKind;
+use crate::api::handler_utils::{error_response, internal_error, into_json, map_repo_error, ApiObject};
 use crate::api::server::AppState;
 use crate::db::projects::{
     ApiTokenAuthContext, ApiTokenSummary, CreateApiTokenInput, CreateApiTokenResult,
 };
-
-use super::handler_utils::{internal_error, into_json, map_repo_error, ApiObject};
 
 #[derive(Debug, Clone)]
 pub enum AuthPrincipal {
@@ -173,7 +173,8 @@ pub async fn auth_middleware(
         Method::GET | Method::HEAD | Method::OPTIONS
     );
     let auth_path = path.starts_with("/auth/");
-    let should_require_auth = auth_path || !is_safe_method || project_slug.is_some();
+    let api_projects_path = path.starts_with("/api/projects");
+    let should_require_auth = auth_path || !is_safe_method || project_slug.is_some() || api_projects_path;
     if !should_require_auth {
         request.extensions_mut().insert(AuthPrincipal::DevBypass);
         return next.run(request).await;
@@ -284,17 +285,21 @@ fn auth_principal_from_token_ctx(ctx: ApiTokenAuthContext) -> AuthPrincipal {
 }
 
 fn unauthorized(message: &str) -> Response {
-    (
+    error_response(
         StatusCode::UNAUTHORIZED,
-        Json(json!({"ok": false, "error": message})),
+        ErrorKind::Validation,
+        "unauthorized",
+        message,
     )
         .into_response()
 }
 
 fn forbidden(message: &str) -> Response {
-    (
+    error_response(
         StatusCode::FORBIDDEN,
-        Json(json!({"ok": false, "error": message})),
+        ErrorKind::Validation,
+        "forbidden",
+        message,
     )
         .into_response()
 }
