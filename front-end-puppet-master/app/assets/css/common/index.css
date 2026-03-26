@@ -1,0 +1,22 @@
+/**
+ * Common Utilities & Edge Cases
+ *
+ * Modular utility files - each category in its own file for easy customization.
+ */
+
+@import './spacing.css';
+
+/* Modular utility files */
+@import './accessibility.css';
+@import './flexbox.css';
+@import './grid.css';
+@import './sizing.css';
+@import './icons.css';
+@import './text.css';
+@import './effects.css';
+
+/* Remaining utilities (margins, borders, backgrounds, item-grid) */
+@import './utilities.css';
+
+@import './edge-cases.css';
+@import './scrollbars.css';

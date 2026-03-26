@@ -1,0 +1,30 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * STATE INDICATORS - Loading, Empty, and Error state displays
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.loading-state,
+.empty-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+  color: var(--t-secondary);
+}
+
+.loading-state svg,
+.empty-state svg,
+.error-state svg {
+  width: var(--icon-2xl);
+  height: var(--icon-2xl);
+  opacity: 0.5;
+}
+
+.error-state {
+  color: var(--d-error);
+}

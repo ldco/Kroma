@@ -1,0 +1,140 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UTILITY CLASSES - Miscellaneous
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * This file contains only utilities that don't fit in specialized files.
+ * Most utilities are now in their own files:
+ *
+ * - common/accessibility.css  → .sr-only, .skip-link, .focus-ring, .no-scrollbar
+ * - common/flexbox.css        → .flex, .items-*, .justify-*, .gap-*
+ * - common/grid.css           → .grid, .grid-cols-*, .place-*
+ * - common/sizing.css         → .w-fit, .h-fit, .w-min, .w-max
+ * - common/icons.css          → .icon-xs, .icon-sm, .icon-md, .icon-lg, .icon-xl
+ * - common/text.css           → .text-*, .font-*, .truncate, .whitespace-*
+ * - common/effects.css        → .opacity-*, .hover-lift, .cursor-pointer
+ *
+ * - ui/content/state-indicators.css → .loading-state, .empty-state, .error-state
+ * - ui/content/portfolio-grid.css   → .portfolio-grid, .portfolio-item-*
+ */
+
+/* ══════════════════════════════════════════════════════════
+ * MARGIN UTILITIES
+ * ══════════════════════════════════════════════════════════ */
+
+.mb-2 {
+  margin-block-end: var(--space-2);
+}
+.mb-4 {
+  margin-block-end: var(--space-4);
+}
+.mb-6 {
+  margin-block-end: var(--space-6);
+}
+.mt-4 {
+  margin-block-start: var(--space-4);
+}
+.mt-6 {
+  margin-block-start: var(--space-6);
+}
+.mx-auto {
+  margin-inline: auto;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * BORDER UTILITIES
+ * ══════════════════════════════════════════════════════════ */
+
+.border-b {
+  border-block-end: 1px solid var(--l-border);
+}
+.border-t {
+  border-block-start: 1px solid var(--l-border);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * BACKGROUND UTILITIES
+ * ══════════════════════════════════════════════════════════ */
+
+.bg-brand-subtle {
+  background: var(--i-brand-subtle);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * GENERIC ITEM GRID - Reusable admin grid pattern
+ * ══════════════════════════════════════════════════════════ */
+
+/* Generic item grid for admin (users, etc.) */
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+/* Item card in grid */
+.item-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Item image area */
+.item-image {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: var(--l-bg-sunken);
+  overflow: hidden;
+}
+
+.item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.item-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t-muted);
+  background: var(--l-bg-sunken);
+}
+
+/* Status badge overlay */
+.status-badge {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+}
+
+/* Item info area */
+.item-info {
+  padding: var(--space-4);
+  flex: 1;
+}
+
+.item-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  margin: 0 0 var(--space-1);
+}
+
+.item-meta {
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  margin: 0;
+}
+
+/* Item actions area */
+.item-actions {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-block-start: 1px solid var(--l-border);
+  background: var(--l-bg);
+}

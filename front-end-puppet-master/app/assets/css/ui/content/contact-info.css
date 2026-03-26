@@ -1,0 +1,93 @@
+/**
+ * Contact Info Component
+ *
+ * Displays contact details (email, phone, location) with icons.
+ * Supports optional Yandex map widget for coordinates.
+ */
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.contact-info--horizontal {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--gap-lg);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * CONTACT LIST
+ * ══════════════════════════════════════════════════════════ */
+
+.contact-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.contact-info--horizontal .contact-info-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--gap-lg);
+}
+
+.contact-info-item {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+
+.contact-info-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--i-brand);
+  flex-shrink: 0;
+}
+
+.contact-info-value {
+  color: var(--t-secondary);
+  font-size: var(--text-base);
+  text-decoration: none;
+  transition: color var(--transition-normal) ease;
+}
+
+a.contact-info-value:hover {
+  color: var(--i-brand);
+}
+
+a.contact-info-value:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * MAP WIDGET
+ * ══════════════════════════════════════════════════════════ */
+
+.contact-info-map {
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--l-border);
+}
+
+.contact-info-map iframe {
+  display: block;
+  width: 100%;
+  min-height: 300px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * RTL SUPPORT
+ * ══════════════════════════════════════════════════════════ */
+
+[dir='rtl'] .contact-info-item {
+  flex-direction: row-reverse;
+}
+
+[dir='rtl'] .contact-info--horizontal .contact-info-list {
+  flex-direction: row-reverse;
+}

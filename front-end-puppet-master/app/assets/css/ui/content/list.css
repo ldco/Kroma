@@ -1,0 +1,105 @@
+/**
+ * List Component
+ *
+ * Selectable list items for inbox, messages, notifications, etc.
+ * Supports selected, unread, and hover states.
+ */
+
+.list {
+  overflow-y: auto;
+}
+
+.list--bordered {
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+}
+
+.list-item {
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid var(--l-border);
+  cursor: pointer;
+  transition: background-color var(--transition-normal) ease;
+}
+
+.list-item:last-child {
+  border-block-end: none;
+}
+
+.list-item:hover:not(:disabled):not(.is-disabled) {
+  background: var(--l-bg-sunken);
+}
+
+.list-item:active:not(:disabled):not(.is-disabled) {
+  background: color-mix(in oklch, var(--l-bg-sunken), var(--p-black) 5%);
+}
+
+.list-item:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: -2px;
+}
+
+.list-item:disabled,
+.list-item.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.list-item.is-selected {
+  background: var(--i-brand-subtle);
+}
+
+.list-item.is-unread {
+  border-inline-start: 3px solid var(--i-brand);
+}
+
+.list-item.is-unread .list-item-title {
+  font-weight: var(--font-semibold);
+}
+
+/* List item structure */
+.list-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: var(--space-1);
+}
+
+.list-item-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.list-item-subtitle {
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  margin-block-end: var(--space-1);
+}
+
+.list-item-meta {
+  font-size: var(--text-xs);
+  color: var(--t-muted);
+}
+
+.list-item-preview {
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* List with max height */
+.list--scrollable {
+  max-height: 400px;
+}
+
+.list--scrollable-lg {
+  max-height: 600px;
+}
+
+/* Empty list state */
+.list-empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--t-muted);
+}

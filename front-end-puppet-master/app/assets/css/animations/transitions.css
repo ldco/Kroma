@@ -1,0 +1,309 @@
+/**
+ * Vue Transitions & View Transitions
+ * Classes for <Transition> component and View Transitions API
+ */
+
+/* ═══════════════════════════════════════════════════════════
+ * REDUCED MOTION SUPPORT (WCAG 2.3.3)
+ *
+ * Respects user's system preference for reduced motion.
+ * Disables all transforms/animations, keeps opacity fades.
+ * ═══════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * VIEW TRANSITIONS API - Theme Toggle
+ *
+ * Modern circle reveal animation for theme switching.
+ * Uses View Transitions API (Chrome 111+, Safari 18+).
+ * ═══════════════════════════════════════════════════════════ */
+
+/* Disable default crossfade for theme transitions */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Keep old view on top during transition */
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+/* New view animates in with clip-path (controlled by JS) */
+::view-transition-new(root) {
+  z-index: 9999;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * THEME ICON TRANSITION
+ *
+ * Smooth icon swap animation for theme toggle button.
+ * Uses scale + rotate for playful micro-interaction.
+ * ═══════════════════════════════════════════════════════════ */
+
+.theme-icon-enter-active {
+  transition: all var(--transition-normal) var(--ease-spring);
+}
+
+.theme-icon-leave-active {
+  transition: all var(--transition-fast) var(--ease-in);
+}
+
+.theme-icon-enter-from {
+  opacity: 0;
+  transform: scale(0.5) rotate(-90deg);
+}
+
+.theme-icon-leave-to {
+  opacity: 0;
+  transform: scale(0.5) rotate(90deg);
+}
+
+/* Theme toggle button - subtle hover lift */
+.theme-toggle {
+  transition:
+    transform var(--transition-fast) var(--ease-out),
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.05);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
+}
+
+/* Fade transition */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--transition-slow) var(--ease-out);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* Slide up transition */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all var(--transition-slow) var(--ease-out);
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* Slide down transition */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all var(--transition-slow) var(--ease-out);
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+/*
+ * NOTE: slide-left and slide-right are defined in mobile-nav.css
+ * with proper RTL support using inset-inline-start/end animation.
+ * Do NOT duplicate them here with translateX - it breaks RTL!
+ */
+
+/* Scale transition (for modals) */
+.scale-enter-active,
+.scale-leave-active {
+  transition: all var(--transition-slow) var(--ease-out);
+}
+
+.scale-enter-from,
+.scale-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* Backdrop (for modals/drawers) */
+.backdrop-enter-active,
+.backdrop-leave-active {
+  transition: opacity var(--transition-slow) var(--ease-out);
+}
+
+.backdrop-enter-from,
+.backdrop-leave-to {
+  opacity: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * DROPDOWN TRANSITION
+ *
+ * For menus that open downward (header dropdowns, lang switcher).
+ * Uses scale + fade with transform-origin at top.
+ * ═══════════════════════════════════════════════════════════ */
+
+.dropdown-enter-active {
+  transition: all var(--transition-normal) var(--ease-spring);
+  transform-origin: top center;
+}
+
+.dropdown-leave-active {
+  transition: all var(--transition-fast) var(--ease-in);
+  transform-origin: top center;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: scaleY(0.8) translateY(-4px);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * POPOVER SIDE TRANSITION
+ *
+ * For panels that open to the side (sidebar lang switcher).
+ * Uses scale + fade with transform-origin at inline-start.
+ * ═══════════════════════════════════════════════════════════ */
+
+.popover-side-enter-active {
+  transition: all var(--transition-normal) var(--ease-spring);
+  transform-origin: left center;
+}
+
+[dir='rtl'] .popover-side-enter-active {
+  transform-origin: right center;
+}
+
+.popover-side-leave-active {
+  transition: all var(--transition-fast) var(--ease-in);
+  transform-origin: left center;
+}
+
+[dir='rtl'] .popover-side-leave-active {
+  transform-origin: right center;
+}
+
+.popover-side-enter-from,
+.popover-side-leave-to {
+  opacity: 0;
+  transform: scaleX(0.8) translateX(-4px);
+}
+
+[dir='rtl'] .popover-side-enter-from,
+[dir='rtl'] .popover-side-leave-to {
+  transform: scaleX(0.8) translateX(4px);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * ZOOM TRANSITION
+ *
+ * For elements that zoom in from center (modals, lightbox).
+ * More dramatic than scale, good for focus-grabbing elements.
+ * ═══════════════════════════════════════════════════════════ */
+
+.zoom-enter-active {
+  transition: all var(--transition-slow) var(--ease-spring);
+}
+
+.zoom-leave-active {
+  transition: all var(--transition-normal) var(--ease-in);
+}
+
+.zoom-enter-from {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.zoom-leave-to {
+  opacity: 0;
+  transform: scale(1.05);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * ANIMATED FOCUS RING
+ *
+ * Modern focus ring that animates in for better accessibility.
+ * Uses outline with animation for smooth appearance.
+ * ═══════════════════════════════════════════════════════════ */
+
+@keyframes focus-ring-appear {
+  from {
+    outline-offset: 6px;
+    outline-color: transparent;
+  }
+  to {
+    outline-offset: 2px;
+    outline-color: var(--i-focus-ring);
+  }
+}
+
+/* Apply to interactive elements that use focus-visible */
+.btn:focus-visible,
+.hamburger:focus-visible,
+.lang-switcher-btn:focus-visible,
+.lang-switcher-option:focus-visible,
+.mobile-nav-close:focus-visible,
+.mobile-nav-link:focus-visible,
+a:focus-visible {
+  animation: focus-ring-appear var(--transition-fast) var(--ease-out) forwards;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * LINK HOVER UNDERLINE ANIMATION
+ *
+ * Modern underline that slides in from left on hover.
+ * ═══════════════════════════════════════════════════════════ */
+
+.link-animated {
+  position: relative;
+  text-decoration: none;
+}
+
+.link-animated::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: right center;
+  transition: transform var(--transition-normal) var(--ease-out);
+}
+
+.link-animated:hover::after {
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * CARD HOVER LIFT
+ *
+ * Subtle lift effect for cards on hover.
+ * ═══════════════════════════════════════════════════════════ */
+
+.card-hover {
+  transition:
+    transform var(--transition-normal) var(--ease-out),
+    box-shadow var(--transition-normal) var(--ease-out);
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}

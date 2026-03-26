@@ -1,7 +1,7 @@
 # Kroma Roadmap (Progress Tracker)
 
-Last updated: 2026-03-08
-Status: **Step B COMPLETE** — Backend contract freeze done. Phase 2 (GUI Frontend) can begin.
+Last updated: 2026-03-24
+Status: **Step B COMPLETE** — Backend contract freeze done. Frontend implementation in progress.
 
 ## Purpose
 
@@ -69,12 +69,25 @@ Progress summary:
 - Bootstrap import/export is implemented and expanding
 - Runtime consolidation into Rust has started (script fallback still exists, but removal is the direction and milestone target)
 
-### Phase 2 — GUI Frontend (Not Started)
+### Phase 2 — GUI Frontend (IN PROGRESS)
 
-Status:
-- Planned, but not current priority
-- Starts after Phase 1 backend/runtime freeze gates are complete for target journey steps
-- Frontend scope is project-first (comic/graphic-novel workflow), not utility-first
+**Status:** In Progress — Front-end-puppet-master selected as canonical frontend
+
+**Architecture Decision (2026-03-24):**
+- Consolidated on `front-end-puppet-master/` as the canonical frontend
+- `frontend-nuxt/` has been archived and removed
+- Rationale: Puppet Master 2 provides a cleaner Nuxt 3 + Pure CSS architecture with Tauri 2 integration built-in
+
+**Current Work:**
+- Implementing provider account management (Phase 2)
+- Run workflow implementation (Phase 3)
+- Asset management (Phase 4)
+
+**Progress:**
+- ✅ Project CRUD pages complete
+- ✅ Provider store updated to use project-scoped API endpoints
+- ✅ Run store cleaned up (removed non-existent backend endpoints)
+- ⏳ Provider pages in progress
 
 ## Completed Work (Done / Pushed)
 

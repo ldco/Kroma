@@ -1,0 +1,68 @@
+# ============================================
+# Docker Ignore - PuppetMaster2
+# ============================================
+
+# Dependencies (reinstalled in container)
+node_modules
+.pnpm-store
+
+# Build outputs (rebuilt in container)
+.output
+.nuxt
+dist
+
+# Development files
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+!README.md
+
+# Environment files (secrets should be injected at runtime)
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+coverage
+*.test.ts
+tests/
+vitest.config.ts
+
+# Local data (should be mounted as volumes)
+data/
+*.db
+*.sqlite
+
+# Uploads (should be mounted as volume)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Kamal/deploy files
+.kamal
+deploy.yml
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Temporary files
+tmp/
+temp/

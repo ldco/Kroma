@@ -1,0 +1,184 @@
+/**
+ * Design Tokens: Spacing, Sizing & Motion
+ *
+ * PHILOSOPHY:
+ * 1. Fixed scale for component-level spacing (buttons, cards, etc.)
+ * 2. Fluid scale for section-level spacing (adapts to viewport)
+ * 3. Semantic tokens for easy customization
+ */
+
+:root {
+  /* ══════════════════════════════════════════════════════════
+   * TRANSITION DURATIONS
+   * Use these for all animations and transitions
+   *
+   * MICRO-INTERACTION TIMING (2025 Best Practices):
+   * - Hover/tap feedback: 120-180ms (instant feel)
+   * - Menu open/close: 200-300ms (smooth but snappy)
+   * - Page transitions: 300-500ms (noticeable but not slow)
+   * ══════════════════════════════════════════════════════════ */
+
+  --transition-instant: 0.1s; /* 100ms - micro-interactions */
+  --transition-fast: 0.15s; /* 150ms - hover states */
+  --transition-normal: 0.2s; /* 200ms - standard UI */
+  --transition-slow: 0.3s; /* 300ms - menus, panels */
+  --transition-slower: 0.4s; /* 400ms - drawers, modals */
+  --transition-page: 0.5s; /* 500ms - page transitions */
+
+  /* ══════════════════════════════════════════════════════════
+   * EASING FUNCTIONS (Modern 2025 Curves)
+   *
+   * USAGE GUIDE:
+   * - ease-out: Elements entering (appear, open)
+   * - ease-in: Elements leaving (disappear, close)
+   * - ease-in-out: Continuous motion (toggle, slide)
+   * - ease-spring: Playful bounce (buttons, toggles)
+   * - ease-smooth: Premium feel (Apple-style)
+   * ══════════════════════════════════════════════════════════ */
+
+  /* Standard easing */
+  --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Bounce/Spring easing - playful, modern feel */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-elastic: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* Premium/Smooth easing - Apple-style polish */
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-smooth-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-smooth-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ══════════════════════════════════════════════════════════
+   * ICON SIZES
+   * Standardized icon dimensions
+   * ══════════════════════════════════════════════════════════ */
+
+  --icon-xs: 16px;
+  --icon-sm: 18px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-xl: 28px;
+  --icon-2xl: 32px;
+
+  /* ══════════════════════════════════════════════════════════
+   * TOUCH TARGET SIZE
+   * WCAG 2.5.8 minimum for touch/click targets (Apple: 44px, Material: 48px)
+   * Use for icon buttons, close buttons, nav items on touch devices
+   * ══════════════════════════════════════════════════════════ */
+
+  --touch-target: 44px;
+  --touch-target-lg: 48px;
+
+  /* ══════════════════════════════════════════════════════════
+   * AVATAR SIZES
+   * Standardized avatar dimensions
+   * ══════════════════════════════════════════════════════════ */
+
+  --avatar-xs: 24px;
+  --avatar-sm: 32px;
+  --avatar-md: 40px;
+  --avatar-lg: 56px;
+  --avatar-xl: 80px;
+
+  /* ══════════════════════════════════════════════════════════
+   * FIXED SPACING SCALE (4px base)
+   * Use for component internals: padding, gaps, margins
+   * ══════════════════════════════════════════════════════════ */
+
+  --space-0: 0;
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.25rem; /* 20px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  --space-10: 2.5rem; /* 40px */
+  --space-12: 3rem; /* 48px */
+  --space-16: 4rem; /* 64px */
+  --space-20: 5rem; /* 80px */
+  --space-24: 6rem; /* 96px */
+  --space-32: 8rem; /* 128px */
+
+  /* ══════════════════════════════════════════════════════════
+   * FLUID SPACING (responsive, no breakpoints!)
+   * Use for sections, hero areas, large layouts
+   * ══════════════════════════════════════════════════════════ */
+
+  --space-fluid-sm: clamp(0.5rem, 0.25rem + 1vw, 1rem);
+  --space-fluid-md: clamp(1rem, 0.5rem + 2vw, 2rem);
+  --space-fluid-lg: clamp(2rem, 1rem + 4vw, 4rem);
+  --space-fluid-xl: clamp(3rem, 1.5rem + 6vw, 6rem);
+
+  /* Section spacing - fluid by default */
+  --space-section: var(--space-fluid-lg);
+  --space-section-lg: var(--space-fluid-xl);
+
+  /* ══════════════════════════════════════════════════════════
+   * SEMANTIC GAP TOKENS
+   * Use in grid/flex gaps
+   * ══════════════════════════════════════════════════════════ */
+  --gap-0: var(--space-0);
+  --gap-xxs: var(--space-1);
+  --gap-xs: var(--space-2);
+  --gap-sm: var(--space-3);
+  --gap-md: var(--space-4);
+  --gap-lg: var(--space-6);
+  --gap-xl: var(--space-8);
+
+  /* ══════════════════════════════════════════════════════════
+   * BORDER RADIUS SCALE
+   * Consistent rounding across all UI elements
+   * ══════════════════════════════════════════════════════════ */
+
+  --radius-xs: 0.25rem; /* 4px - subtle rounding */
+  --radius-sm: 0.375rem; /* 6px - buttons, inputs, small elements */
+  --radius-md: 0.5rem; /* 8px - cards, modals, medium elements */
+  --radius-lg: 0.75rem; /* 12px - large cards, containers */
+  --radius-xl: 1rem; /* 16px - hero sections, large surfaces */
+  --radius-full: 9999px; /* Full round - pills, avatars, circles */
+
+  /* ══════════════════════════════════════════════════════════
+   * Z-INDEX SCALE
+   * ══════════════════════════════════════════════════════════
+   *
+   * Inspired by Material UI's z-index system.
+   * Each layer is 100 apart to allow for sub-layers if needed.
+   *
+   * USAGE GUIDE:
+   * - z-base:      Default stacking (rarely needed)
+   * - z-dropdown:  Dropdowns, select menus, autocomplete
+   * - z-sticky:    Sticky headers, back-to-top buttons
+   * - z-fixed:     Fixed elements (app bars, FABs)
+   * - z-drawer:    Side drawers, mobile navigation
+   * - z-modal:     Modal dialogs, lightboxes
+   * - z-popover:   Popovers, tooltips that appear over modals
+   * - z-toast:     Toast notifications (always on top)
+   *
+   * ══════════════════════════════════════════════════════════ */
+
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-drawer-backdrop: 400;
+  --z-drawer: 500;
+  --z-modal-backdrop: 600;
+  --z-modal: 700;
+  --z-popover: 800;
+  --z-toast: 900;
+  --z-max: 1000; /* Emergency escape hatch - avoid using! */
+
+  /* ══════════════════════════════════════════════════════════
+   * SHADOW SCALE
+   * Consistent elevation shadows
+   * ══════════════════════════════════════════════════════════ */
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 5%);
+  --shadow-md: 0 4px 6px oklch(0% 0 0 / 7%), 0 2px 4px oklch(0% 0 0 / 6%);
+  --shadow-lg: 0 10px 15px oklch(0% 0 0 / 10%), 0 4px 6px oklch(0% 0 0 / 5%);
+  --shadow-xl: 0 20px 25px oklch(0% 0 0 / 10%), 0 8px 10px oklch(0% 0 0 / 4%);
+}

@@ -1,0 +1,161 @@
+/**
+ * Custom Scrollbar Styles
+ * 
+ * Provides customizable scrollbar styling using CSS variables.
+ * Modern browsers support both -webkit-scrollbar and scrollbar-* properties.
+ * 
+ * Usage:
+ *   1. Default: All scrollbars use these styles
+ *   2. Custom: Add .scrollbar-thin, .scrollbar-hidden, .scrollbar-auto classes
+ * 
+ * Customize by overriding these variables in your theme:
+ *   --scrollbar-width
+ *   --scrollbar-track
+ *   --scrollbar-thumb
+ *   --scrollbar-thumb-hover
+ */
+
+:root {
+  /* Scrollbar customization variables */
+  --scrollbar-width: 8px;
+  --scrollbar-width-thin: 4px;
+  --scrollbar-radius: 4px;
+
+  /* Colors - using semantic variables */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in oklch, var(--t-primary) 20%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--t-primary) 40%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * STANDARD SCROLLBAR PROPERTIES (Firefox, newer Chrome)
+ * ═══════════════════════════════════════════════════════════ */
+
+/* Default: thin styled scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Auto width (browser default) */
+.scrollbar-auto {
+  scrollbar-width: auto;
+}
+
+/* Hidden scrollbar (still scrollable) */
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * WEBKIT SCROLLBAR (Chrome, Safari, Edge)
+ * ═══════════════════════════════════════════════════════════ */
+
+/* Track (background) */
+::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
+}
+
+/* Thumb (draggable part) */
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+/* Corner (where both scrollbars meet) */
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * SCROLLBAR VARIANTS
+ * ═══════════════════════════════════════════════════════════ */
+
+/* Thin scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: var(--scrollbar-width-thin);
+  height: var(--scrollbar-width-thin);
+}
+
+/* Hidden scrollbar (webkit) */
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Visible only on hover (for containers) */
+.scrollbar-hover {
+  --scrollbar-thumb: transparent;
+}
+
+.scrollbar-hover:hover {
+  --scrollbar-thumb: color-mix(in oklch, var(--t-primary) 20%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * THEMED SCROLLBARS
+ * ═══════════════════════════════════════════════════════════ */
+
+/* Brand colored scrollbar */
+.scrollbar-brand {
+  --scrollbar-thumb: color-mix(in oklch, var(--i-brand) 60%, transparent);
+  --scrollbar-thumb-hover: var(--i-brand);
+}
+
+/* Accent colored scrollbar */
+.scrollbar-accent {
+  --scrollbar-thumb: color-mix(in oklch, var(--i-accent) 60%, transparent);
+  --scrollbar-thumb-hover: var(--i-accent);
+}
+
+/* Light scrollbar (for dark backgrounds) */
+.scrollbar-light {
+  --scrollbar-thumb: color-mix(in oklch, var(--p-white) 30%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--p-white) 50%, transparent);
+}
+
+/* Dark scrollbar (for light backgrounds) */
+.scrollbar-dark {
+  --scrollbar-thumb: color-mix(in oklch, var(--p-black) 30%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklch, var(--p-black) 50%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * HORIZONTAL SCROLL CONTAINERS
+ * ═══════════════════════════════════════════════════════════ */
+
+/* Horizontal scroll with snap */
+.scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-x > * {
+  scroll-snap-align: start;
+}
+
+/* Vertical scroll with snap */
+.scroll-y {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-y > * {
+  scroll-snap-align: start;
+}

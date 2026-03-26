@@ -1,0 +1,62 @@
+# ============================================
+# Deploy User - Create user for Kamal
+# ============================================
+
+- name: Create deploy group
+  group:
+    name: '{{ deploy_user }}'
+    state: present
+  tags: [deploy-user]
+
+- name: Create deploy user
+  user:
+    name: '{{ deploy_user }}'
+    group: '{{ deploy_user }}'
+    groups: docker
+    shell: /bin/bash
+    create_home: yes
+    state: present
+  tags: [deploy-user]
+
+- name: Add deploy user to sudoers (limited Docker commands)
+  copy:
+    dest: /etc/sudoers.d/{{ deploy_user }}
+    content: |
+      # Kamal deployment - limited sudo access
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:/usr/bin/docker *
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:/usr/bin/docker-compose *
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:/usr/sbin/service docker *
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:/bin/systemctl start docker
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:/bin/systemctl stop docker
+      {{ deploy_user }} ALL=(ALL) NOPASSWD:/bin/systemctl restart docker
+    mode: '0440'
+    validate: 'visudo -cf %s'
+  tags: [deploy-user]
+
+- name: Create .ssh directory
+  file:
+    path: /home/{{ deploy_user }}/.ssh
+    state: directory
+    owner: '{{ deploy_user }}'
+    group: '{{ deploy_user }}'
+    mode: '0700'
+  tags: [deploy-user]
+
+- name: Add SSH authorized key
+  authorized_key:
+    user: '{{ deploy_user }}'
+    key: '{{ deploy_user_ssh_key }}'
+    state: present
+  tags: [deploy-user]
+
+- name: Create app directories
+  file:
+    path: '{{ item }}'
+    state: directory
+    owner: '{{ deploy_user }}'
+    group: '{{ deploy_user }}'
+    mode: '0755'
+  loop:
+    - /home/{{ deploy_user }}/app
+    - /home/{{ deploy_user }}/backups
+  tags: [deploy-user]

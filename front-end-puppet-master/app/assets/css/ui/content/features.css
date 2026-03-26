@@ -1,0 +1,207 @@
+/**
+ * Features Section Styles
+ *
+ * Image-based cards with hover effect.
+ * Cards display an image that swaps on hover, with text overlay.
+ */
+
+/* ==========================================================================
+   FEATURES SECTION CONTAINER
+   ========================================================================== */
+
+.features-section {
+  /* Simple container - no decorative backgrounds */
+}
+
+.features-loading {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--l-text-secondary);
+}
+
+/* ==========================================================================
+   FEATURES GRID
+   ========================================================================== */
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--gap-md);
+}
+
+@media (--tablet) {
+  .features-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Bento layout for exactly 6 features */
+@media (--tablet) {
+  .features-grid--bento {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  /* First card spans 2 columns */
+  .features-grid--bento .feature-card:first-child {
+    grid-column: span 2;
+  }
+
+  /* Last card spans 2 columns */
+  .features-grid--bento .feature-card:last-child {
+    grid-column: span 2;
+  }
+}
+
+/* ==========================================================================
+   FEATURE CARD
+   ========================================================================== */
+
+.feature-card {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: var(--content-card-radius);
+  background: var(--content-card-bg);
+  border: var(--content-card-border);
+  transition:
+    transform var(--content-card-transition),
+    box-shadow var(--content-card-transition);
+}
+
+.feature-card:hover {
+  transform: translateY(var(--content-card-hover-y));
+  box-shadow: var(--content-card-hover-shadow);
+}
+
+/* ==========================================================================
+   FEATURE IMAGE
+   ========================================================================== */
+
+.feature-card__image {
+  position: absolute;
+  inset: 0;
+}
+
+.feature-card__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.feature-card__img--default {
+  position: relative;
+  z-index: 1;
+}
+
+.feature-card__img--hover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+}
+
+.feature-card:hover .feature-card__img--default {
+  opacity: 0;
+  transform: scale(1.05);
+}
+
+.feature-card:hover .feature-card__img--hover {
+  opacity: 1;
+}
+
+/* Placeholder when no image - uses shared .content-card-placeholder */
+.feature-card__image .content-card-placeholder {
+  position: absolute;
+  inset: 0;
+}
+
+/* ==========================================================================
+   FEATURE CONTENT OVERLAY
+   ========================================================================== */
+
+.feature-card__content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-6);
+  background: linear-gradient(
+    transparent 0%,
+    oklch(0 0 0 / 0.4) 40%,
+    oklch(0 0 0 / 0.8) 100%
+  );
+  z-index: 10;
+  transition: background 0.3s ease;
+}
+
+.feature-card:hover .feature-card__content {
+  background: linear-gradient(
+    transparent 0%,
+    oklch(0 0 0 / 0.5) 30%,
+    oklch(0 0 0 / 0.9) 100%
+  );
+}
+
+.feature-card__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  margin: 0 0 var(--space-2) 0;
+  color: white;
+  transition: transform 0.3s ease;
+}
+
+.feature-card:hover .feature-card__title {
+  transform: translateY(-2px);
+}
+
+.feature-card__description {
+  font-size: var(--text-sm);
+  color: oklch(0.9 0 0);
+  margin: 0;
+  line-height: var(--leading-relaxed);
+  /* Limit to 2 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (--phone) {
+  .features-grid {
+    grid-template-columns: 1fr;
+    gap: var(--gap-sm);
+  }
+
+  .feature-card {
+    aspect-ratio: 16/10;
+  }
+
+  .feature-card__content {
+    padding: var(--space-4);
+  }
+
+  .feature-card__title {
+    font-size: var(--text-base);
+  }
+
+  .feature-card__description {
+    font-size: var(--text-xs);
+  }
+}
+
+/* Large screens - bigger cards */
+@media (--desktop) {
+  .features-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .feature-card__title {
+    font-size: var(--text-xl);
+  }
+}

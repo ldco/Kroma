@@ -1,0 +1,74 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * BREAKPOINTS - Single Source of Truth
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Uses postcss-custom-media for reusable media query breakpoints.
+ * Native @custom-media is coming to browsers (Firefox 146+) but we use
+ * PostCSS for cross-browser support in 2025.
+ *
+ * PHILOSOPHY (2025 Holy Grail):
+ * 1. FLUID FIRST - Use clamp() for typography/spacing (no breakpoints!)
+ * 2. INTRINSIC LAYOUTS - Use auto-fit/minmax grids (self-adapting!)
+ * 3. CONTAINER QUERIES - Components own their responsive behavior
+ * 4. MEDIA QUERIES - Only for page-level layout (header/nav visibility)
+ *
+ * BREAKPOINT VALUES (Tailwind-aligned, industry standard):
+ * ───────────────────────────────────────────────────────────────────────────
+ * | Name       | Value   | Target Devices                                  |
+ * |------------|---------|------------------------------------------------|
+ * | --phone    | < 640px | Portrait phones                                |
+ * | --tablet   | ≥ 640px | Landscape phones, tablets, small laptops       |
+ * | --desktop  | ≥ 1024px| Laptops, desktops                              |
+ * | --large    | ≥ 1280px| Large desktops, external monitors              |
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * USAGE:
+ * @media (--phone) { ... }        → max-width: 639px
+ * @media (--tablet) { ... }       → min-width: 640px
+ * @media (--desktop) { ... }      → min-width: 1024px
+ * @media (--large) { ... }        → min-width: 1280px
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/* ══════════════════════════════════════════════════════════
+ * CUSTOM MEDIA DEFINITIONS
+ * These are processed by postcss-custom-media
+ * ══════════════════════════════════════════════════════════ */
+
+/* Phone only (max-width for "phone only" scenarios) */
+@custom-media --phone (max-width: 639px);
+
+/* Tablet and up (mobile-first breakpoint) */
+@custom-media --tablet (min-width: 640px);
+
+/* Desktop and up */
+@custom-media --desktop (min-width: 1024px);
+
+/* Large desktop and up */
+@custom-media --large (min-width: 1280px);
+
+/* ══════════════════════════════════════════════════════════
+ * RANGE QUERIES (for specific ranges)
+ * ══════════════════════════════════════════════════════════ */
+
+/* Tablet only (between phone and desktop) */
+@custom-media --tablet-only (min-width: 640px) and (max-width: 1023px);
+
+/* Below desktop (phone + tablet) */
+@custom-media --below-desktop (max-width: 1023px);
+
+/* ══════════════════════════════════════════════════════════
+ * CSS CUSTOM PROPERTIES (for documentation/reference)
+ * CSS cannot use variables in media queries, but these are
+ * useful for JavaScript access and documentation
+ * ══════════════════════════════════════════════════════════ */
+
+:root {
+  /* Breakpoint reference values (for JS access via getComputedStyle) */
+  --bp-phone: 639px;
+  --bp-tablet: 640px;
+  --bp-desktop: 1024px;
+  --bp-large: 1280px;
+}

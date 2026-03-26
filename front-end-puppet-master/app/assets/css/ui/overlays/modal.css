@@ -1,0 +1,253 @@
+/**
+ * Modal Component
+ *
+ * Dialog overlays for confirmations, forms, content.
+ * Includes backdrop, header, body, footer sections.
+ */
+
+:root {
+  /* Modal size presets - easy to customize */
+  --modal-width-sm: min(400px, calc(100vw - 2rem));
+  --modal-width-md: min(500px, calc(100vw - 2rem));
+  --modal-width-lg: min(700px, calc(100vw - 2rem));
+  --modal-width-xl: min(900px, calc(100vw - 2rem));
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 50%);
+  z-index: var(--z-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.modal {
+  z-index: var(--z-modal);
+  background: var(--l-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  width: var(--modal-width-md);
+  max-height: calc(100dvh - var(--space-8));
+  overflow: auto;
+}
+
+/* Size variants */
+.modal-sm {
+  width: var(--modal-width-sm);
+}
+.modal-lg {
+  width: var(--modal-width-lg);
+}
+.modal-xl {
+  width: var(--modal-width-xl);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-block-end: 1px solid var(--l-border);
+}
+
+/* Reset ANY heading inside modal header to proper modal size */
+.modal-header h1,
+.modal-header h2,
+.modal-header h3,
+.modal-header h4,
+.modal-header h5,
+.modal-header h6,
+.modal-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  margin: 0;
+  line-height: var(--leading-normal);
+}
+
+.modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border: none;
+  background: transparent;
+  color: var(--t-muted);
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.modal-close:hover {
+  background: var(--l-bg-sunken);
+  color: var(--t-primary);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.modal-body {
+  padding: var(--space-6);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * MODAL FORM SPACING - Consistent gaps between form elements
+ * ══════════════════════════════════════════════════════════ */
+
+/* Stack all direct children with consistent gap */
+form.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Two-column grid for side-by-side fields */
+.form-row--2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+/* Three-column grid for compact fields */
+.form-row--3col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+/* When form-row is combined with grid classes, remove the margin (parent gap handles it) */
+.form-row.form-row--2col,
+.form-row.form-row--3col {
+  margin-block-start: 0;
+}
+
+/* Responsive: collapse to fewer columns on smaller screens */
+@media (max-width: 640px) {
+  .form-row--3col {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .form-row--2col,
+  .form-row--3col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Reset margins for DIRECT children only - parent gap handles spacing */
+form.modal-body > .form-group {
+  margin-block-start: 0;
+}
+
+form.modal-body > .form-row {
+  margin-block-start: 0;
+}
+
+/* Reset margins inside grid layouts - grid gap handles spacing */
+form.modal-body .form-row--2col > .form-group,
+form.modal-body .form-row--3col > .form-group {
+  margin-block-start: 0;
+}
+
+/* Nested containers (like language tab wrappers) need their own gap */
+form.modal-body > div:not(.form-row):not(.form-row--2col):not(.form-group):not(.tabs):not(.form-divider) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Reset margins inside those nested containers too */
+form.modal-body > div:not(.form-row):not(.form-row--2col):not(.form-group):not(.tabs):not(.form-divider) > .form-group {
+  margin-block-start: 0;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--gap-sm);
+  padding: var(--space-4) var(--space-6);
+  border-block-start: 1px solid var(--l-border);
+}
+
+/* When footer is inside body (form pattern), adjust spacing */
+.modal-body .modal-footer {
+  margin: var(--space-6) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
+  /* ^ top margin for spacing, negative side/bottom to counteract body padding */
+}
+
+/* Modal animations */
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity var(--transition-normal) ease;
+}
+
+.modal-enter-active .modal,
+.modal-leave-active .modal {
+  transition: transform var(--transition-normal) ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-from .modal {
+  transform: scale(0.95) translateY(-10px);
+}
+
+.modal-leave-to .modal {
+  transform: scale(0.95) translateY(10px);
+}
+
+/* Native <dialog> element styles */
+dialog.modal {
+  border: none;
+  padding: 0;
+  margin: auto;
+  max-width: none;
+}
+
+dialog.modal::backdrop {
+  background: oklch(0% 0 0 / 50%);
+  animation: fade-in var(--transition-normal) ease;
+}
+
+dialog.modal[open] {
+  animation: modal-enter var(--transition-normal) ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Confirm dialog specific */
+.confirm-dialog .modal-body p {
+  margin: 0;
+  color: var(--t-secondary);
+}

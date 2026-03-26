@@ -1,0 +1,8 @@
+/**
+ * Projects UI Styles
+ *
+ * Entry point for project-related CSS.
+ */
+
+@import './project-card.css';
+@import './project-grid.css';

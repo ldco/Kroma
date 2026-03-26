@@ -1,0 +1,40 @@
+/**
+ * Provider Grid Styles
+ *
+ * Grid layout for provider cards.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PROVIDERS GRID
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Phones - single column */
+@media (--phone) {
+  .providers-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+}
+
+/* Tablet portrait - 2 columns */
+@media (--tablet-only) {
+  .providers-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop - 3+ columns */
+@media (--desktop) {
+  .providers-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

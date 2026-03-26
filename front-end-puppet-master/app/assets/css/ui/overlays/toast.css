@@ -1,0 +1,142 @@
+/**
+ * Toast Component
+ *
+ * Notification messages that appear temporarily.
+ * Supports success, error, warning, info variants.
+ */
+
+.toast-container {
+  position: fixed;
+  inset-block-end: var(--space-4); /* bottom */
+  inset-inline-end: var(--space-4); /* right in LTR, left in RTL */
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  pointer-events: none;
+}
+
+.toast-container--top {
+  inset-block-end: auto;
+  inset-block-start: var(--space-4);
+}
+
+.toast-container--center {
+  inset-inline-end: 50%;
+  transform: translateX(50%);
+}
+
+[dir='rtl'] .toast-container--center {
+  transform: translateX(-50%);
+}
+
+.toast {
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  min-width: min(280px, calc(100vw - 2rem));
+  max-width: min(400px, calc(100vw - 2rem));
+  pointer-events: auto;
+}
+
+/* Status variants - uses logical border (inline-start) */
+.toast-success {
+  border-inline-start: 3px solid var(--d-success);
+}
+
+.toast-error {
+  border-inline-start: 3px solid var(--d-error);
+}
+
+.toast-warning {
+  border-inline-start: 3px solid var(--d-warning);
+}
+
+.toast-info {
+  border-inline-start: 3px solid var(--d-info);
+}
+
+.toast-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex-shrink: 0;
+}
+
+.toast-success .toast-icon {
+  color: var(--d-success);
+}
+.toast-error .toast-icon {
+  color: var(--d-error);
+}
+.toast-warning .toast-icon {
+  color: var(--d-warning);
+}
+.toast-info .toast-icon {
+  color: var(--d-info);
+}
+
+.toast-content {
+  flex: 1;
+}
+
+.toast-title {
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+}
+
+.toast-message {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+}
+
+.toast-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-2xl);
+  height: var(--icon-2xl);
+  border: none;
+  background: transparent;
+  color: var(--t-muted);
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.toast-close:hover {
+  background: var(--l-bg-sunken);
+  color: var(--t-primary);
+}
+
+.toast-close:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Toast animations */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all var(--transition-slow) ease;
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+[dir='rtl'] .toast-enter-from {
+  transform: translateX(-100%);
+}
+
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}

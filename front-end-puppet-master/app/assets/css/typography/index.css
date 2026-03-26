@@ -1,0 +1,28 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * TYPOGRAPHY SYSTEM - Entry Point
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * 4-LAYER ARCHITECTURE:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   Layer 1: FALLBACK STACKS   → System fonts (--fallback-sans, etc.)
+ *   Layer 2: BRAND FONTS       → Client fonts (--font-brand-primary, etc.)
+ *   Layer 3: SEMANTIC ALIASES  → Usage names (--font-body, --font-heading)
+ *   Layer 4: SIZES & SPACING   → Sizes, weights, line heights
+ *
+ * LOAD ORDER:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   1. font-faces.css     @font-face for self-hosted fonts
+ *   2. variables.css      All 4 layers of font variables
+ *   3. lang-overrides.css Per-language font overrides (:lang selector)
+ *   4. base.css           Apply fonts to HTML elements
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+@import './font-faces.css';
+@import './variables.css';
+@import './lang-overrides.css';
+@import './base.css';

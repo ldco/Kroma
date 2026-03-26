@@ -1,0 +1,48 @@
+/**
+ * Project Grid Styles
+ *
+ * Grid layout for project cards.
+ * Responsive grid that adapts to screen size.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PROJECT GRID
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Phones - single column */
+@media (--phone) {
+  .projects-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+}
+
+/* Tablet portrait - 2 columns */
+@media (--tablet-only) {
+  .projects-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop - 3+ columns */
+@media (--desktop) {
+  .projects-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Large desktop - 4 columns */
+@media (--large) {
+  .projects-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

@@ -1,0 +1,43 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LAYOUT SYSTEM
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Foundational layout CSS:
+ * - breakpoints.css → @custom-media definitions (MUST be first!)
+ * - page.css        → Holy Grail page structure (.layout, .layout-admin, etc.)
+ * - sections.css    → Fullscreen sections for one-pager (.section, .section-hero)
+ * - containers.css  → Container widths and padding
+ * - grid.css        → Grid utilities (.grid-2, .grid-3, etc.)
+ *
+ * Admin layout components (modular):
+ * - admin-sidebar.css → .admin-sidebar, .admin-main
+ * - admin-content.css → .admin-content padding/container
+ * - admin-header.css  → .admin-header, mobile user menu
+ *
+ * Kroma app layout:
+ * - kroma-variables.css → Kroma-specific CSS variables
+ * - kroma-sidebar.css   → .kroma-sidebar navigation
+ * - kroma-main.css      → .kroma-main content area
+ * - kroma-bottom-nav.css → .kroma-bottom-nav (mobile)
+ *
+ * NOTE: responsive.css is imported separately in main.css → layer(utilities)
+ * ───────────────────────────────────────────────────────────────────────────
+ */
+
+/* Breakpoints MUST be imported first - defines @custom-media for all other files */
+@import './breakpoints.css';
+
+@import './page.css';
+@import './admin-sidebar.css';
+@import './admin-content.css';
+@import './admin-header.css';
+@import './sections.css';
+@import './containers.css';
+@import './grid.css';
+
+/* Kroma app layout */
+@import './kroma-variables.css';
+@import './kroma-sidebar.css';
+@import './kroma-main.css';
+@import './kroma-bottom-nav.css';

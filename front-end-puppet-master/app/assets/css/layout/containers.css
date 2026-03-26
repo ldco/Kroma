@@ -1,0 +1,117 @@
+/**
+ * 2025 Container System
+ *
+ * PHILOSOPHY:
+ * 1. NO HARDCODED PIXELS - Use CSS custom properties
+ * 2. FULL-WIDTH BY DEFAULT - Constrain only when needed
+ * 3. CONFIGURABLE - Override at :root or component level
+ * 4. FLUID PADDING - Responsive without breakpoints
+ */
+
+:root {
+  /* ══════════════════════════════════════════════════════════
+   * CONTAINER WIDTH VARIABLES
+   * Change these in your project to adjust ALL containers
+   * ══════════════════════════════════════════════════════════ */
+
+  /* Content widths - semantic names, easy to change */
+  --content-prose: 65ch; /* Optimal reading width */
+  --content-narrow: min(768px, 100%); /* Narrow content, never exceeds viewport */
+  --content-default: min(1280px, 100%); /* Default content width */
+  --content-wide: min(1536px, 100%); /* Wide content */
+  --content-full: 100%; /* Full width (100vw minus safe padding) */
+
+  /* Fluid padding - scales with viewport, respects edges */
+  --container-padding: clamp(1rem, 3vw, 3rem);
+
+  /* Safe edge - minimum breathing room from viewport edge */
+  --safe-edge: max(1rem, env(safe-area-inset-left, 0px));
+}
+
+/* ══════════════════════════════════════════════════════════
+ * BASE CONTAINER
+ * Full width by default, add modifier classes to constrain
+ * ══════════════════════════════════════════════════════════ */
+
+.container {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: var(--container-padding);
+  /* Architectural containment - content stays within bounds */
+  contain: layout style;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * WIDTH MODIFIERS
+ * Apply to container to set max-width
+ * ══════════════════════════════════════════════════════════ */
+
+/* Prose - optimal reading width using ch units */
+.container-prose {
+  max-width: var(--content-prose);
+}
+
+/* Narrow - small forms, narrow content */
+.container-narrow {
+  max-width: var(--content-narrow);
+}
+
+/* Default - standard page content */
+.container-default {
+  max-width: var(--content-default);
+}
+
+/* Wide - dashboards, data tables */
+.container-wide {
+  max-width: var(--content-wide);
+}
+
+/* Full - edge-to-edge (still has safe padding) */
+.container-full {
+  max-width: var(--content-full);
+}
+
+/* Bleed - truly edge-to-edge, NO padding */
+.container-bleed {
+  max-width: none;
+  padding-inline: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * DEFAULT CONTAINER WIDTH
+ * .container without modifier = default width (bulletproof)
+ * ══════════════════════════════════════════════════════════ */
+
+.container:not([class*="container-"]) {
+  max-width: var(--content-default);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * CONTAINER QUERIES
+ * Component-level responsive design
+ * ══════════════════════════════════════════════════════════ */
+
+/* Make element a container query context */
+.cq {
+  container-type: inline-size;
+}
+
+.cq-normal {
+  container-type: normal;
+}
+
+/* Named containers for specific components */
+.cq-card {
+  container-type: inline-size;
+  container-name: card;
+}
+
+.cq-section {
+  container-type: inline-size;
+  container-name: section;
+}
+
+.cq-hero {
+  container-type: inline-size;
+  container-name: hero;
+}

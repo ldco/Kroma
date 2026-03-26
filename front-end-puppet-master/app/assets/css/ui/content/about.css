@@ -1,0 +1,209 @@
+/**
+ * About Section Styles
+ *
+ * Two-column layout with image and text.
+ */
+
+/* ==========================================================================
+   ABOUT SECTION CONTAINER
+   ========================================================================== */
+
+.about-section {
+  /* Simple container - no decorative backgrounds */
+}
+
+/* ==========================================================================
+   ABOUT GRID LAYOUT - Two Column
+   ========================================================================== */
+
+.about-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap-xl);
+  align-items: center;
+}
+
+@media (--tablet) {
+  .about-grid {
+    grid-template-columns: 1.2fr 1fr;
+  }
+
+  .about-grid--reversed {
+    grid-template-columns: 1fr 1.2fr;
+  }
+
+  .about-grid--reversed .about-visual {
+    order: -1;
+  }
+}
+
+/* ==========================================================================
+   ABOUT CONTENT - Text Side
+   ========================================================================== */
+
+.about-content {
+  /* Content container */
+}
+
+/* Lead paragraph */
+.about-content__lead {
+  font-size: clamp(var(--text-lg), 2.5vw, var(--text-xl));
+  font-weight: var(--font-medium);
+  line-height: var(--leading-relaxed);
+  color: var(--l-text);
+  margin: 0;
+  margin-block-end: var(--space-5);
+}
+
+/* Accent line before lead */
+.about-content__lead::before {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 3px;
+  background: var(--c-brand);
+  border-radius: var(--radius-full);
+  margin-block-end: var(--space-4);
+}
+
+/* Body text */
+.about-content__body {
+  font-size: var(--text-base);
+  color: var(--l-text-secondary);
+  line-height: var(--leading-relaxed);
+  margin: 0;
+}
+
+/* Stats row */
+.about-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-lg);
+  margin-block-start: var(--space-6);
+  padding-block-start: var(--space-5);
+  border-block-start: 1px solid var(--l-border);
+}
+
+.about-stat {
+  text-align: left;
+}
+
+.about-stat__number {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--c-brand);
+  line-height: 1;
+  margin-block-end: var(--space-1);
+}
+
+.about-stat__label {
+  font-size: var(--text-xs);
+  color: var(--l-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ==========================================================================
+   ABOUT VISUAL - Image Side
+   ========================================================================== */
+
+.about-visual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Image container - Unified style */
+.about-image {
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 4/5;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+}
+
+.about-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Placeholder when no image */
+.about-image__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--l-bg-sunken);
+  color: var(--l-text-secondary);
+}
+
+.about-image__placeholder svg {
+  width: 64px;
+  height: 64px;
+  opacity: 0.3;
+}
+
+/* ==========================================================================
+   LEGACY: Decoration containers (keep for backwards compat, but hidden)
+   ========================================================================== */
+
+.about-decorations,
+.about-shape {
+  display: none;
+}
+
+/* ==========================================================================
+   NO IMAGE VARIANT - Single Column Centered
+   ========================================================================== */
+
+.about-grid--no-image {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+@media (--tablet) {
+  .about-grid--no-image {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   CENTERED TEXT-ONLY VARIANT
+   ========================================================================== */
+
+.about-content--centered {
+  max-width: 800px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.about-content--centered .about-content__lead::before {
+  margin-inline: auto;
+}
+
+.about-content--centered .about-stats {
+  justify-content: center;
+}
+
+.about-content--centered .about-stat {
+  text-align: center;
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (--phone) {
+  .about-stats {
+    gap: var(--gap-md);
+  }
+
+  .about-stat__number {
+    font-size: var(--text-xl);
+  }
+}

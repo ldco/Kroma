@@ -1,0 +1,25 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * SIZING UTILITIES
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Intrinsic sizing utilities (fit-content, min-content, max-content)
+ * Modern CSS sizing keywords - 97%+ browser support
+ */
+
+/* fit-content: shrinks to content, respects max-width constraints */
+.w-fit {
+  width: fit-content;
+}
+.h-fit {
+  height: fit-content;
+}
+
+/* min-content: shrinks to smallest possible content width */
+.w-min {
+  width: min-content;
+}
+
+/* max-content: expands to fit content without wrapping */
+.w-max {
+  width: max-content;
+}

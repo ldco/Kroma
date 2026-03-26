@@ -1,0 +1,20 @@
+/**
+ * Kroma Layout Variables
+ *
+ * Design tokens specific to Kroma app layout.
+ */
+
+:root {
+  /* Sidebar dimensions */
+  --kroma-sidebar-width: 16rem; /* 256px */
+  --kroma-sidebar-collapsed-width: 4rem; /* 64px - for future collapsed state */
+
+  /* Bottom nav dimensions */
+  --kroma-bottom-nav-height: 4rem; /* 64px */
+
+  /* Content max width */
+  --kroma-content-max-width: 90rem; /* 1440px */
+
+  /* Spacing */
+  --kroma-header-height: 4rem; /* 64px */
+}

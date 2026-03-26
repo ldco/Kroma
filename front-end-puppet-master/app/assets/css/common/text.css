@@ -1,0 +1,110 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * TEXT UTILITIES
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Typography, alignment, and text styling utilities
+ */
+
+/* Text alignment (using logical properties for RTL support) */
+.text-start {
+  text-align: start;
+}
+.text-center {
+  text-align: center;
+}
+.text-end {
+  text-align: end;
+}
+
+/* Font sizes */
+.text-xs {
+  font-size: var(--text-xs);
+}
+.text-sm {
+  font-size: var(--text-sm);
+}
+.text-base {
+  font-size: var(--text-base);
+}
+.text-lg {
+  font-size: var(--text-lg);
+}
+.text-xl {
+  font-size: var(--text-xl);
+}
+.text-2xl {
+  font-size: var(--text-2xl);
+}
+
+/* Heading utilities */
+.heading-xs {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+}
+
+.heading-sm {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-tight);
+}
+
+.heading-md {
+  font-family: var(--font-heading);
+  font-size: var(--heading-4);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-tight);
+}
+
+.heading-lg {
+  font-family: var(--font-heading);
+  font-size: var(--heading-3);
+  font-weight: var(--font-bold);
+  line-height: var(--leading-tight);
+}
+
+.heading-xl {
+  font-family: var(--font-heading);
+  font-size: var(--heading-2);
+  font-weight: var(--font-black);
+  line-height: var(--leading-tight);
+}
+
+/* Font weights */
+.font-medium {
+  font-weight: var(--font-medium);
+}
+.font-semibold {
+  font-weight: var(--font-semibold);
+}
+.font-bold {
+  font-weight: var(--font-bold);
+}
+
+/* Text colors */
+.text-brand {
+  color: var(--i-brand);
+}
+.text-danger {
+  color: var(--d-error);
+}
+.text-success {
+  color: var(--d-success);
+}
+
+/* Whitespace */
+.whitespace-nowrap {
+  white-space: nowrap;
+}
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
+}
+
+/* Text truncate */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

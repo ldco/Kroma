@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 150">
+  <!-- Landmark card - abstract geometric shape (variant) -->
+  <defs>
+    <linearGradient id="landmarkGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:var(--i-accent);stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:var(--i-brand);stop-opacity:0.6" />
+    </linearGradient>
+  </defs>
+  <rect x="10" y="20" width="180" height="110" rx="15" fill="url(#landmarkGrad2)" />
+  <circle cx="140" cy="60" r="20" fill="var(--p-white)" opacity="0.9" />
+  <rect x="25" y="90" width="80" height="12" rx="6" fill="var(--p-white)" opacity="0.8" />
+  <rect x="25" y="110" width="60" height="10" rx="5" fill="var(--p-white)" opacity="0.6" />
+</svg>

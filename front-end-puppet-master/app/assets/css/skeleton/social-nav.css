@@ -1,0 +1,116 @@
+/**
+ * Social Navigation Component
+ *
+ * Reusable social media links component.
+ * Used in footer, sidebar, contact pages, etc.
+ */
+
+.social-nav {
+  display: flex;
+  flex-wrap: wrap;
+  /* Zero vertical gap: icons are already 36px touch targets */
+  /* Horizontal gap: tiny breathing room between icons */
+  row-gap: 0;
+  column-gap: 4px;
+  align-items: center;
+}
+
+.social-nav--vertical {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.social-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  color: var(--t-muted);
+  text-decoration: none;
+  transition:
+    color var(--transition-normal) ease,
+    background-color var(--transition-normal) ease;
+}
+
+.social-nav-link:hover {
+  color: var(--t-primary);
+}
+
+.social-nav-link:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.social-nav-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+/* Platform-specific hover colors removed - using unified brand styling */
+
+/* ══════════════════════════════════════════════════════════
+ * SIZE VARIANTS
+ * ══════════════════════════════════════════════════════════ */
+
+/* Small variant */
+.social-nav--sm .social-nav-link {
+  width: 28px;
+  height: 28px;
+}
+
+.social-nav--sm .social-nav-icon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+/* Large variant */
+.social-nav--lg .social-nav-link {
+  width: var(--touch-target);
+  height: var(--touch-target);
+}
+
+.social-nav--lg .social-nav-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * STYLE VARIANTS
+ * ══════════════════════════════════════════════════════════ */
+
+/* Filled background variant */
+.social-nav--filled .social-nav-link {
+  background: var(--l-bg-sunken);
+}
+
+.social-nav--filled .social-nav-link:hover {
+  background: var(--i-brand-subtle);
+}
+
+/* Bordered variant */
+.social-nav--bordered .social-nav-link {
+  border: 1px solid var(--l-border);
+}
+
+.social-nav--bordered .social-nav-link:hover {
+  border-color: var(--i-brand);
+}
+
+/* Circle variant - subtle circles with brand-colored icons */
+.social-nav--circle .social-nav-link {
+  background: var(--i-brand-subtle);
+  color: var(--i-brand);
+  border-radius: var(--radius-full);
+  transition:
+    transform var(--transition-normal) ease,
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.social-nav--circle .social-nav-link:hover {
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+  transform: translateY(-3px);
+}

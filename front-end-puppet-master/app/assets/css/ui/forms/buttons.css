@@ -1,0 +1,231 @@
+/**
+ * Button Styles
+ *
+ * Reusable button component with variants and sizes.
+ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-xs);
+  padding: var(--space-2) var(--space-4);
+  font-weight: var(--font-medium);
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+
+  /* Modern micro-interaction transitions */
+  transition:
+    background-color var(--transition-fast) var(--ease-smooth),
+    color var(--transition-fast) var(--ease-smooth),
+    border-color var(--transition-fast) var(--ease-smooth),
+    box-shadow var(--transition-fast) var(--ease-smooth),
+    transform var(--transition-instant) var(--ease-out);
+}
+
+/* Subtle lift on hover - modern feel */
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+/* Press down effect - tactile feedback */
+.btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  transition-duration: var(--transition-instant);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary button */
+.btn-primary {
+  background: light-dark(var(--i-brand), color-mix(in srgb, var(--i-brand), white 12%));
+  color: var(--t-on-brand);
+  border: 1px solid color-mix(in srgb, var(--i-brand), black 12%);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 10%);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--i-brand-hover);
+  border-color: color-mix(in srgb, var(--i-brand-hover), black 10%);
+  box-shadow: 0 4px 12px oklch(0% 0 0 / 15%);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--i-brand-active);
+  border-color: color-mix(in srgb, var(--i-brand-active), black 10%);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 10%);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: light-dark(
+    var(--l-bg-elevated),
+    color-mix(in oklch, var(--l-bg-elevated), var(--p-white) 6%)
+  );
+  color: var(--t-primary);
+  border: 1px solid
+    light-dark(
+      var(--l-border-strong),
+      color-mix(in oklch, var(--l-border), var(--p-white) 25%)
+    );
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--l-bg-sunken);
+  border-color: var(--l-border-strong);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: color-mix(in oklch, var(--l-bg-sunken), var(--p-black) 5%);
+}
+
+/* Ghost button */
+.btn-ghost {
+  background: transparent;
+  color: var(--t-primary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--l-bg-sunken);
+}
+
+.btn-ghost:active:not(:disabled) {
+  background: color-mix(in oklch, var(--l-bg-sunken), var(--p-black) 5%);
+}
+
+/* Accent button */
+.btn-accent {
+  background: var(--i-accent);
+  color: var(--t-on-accent);
+}
+
+.btn-accent:hover:not(:disabled) {
+  background: var(--i-accent-hover);
+}
+
+.btn-accent:active:not(:disabled) {
+  background: var(--i-accent-active);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * DANGER/DELETE BUTTON VARIANTS
+ *
+ * UX Design Decision: Two variants for different contexts:
+ *
+ * 1. PROMINENT (btn-ghost + text-danger utility):
+ *    - Always shows red icon
+ *    - Use for: Single-item context (detail view, modal actions)
+ *    - Example: Delete button in message detail panel
+ *    - Why: When there's only ONE destructive action visible,
+ *          red icon is acceptable and helps users identify it
+ *
+ * 2. SUBTLE (btn-ghost btn-danger):
+ *    - Gray icon by default, red only on hover
+ *    - Use for: Tables/grids with MANY rows (users, translations, portfolio)
+ *    - Why: Multiple red icons is "visually screaming" - too aggressive
+ *          Subtle approach reduces visual noise while still being discoverable
+ * ══════════════════════════════════════════════════════════ */
+
+/* Danger button - solid red background (for primary destructive actions in modals) */
+.btn-danger {
+  background: var(--i-error);
+  color: var(--t-on-error);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--i-error-hover);
+}
+
+.btn-danger:active:not(:disabled) {
+  background: var(--i-error-active);
+}
+
+/* Ghost danger - SUBTLE icon-only delete buttons for tables/grids */
+/* Gray icon by default, red icon + tint on hover */
+.btn-ghost.btn-danger,
+.btn-ghost-danger {
+  background: transparent;
+  color: var(--t-secondary);
+}
+
+.btn-ghost.btn-danger:hover:not(:disabled),
+.btn-ghost-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--i-error), transparent 90%);
+  color: var(--i-error);
+}
+
+.btn-ghost.btn-danger:active:not(:disabled),
+.btn-ghost-danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--i-error), transparent 85%);
+  color: var(--i-error-active);
+}
+
+/* Outline button */
+.btn-outline {
+  background: transparent;
+  border: 2px solid var(--i-brand);
+  color: var(--i-brand);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+}
+
+.btn-outline:active:not(:disabled) {
+  background: var(--i-brand-active);
+}
+
+/* Full width button */
+.btn-full {
+  width: 100%;
+}
+
+/* Sizes */
+.btn-sm {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.btn-lg {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-lg);
+}
+
+/* Icon button */
+.btn-icon {
+  padding: var(--space-2);
+  width: var(--touch-target);
+  height: var(--touch-target);
+}
+
+/* Icon actions need explicit color/background hover feedback */
+.btn-icon.btn-ghost:not(.btn-danger) {
+  color: var(--t-secondary);
+}
+
+.btn-icon.btn-ghost:not(.btn-danger):hover:not(:disabled) {
+  color: var(--t-primary);
+}
+
+.btn-icon.btn-sm {
+  width: 36px; /* Minimum comfortable touch target for "small" */
+  height: 36px;
+  padding: var(--space-1);
+}
+
+.btn-icon.btn-lg {
+  width: 48px;
+  height: 48px;
+  padding: var(--space-3);
+}

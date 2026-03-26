@@ -1,0 +1,63 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PAGE HEADER - Header section with title, subtitle, and actions
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  margin-block-end: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  margin: 0;
+  line-height: var(--leading-tight);
+}
+
+/* Subtitle below page title */
+.page-subtitle,
+.page-header p {
+  margin: var(--space-1) 0 0;
+  color: var(--t-secondary);
+  font-size: var(--text-base);
+}
+
+/* Page actions container */
+.page-actions {
+  display: flex;
+  gap: var(--gap-sm);
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Page title with icon */
+.page-title-icon {
+  width: var(--icon-xl);
+  height: var(--icon-xl);
+  color: var(--i-brand);
+}
+
+/* Smaller variant */
+.page-header--sm .page-title {
+  font-size: var(--text-xl);
+}
+
+.page-header--sm .page-title-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
+/* Section header (sub-sections within a page) */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: var(--space-4);
+  gap: var(--space-3);
+}

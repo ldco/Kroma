@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1765776040883,
+      "tag": "0000_vengeful_shinobi_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1767009708323,
+      "tag": "0001_flaky_wrecker",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1737244800000,
+      "tag": "0002_add_two_factor_auth",
+      "breakpoints": true
+    }
+  ]
+}

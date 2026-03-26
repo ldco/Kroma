@@ -1,0 +1,222 @@
+/**
+ * Data Table Component
+ *
+ * Styled tables for displaying and editing data.
+ * Use for translations, settings, any tabular data.
+ *
+ * USAGE:
+ *   <div class="card"><table class="data-table">...</table></div>
+ *   OR
+ *   <div class="data-table card"><table>...</table></div>
+ */
+
+/* Data table - works on <table> element OR wrapper div */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Readability-first default: columns size naturally to content */
+  table-layout: auto;
+}
+
+/* When data-table is a wrapper div */
+.data-table table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+/* Table cells - handle both patterns */
+.data-table th,
+.data-table td,
+.data-table table th,
+.data-table table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: start;
+  border-block-end: 1px solid var(--l-border);
+}
+
+/* Keep first/last cells away from table edge for better scanability */
+.data-table tr > :first-child,
+.data-table table tr > :first-child {
+  padding-inline-start: var(--space-5);
+}
+
+.data-table tr > :last-child,
+.data-table table tr > :last-child {
+  padding-inline-end: var(--space-5);
+}
+
+/* Header cells */
+.data-table th,
+.data-table thead th,
+.data-table table th {
+  font-weight: var(--font-medium);
+  color: var(--t-secondary);
+  font-size: var(--text-sm);
+  background: var(--l-bg-sunken);
+}
+
+/* Row hover */
+.data-table tbody tr:hover,
+.data-table table tbody tr:hover {
+  background: var(--l-bg-sunken);
+}
+
+/* Column types */
+.data-table .cell--key,
+.data-table .key-cell {
+  width: 35%;
+}
+
+.data-table .cell--key code,
+.data-table .key-cell code {
+  font-size: var(--text-sm);
+  background: var(--l-bg-sunken);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+}
+
+.data-table .cell--value,
+.data-table .value-cell {
+  cursor: pointer;
+}
+
+.data-table .cell--value:hover,
+.data-table .value-cell:hover {
+  background: var(--i-brand-subtle);
+}
+
+/* Actions column - right-aligned, fixed width */
+.data-table .cell--actions,
+.data-table .actions-cell,
+.actions-col {
+  width: 1%;
+  min-width: 8.5rem;
+  text-align: end;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Stable action-row behavior on desktop: no wrapping, explicit spacing */
+.data-table .actions-col .btn + .btn,
+.data-table .cell--actions .btn + .btn,
+.data-table .actions-cell .btn + .btn {
+  margin-inline-start: var(--space-2);
+}
+
+.data-table .actions-col .action-row,
+.data-table .cell--actions .action-row,
+.data-table .actions-cell .action-row,
+.data-table .actions-col .table-actions,
+.data-table .cell--actions .table-actions,
+.data-table .actions-cell .table-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+}
+
+/* Editable cell indicator */
+.data-table .cell--editable {
+  position: relative;
+  cursor: pointer;
+}
+
+.data-table .cell--editable:hover::after {
+  /* Unicode pencil character - renders consistently cross-platform */
+  content: '\270E';
+  position: absolute;
+  inset-inline-end: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--t-muted);
+  font-size: var(--text-sm);
+}
+
+/* Empty state */
+.data-table-empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--t-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * RESPONSIVE: Card Layout on Mobile
+ *
+ * On phone screens, table rows become stacked cards.
+ * Requires data-label attributes on <td> elements:
+ *   <td data-label="Name">John Doe</td>
+ * ═══════════════════════════════════════════════════════════ */
+@media (--phone) {
+  /* Hide table header on mobile */
+  .data-table thead,
+  .data-table table thead {
+    display: none;
+  }
+
+  /* Make table a flex container for cards */
+  .data-table tbody,
+  .data-table table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  /* Each row becomes a card */
+  .data-table tbody tr,
+  .data-table table tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    background: var(--l-bg);
+    border: 1px solid var(--l-border);
+    border-radius: var(--radius-md);
+  }
+
+  .data-table tbody tr:hover,
+  .data-table table tbody tr:hover {
+    background: var(--l-bg); /* Keep same on hover */
+  }
+
+  /* Each cell becomes a row with label */
+  .data-table td,
+  .data-table table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    border: none;
+  }
+
+  /* Long text (like translation values) should wrap and stay left-aligned */
+  .data-table .cell--value,
+  .data-table table .cell--value {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  /* Label from data-label attribute */
+  .data-table td::before,
+  .data-table table td::before {
+    content: attr(data-label);
+    font-weight: var(--font-medium);
+    color: var(--t-secondary);
+    font-size: var(--text-sm);
+    text-align: start;
+    flex-shrink: 0;
+  }
+
+  /* Actions row - full width buttons */
+  .data-table .actions-col {
+    width: auto;
+    justify-content: flex-end;
+    white-space: normal;
+    padding-block-start: var(--space-2);
+    border-block-start: 1px solid var(--l-border);
+    margin-block-start: var(--space-1);
+  }
+}

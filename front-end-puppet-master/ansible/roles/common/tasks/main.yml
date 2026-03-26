@@ -1,0 +1,53 @@
+# ============================================
+# Common - Base system setup
+# ============================================
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  tags: [common, packages]
+
+- name: Upgrade all packages
+  apt:
+    upgrade: safe
+  tags: [common, packages]
+
+- name: Install essential packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - htop
+      - vim
+      - unzip
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - sqlite3
+      - ffmpeg
+    state: present
+  tags: [common, packages]
+
+- name: Set timezone to UTC
+  timezone:
+    name: UTC
+  tags: [common, timezone]
+
+- name: Configure system limits
+  pam_limits:
+    domain: '*'
+    limit_type: soft
+    limit_item: nofile
+    value: 65535
+  tags: [common, limits]
+
+- name: Configure system limits (hard)
+  pam_limits:
+    domain: '*'
+    limit_type: hard
+    limit_item: nofile
+    value: 65535
+  tags: [common, limits]

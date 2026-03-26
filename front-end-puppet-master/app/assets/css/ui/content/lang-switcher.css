@@ -1,0 +1,137 @@
+/**
+ * Language Switcher
+ *
+ * Button-based language switcher with popup panel.
+ * Supports three modes:
+ * - .lang-switcher--down (header: opens below)
+ * - .lang-switcher--side (sidebar: opens to the side)
+ * - .lang-switcher-inline (compact menus: all options visible, no popup)
+ */
+
+/* Wrapper for positioning */
+.lang-switcher-wrapper {
+  position: relative;
+}
+
+/* Trigger button - shows current language code */
+.lang-switcher-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  color: var(--t-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.lang-switcher-btn:hover {
+  background: var(--i-brand-subtle);
+  color: var(--t-primary);
+}
+
+.lang-switcher-btn:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.lang-switcher-code {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Panel with language options */
+.lang-switcher-panel {
+  position: absolute;
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-popover);
+}
+
+/* Language option button */
+.lang-switcher-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--t-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.lang-switcher-option:hover {
+  background: var(--i-brand-subtle);
+  color: var(--t-primary);
+}
+
+.lang-switcher-option.active {
+  background: var(--i-brand);
+  color: var(--i-brand-text);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * DIRECTION: DOWN (header)
+ * Opens below the button
+ * ═══════════════════════════════════════════════════════════ */
+
+.lang-switcher--down .lang-switcher-panel {
+  top: 130%;
+  inset-inline-end: 0;
+  margin-top: var(--space-1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * DIRECTION: SIDE (sidebar)
+ * Opens to the side, vertically centered
+ *
+ * NOTE: Using margin-top trick instead of transform: translateY(-50%)
+ * because transform would conflict with Vue transition animations.
+ * ═══════════════════════════════════════════════════════════ */
+
+.lang-switcher--side .lang-switcher-btn {
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: 0 auto;
+}
+
+.lang-switcher--side .lang-switcher-panel {
+  inset-inline-start: 120%;
+  top: 50%;
+  /* Use negative margin instead of transform to center vertically
+     This avoids conflict with Vue transition's transform animation */
+  margin-top: calc(
+    -0.5 * (36px + var(--space-2) * 2)
+  ); /* half of panel height (option height + padding) */
+  margin-inline-start: var(--space-2);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * MODE: INLINE (compact menus)
+ * All options visible, no popup - for space-constrained menus
+ * ═══════════════════════════════════════════════════════════ */
+
+.lang-switcher-inline {
+  display: flex;
+  gap: var(--space-1);
+}

@@ -1,0 +1,138 @@
+/**
+ * PictureImage Component Styles
+ *
+ * BEM-class-based CSS for PictureImage atom component.
+ * Provides fade-in on load, error state styling, and responsive behavior.
+ *
+ * @see {@link ../../components/atoms/PictureImage.vue}
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PICTURE IMAGE CONTAINER
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.picture-image {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * IMAGE ELEMENT
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.picture-image__img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  will-change: opacity;
+}
+
+/* Loaded state - fade in */
+.picture-image__img--loaded {
+  opacity: 1;
+}
+
+/* Error state - grayscale and reduced opacity */
+.picture-image__img--error {
+  opacity: 0.5;
+  filter: grayscale(100%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LOADING PLACEHOLDER (optional enhancement)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.picture-image::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    var(--l-bg-sunken) 25%,
+    var(--l-bg-elevated) 50%,
+    var(--l-bg-sunken) 75%
+  );
+  background-size: 200% 100%;
+  animation: picture-image-shimmer 1.5s infinite;
+  opacity: 1;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.picture-image--loaded::before,
+.picture-image--error::before {
+  opacity: 0;
+}
+
+@keyframes picture-image-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE VARIANTS
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Full-width variant */
+.picture-image--full {
+  display: block;
+  width: 100%;
+}
+
+.picture-image--full .picture-image__img {
+  width: 100%;
+}
+
+/* Thumbnail variant */
+.picture-image--thumbnail {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * OBJECT FIT CLASSES (Comment 14)
+ * Replaces inline style binding with CSS classes
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.picture-image__img--contain {
+  object-fit: contain;
+}
+
+.picture-image__img--cover {
+  object-fit: cover;
+}
+
+.picture-image__img--fill {
+  object-fit: fill;
+}
+
+.picture-image__img--none {
+  object-fit: none;
+}
+
+.picture-image__img--scale-down {
+  object-fit: scale-down;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * REDUCED MOTION
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .picture-image__img {
+    transition: none;
+  }
+
+  .picture-image::before {
+    animation: none;
+    background: var(--l-bg-sunken);
+  }
+}

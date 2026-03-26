@@ -1,0 +1,33 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ADMIN CONTENT - Content area padding and layout for admin pages
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * BREAKPOINTS (Material Design 3):
+ * - Phone (< 600px): Compact padding
+ * - Tablet (600-839px): Medium padding
+ * - Desktop (≥ 840px): Generous padding
+ */
+
+/* Base - desktop first */
+.admin-content {
+  padding: var(--space-10);
+  width: 100%; /* Explicit width for containment */
+  max-width: min(62.5rem, 100%); /* Bulletproof: never exceeds viewport */
+  margin-inline: auto;
+  contain: layout style; /* Architectural containment */
+}
+
+/* Phone (< 600px) */
+@media (width < 600px) {
+  .admin-content {
+    padding: var(--space-6) var(--space-4);
+  }
+}
+
+/* Tablet (600-839px) */
+@media (width >= 600px) and (width < 840px) {
+  .admin-content {
+    padding: var(--space-8) var(--space-5);
+  }
+}

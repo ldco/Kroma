@@ -1,0 +1,422 @@
+/**
+ * Pricing Module Styles
+ *
+ * Clean pricing cards with featured tier highlight.
+ */
+
+@layer components {
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING SECTION
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-section {
+    /* Simple container - no decorative backgrounds */
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING TIERS CONTAINER
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-tiers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-10);
+    padding: var(--space-8) 0;
+    width: 100%;
+  }
+
+  .pricing-tiers__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+    gap: var(--space-6);
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    align-items: stretch;
+  }
+
+  @media (min-width: 1024px) {
+    .pricing-tiers__grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     BILLING TOGGLE
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-toggle {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    background: var(--l-bg-elevated);
+    border: 1px solid var(--l-border);
+    border-radius: var(--radius-full);
+    width: fit-content;
+    margin: 0 auto;
+  }
+
+  .pricing-toggle__btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-5);
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--l-text-secondary);
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .pricing-toggle__btn:hover {
+    color: var(--l-text);
+  }
+
+  .pricing-toggle__btn--active {
+    background: var(--l-bg);
+    color: var(--l-text);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .pricing-toggle__discount {
+    font-size: var(--text-xs);
+    padding: var(--space-1) var(--space-3);
+    background: oklch(0.55 0.15 145);
+    color: white;
+    border-radius: var(--radius-full);
+    font-weight: var(--font-bold);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING CARD - Unified Style
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-8);
+    background: var(--l-bg-elevated);
+    border: 1px solid var(--l-border);
+    border-radius: var(--radius-xl);
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .pricing-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px -8px oklch(0 0 0 / 0.12);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     FEATURED CARD
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card--featured {
+    background: var(--l-bg-elevated);
+    border-color: var(--c-brand);
+    border-width: 2px;
+    box-shadow: 0 0 0 4px var(--c-brand-alpha);
+  }
+
+  .pricing-card--featured:hover {
+    box-shadow: 0 16px 32px -8px var(--c-brand-alpha), 0 0 0 4px var(--c-brand-alpha);
+  }
+
+  /* Featured badge - positioned inside card for visibility */
+  .pricing-card__badge {
+    position: absolute;
+    top: var(--space-4);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--space-2) var(--space-5);
+    background: var(--c-brand);
+    color: white;
+    font-size: var(--text-xs);
+    font-weight: var(--font-bold);
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow: 0 2px 8px oklch(0 0 0 / 0.15);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING CARD HEADER
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card__header {
+    text-align: center;
+    margin-block-end: var(--space-6);
+  }
+
+  .pricing-card--featured .pricing-card__header {
+    padding-block-start: var(--space-6);
+  }
+
+  .pricing-card__name {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    margin: 0 0 var(--space-2);
+    color: var(--l-text);
+  }
+
+  .pricing-card--featured .pricing-card__name {
+    color: var(--c-brand);
+  }
+
+  .pricing-card__description {
+    font-size: var(--text-sm);
+    color: var(--l-text-secondary);
+    margin: 0;
+    line-height: var(--leading-relaxed);
+  }
+
+  .pricing-card--featured .pricing-card__description {
+    color: var(--l-text-secondary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING CARD PRICE
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card__price {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: var(--space-1);
+    margin-block-end: var(--space-8);
+    padding-block-end: var(--space-6);
+    border-block-end: 1px solid var(--l-border);
+  }
+
+  .pricing-card--featured .pricing-card__price {
+    border-color: var(--l-border);
+  }
+
+  .pricing-card__price-value {
+    font-size: var(--text-5xl);
+    font-weight: var(--font-black);
+    line-height: 1;
+    color: var(--l-text);
+  }
+
+  .pricing-card--featured .pricing-card__price-value {
+    color: var(--c-brand);
+  }
+
+  .pricing-card__price-custom {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--l-text-secondary);
+  }
+
+  .pricing-card--featured .pricing-card__price-custom {
+    color: var(--c-brand);
+  }
+
+  .pricing-card__price-period {
+    font-size: var(--text-base);
+    color: var(--l-text-secondary);
+  }
+
+  .pricing-card--featured .pricing-card__price-period {
+    color: var(--l-text-secondary);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING CARD FEATURES
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card__features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--space-8);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .pricing-card__feature {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--l-text);
+  }
+
+  .pricing-card--featured .pricing-card__feature {
+    color: var(--l-text);
+  }
+
+  .pricing-card__feature--excluded {
+    color: var(--l-text-secondary);
+    opacity: 0.6;
+  }
+
+  .pricing-card--featured .pricing-card__feature--excluded {
+    color: var(--l-text-secondary);
+  }
+
+  .pricing-card__feature-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: oklch(0.55 0.15 145);
+  }
+
+  .pricing-card__feature--excluded .pricing-card__feature-icon {
+    color: var(--l-text-secondary);
+  }
+
+  .pricing-card__feature-text {
+    line-height: var(--leading-relaxed);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING CARD CTA
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card__cta {
+    margin-block-start: auto;
+  }
+
+  .pricing-card__cta .btn,
+  .pricing-card__cta .cta-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     PRICING COMPARISON TABLE
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-comparison {
+    margin-block-start: var(--space-16);
+  }
+
+  .pricing-comparison__title {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    text-align: center;
+    margin-block-end: var(--space-10);
+  }
+
+  .pricing-comparison__table-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--l-border);
+    border-radius: var(--radius-xl);
+    background: var(--l-bg-elevated);
+  }
+
+  .pricing-comparison__table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+  }
+
+  .pricing-comparison__feature-header,
+  .pricing-comparison__tier-header {
+    padding: var(--space-5);
+    font-weight: var(--font-semibold);
+    background: var(--l-bg-sunken);
+    border-block-end: 1px solid var(--l-border);
+  }
+
+  .pricing-comparison__feature-header {
+    text-align: start;
+    min-width: 220px;
+  }
+
+  .pricing-comparison__tier-header {
+    min-width: 140px;
+  }
+
+  .pricing-comparison__tier-header--featured {
+    background: var(--c-brand-alpha);
+    color: var(--c-brand);
+    font-weight: var(--font-bold);
+  }
+
+  .pricing-comparison__feature-name {
+    padding: var(--space-4) var(--space-5);
+    text-align: start;
+    font-size: var(--text-sm);
+    border-block-end: 1px solid var(--l-border);
+  }
+
+  .pricing-comparison__cell {
+    padding: var(--space-4) var(--space-5);
+    border-block-end: 1px solid var(--l-border);
+  }
+
+  .pricing-comparison__cell--featured {
+    background: var(--c-brand-alpha);
+  }
+
+  .pricing-comparison__icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .pricing-comparison__icon--check {
+    color: oklch(0.55 0.15 145);
+  }
+
+  .pricing-comparison__icon--x {
+    color: var(--l-text-secondary);
+    opacity: 0.5;
+  }
+
+  /* Last row - no border */
+  .pricing-comparison__table tbody tr:last-child td,
+  .pricing-comparison__table tbody tr:last-child .pricing-comparison__feature-name {
+    border-block-end: none;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ADMIN PRICING
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  .pricing-card__status {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+  }
+
+  .pricing-card__actions {
+    display: flex;
+    justify-content: center;
+    gap: var(--gap-sm);
+    padding-block-start: var(--space-4);
+    margin-block-start: auto;
+    border-block-start: 1px solid var(--l-border);
+  }
+
+  .pricing-card__translations {
+    display: flex;
+    justify-content: center;
+    gap: var(--gap-xs);
+    padding-block-start: var(--space-3);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     RESPONSIVE
+     ═══════════════════════════════════════════════════════════════════════════ */
+
+  @media (--phone) {
+    .pricing-card {
+      padding: var(--space-6);
+    }
+
+    .pricing-card__price-value {
+      font-size: var(--text-4xl);
+    }
+  }
+}

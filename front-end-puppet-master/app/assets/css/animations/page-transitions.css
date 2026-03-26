@@ -1,0 +1,303 @@
+/**
+ * Page Transitions
+ *
+ * CSS transitions for Nuxt page navigation (SPA mode).
+ * Configured via puppet-master.config.ts features.pageTransitions
+ *
+ * Available transitions:
+ *   - 'fade': Simple opacity fade
+ *   - 'slide-left': Slide from right (forward) / left (back)
+ *   - 'slide-up': Slide from bottom
+ *   - 'scale': Scale + fade
+ *   - 'zoom': Dramatic zoom in
+ *   - 'flip': 3D flip effect
+ *   - 'rotate': Subtle rotation with fade
+ *   - 'blur': Fade with blur effect
+ *   - 'bounce': Spring/bounce animation
+ *   - 'swipe': Fast swipe effect
+ *
+ * Usage in nuxt.config.ts:
+ *   app: {
+ *     pageTransition: { name: 'page-fade', mode: 'out-in' }
+ *   }
+ */
+
+/* ==========================================================================
+   Transition Timing
+   ========================================================================== */
+
+:root {
+  --page-transition-duration: 0.3s;
+  --page-transition-duration-slow: 0.5s;
+  --page-transition-ease: var(--ease-out, ease-out);
+  --page-transition-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --page-transition-ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ==========================================================================
+   Fade Transition
+   ========================================================================== */
+
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity var(--page-transition-duration) var(--page-transition-ease);
+}
+
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
+}
+
+/* ==========================================================================
+   Slide Left Transition (page enters from right, exits to left)
+   ========================================================================== */
+
+.page-slide-left-enter-active,
+.page-slide-left-leave-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration) var(--page-transition-ease);
+}
+
+.page-slide-left-enter-from {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.page-slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+/* ==========================================================================
+   Slide Up Transition (page enters from bottom)
+   ========================================================================== */
+
+.page-slide-up-enter-active,
+.page-slide-up-leave-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration) var(--page-transition-ease);
+}
+
+.page-slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+.page-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(-15px);
+}
+
+/* ==========================================================================
+   Scale Transition (zoom in/out with fade)
+   ========================================================================== */
+
+.page-scale-enter-active,
+.page-scale-leave-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration) var(--page-transition-ease);
+}
+
+.page-scale-enter-from {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.page-scale-leave-to {
+  opacity: 0;
+  transform: scale(1.02);
+}
+
+/* ==========================================================================
+   Zoom Transition (dramatic zoom effect)
+   ========================================================================== */
+
+.page-zoom-enter-active,
+.page-zoom-leave-active {
+  transition:
+    opacity var(--page-transition-duration-slow) var(--page-transition-ease-smooth),
+    transform var(--page-transition-duration-slow) var(--page-transition-ease-smooth);
+}
+
+.page-zoom-enter-from {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.page-zoom-leave-to {
+  opacity: 0;
+  transform: scale(1.15);
+}
+
+/* ==========================================================================
+   Flip Transition (3D flip effect)
+   ========================================================================== */
+
+.page-flip-enter-active,
+.page-flip-leave-active {
+  transition:
+    opacity var(--page-transition-duration-slow) var(--page-transition-ease),
+    transform var(--page-transition-duration-slow) var(--page-transition-ease);
+  transform-style: preserve-3d;
+  perspective: 1200px;
+}
+
+.page-flip-enter-from {
+  opacity: 0;
+  transform: perspective(1200px) rotateY(-15deg) translateZ(-100px);
+}
+
+.page-flip-leave-to {
+  opacity: 0;
+  transform: perspective(1200px) rotateY(15deg) translateZ(-100px);
+}
+
+/* ==========================================================================
+   Rotate Transition (subtle rotation with fade)
+   ========================================================================== */
+
+.page-rotate-enter-active,
+.page-rotate-leave-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration) var(--page-transition-ease);
+  transform-origin: center center;
+}
+
+.page-rotate-enter-from {
+  opacity: 0;
+  transform: rotate(-3deg) scale(0.98);
+}
+
+.page-rotate-leave-to {
+  opacity: 0;
+  transform: rotate(3deg) scale(0.98);
+}
+
+/* ==========================================================================
+   Blur Transition (fade with blur effect)
+   ========================================================================== */
+
+.page-blur-enter-active,
+.page-blur-leave-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    filter var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration) var(--page-transition-ease);
+}
+
+.page-blur-enter-from {
+  opacity: 0;
+  filter: blur(10px);
+  transform: scale(1.02);
+}
+
+.page-blur-leave-to {
+  opacity: 0;
+  filter: blur(10px);
+  transform: scale(0.98);
+}
+
+/* ==========================================================================
+   Bounce Transition (spring/bounce animation)
+   ========================================================================== */
+
+.page-bounce-enter-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration-slow) var(--page-transition-ease-spring);
+}
+
+.page-bounce-leave-active {
+  transition:
+    opacity var(--page-transition-duration) var(--page-transition-ease),
+    transform var(--page-transition-duration) var(--page-transition-ease);
+}
+
+.page-bounce-enter-from {
+  opacity: 0;
+  transform: scale(0.9) translateY(20px);
+}
+
+.page-bounce-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* ==========================================================================
+   Swipe Transition (fast horizontal swipe)
+   ========================================================================== */
+
+.page-swipe-enter-active,
+.page-swipe-leave-active {
+  transition:
+    opacity 0.2s var(--page-transition-ease),
+    transform 0.2s var(--page-transition-ease-smooth);
+}
+
+.page-swipe-enter-from {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+.page-swipe-leave-to {
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+/* ==========================================================================
+   Accessibility - Reduced Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-enter-active,
+  .page-fade-leave-active,
+  .page-slide-left-enter-active,
+  .page-slide-left-leave-active,
+  .page-slide-up-enter-active,
+  .page-slide-up-leave-active,
+  .page-scale-enter-active,
+  .page-scale-leave-active,
+  .page-zoom-enter-active,
+  .page-zoom-leave-active,
+  .page-flip-enter-active,
+  .page-flip-leave-active,
+  .page-rotate-enter-active,
+  .page-rotate-leave-active,
+  .page-blur-enter-active,
+  .page-blur-leave-active,
+  .page-bounce-enter-active,
+  .page-bounce-leave-active,
+  .page-swipe-enter-active,
+  .page-swipe-leave-active {
+    transition: none;
+  }
+
+  .page-fade-enter-from,
+  .page-fade-leave-to,
+  .page-slide-left-enter-from,
+  .page-slide-left-leave-to,
+  .page-slide-up-enter-from,
+  .page-slide-up-leave-to,
+  .page-scale-enter-from,
+  .page-scale-leave-to,
+  .page-zoom-enter-from,
+  .page-zoom-leave-to,
+  .page-flip-enter-from,
+  .page-flip-leave-to,
+  .page-rotate-enter-from,
+  .page-rotate-leave-to,
+  .page-blur-enter-from,
+  .page-blur-leave-to,
+  .page-bounce-enter-from,
+  .page-bounce-leave-to,
+  .page-swipe-enter-from,
+  .page-swipe-leave-to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}

@@ -1,0 +1,564 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ADMIN HEADER - Mobile header and user menu for admin/app mode
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * BREAKPOINTS (Material Design 3):
+ * - Phone (< 600px): Show mobile header
+ * - Tablet/Desktop (≥ 600px): Hide mobile header, show sidebar instead
+ */
+
+/* Admin mobile header - base styles */
+.admin-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+  padding: var(--space-3) var(--space-4);
+  background: var(--l-bg);
+  border-block-end: 1px solid var(--l-border);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+/* Phone (< 600px) - show mobile header */
+@media (width < 600px) {
+  .layout-admin .admin-header.mobile-only {
+    display: flex !important;
+  }
+}
+
+/* Tablet/Desktop (≥ 600px) - hide mobile header */
+@media (width >= 600px) {
+  .layout-admin .admin-header.mobile-only {
+    display: none;
+  }
+}
+
+.admin-title {
+  font-weight: var(--font-semibold);
+  font-size: var(--text-lg);
+}
+
+/* Mobile user avatar and menu */
+.mobile-user-wrapper {
+  position: relative;
+}
+
+.mobile-user-avatar {
+  width: var(--avatar-sm);
+  height: var(--avatar-sm);
+  border-radius: var(--radius-full);
+  background: var(--i-brand);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+}
+
+.mobile-user-menu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + var(--space-2));
+  min-width: 14rem; /* ~224px, scales with font-size */
+  padding: var(--space-3);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-popover);
+}
+/* Note: inset-inline-end: 0 works correctly for both LTR (right) and RTL (left) */
+
+.mobile-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-block-end: var(--space-3);
+}
+
+.mobile-user-name {
+  font-weight: var(--font-semibold);
+  font-size: var(--text-base);
+  color: var(--t-primary);
+}
+
+.mobile-user-email {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  word-break: break-all;
+}
+
+.mobile-user-role {
+  font-size: var(--text-xs);
+  color: var(--t-tertiary);
+  text-transform: capitalize;
+}
+
+.mobile-menu-divider {
+  height: 1px;
+  background: var(--l-border);
+  margin-block: var(--space-2);
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--t-primary);
+  font-size: var(--text-sm);
+  transition: background-color var(--transition-fast) ease;
+}
+
+.mobile-menu-item:hover {
+  background: var(--l-bg-sunken);
+}
+
+.mobile-menu-item svg {
+  width: var(--icon-md, 20px);
+  height: var(--icon-md, 20px);
+  color: var(--t-secondary);
+}
+
+.mobile-menu-logout {
+  color: var(--s-danger);
+}
+
+.mobile-menu-logout svg {
+  color: var(--s-danger);
+}
+
+/* Theme & language toggles container for mobile menu */
+.mobile-menu-toggles {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-md);
+  padding: var(--space-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * HORIZONTAL HEADER - Alternative to vertical sidebar
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Used when config.features.appVerticalNav: false
+ * Provides a traditional horizontal header with nav links, similar to website header
+ *
+ * BREAKPOINTS:
+ * - Phone (< 600px): Stacked layout, scrollable nav
+ * - Tablet/Desktop (≥ 600px): Single row with flex layout
+ */
+
+.admin-header-horizontal {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-fixed);
+  background: var(--l-bg);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.admin-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  padding: var(--space-3) var(--space-4);
+  /* Full width header - no max-width constraint */
+}
+
+/* Logo */
+.admin-header-logo {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.admin-header-logo .logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+/* Navigation */
+.admin-header-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  flex: 1;
+  justify-content: center;
+  /* No overflow - icon-only links have fixed width, tooltips need to escape container */
+}
+
+/* Icon-only nav links with tooltips below */
+.admin-header-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border-radius: var(--radius-md);
+  color: var(--t-secondary);
+  transition:
+    color var(--transition-normal) ease,
+    background-color var(--transition-normal) ease;
+}
+
+.admin-header-link:hover {
+  color: var(--t-primary);
+  background: var(--i-brand-subtle);
+}
+
+.admin-header-link:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.admin-header-link.router-link-exact-active {
+  color: var(--i-brand);
+  background: var(--i-brand-subtle);
+}
+
+.admin-header-link-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  flex-shrink: 0;
+}
+
+/* Tooltip that appears below on hover */
+.admin-header-tooltip {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  padding: var(--space-1) var(--space-2);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--t-primary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-normal) ease,
+    transform var(--transition-normal) ease,
+    visibility var(--transition-normal);
+  z-index: var(--z-tooltip);
+}
+
+.admin-header-link:hover .admin-header-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(8px);
+}
+
+/* Actions area */
+.admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  flex-shrink: 0;
+}
+
+.admin-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border-radius: var(--radius-md);
+  color: var(--t-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    color var(--transition-normal) ease,
+    background-color var(--transition-normal) ease;
+}
+
+.admin-header-btn:hover {
+  color: var(--t-primary);
+  background: var(--i-brand-subtle);
+}
+
+/* User avatar */
+.admin-header-user-wrapper {
+  position: relative;
+}
+
+.admin-header-user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--i-brand);
+  color: var(--i-brand-text);
+  border: none;
+  cursor: pointer;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+  transition:
+    transform var(--transition-normal) ease,
+    box-shadow var(--transition-normal) ease;
+}
+
+.admin-header-user-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.15);
+}
+
+/* User dropdown menu */
+.admin-header-user-menu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + var(--space-2));
+  min-width: 12rem;
+  padding: var(--space-3);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-popover);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * HORIZONTAL HEADER - Responsive adjustments
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * BREAKPOINTS (Material Design 3):
+ * - Phone (< 600px): Hide horizontal header, use mobile header + bottom nav
+ * - Tablet/Desktop (≥ 600px): Show horizontal header
+ */
+
+/* Phone (< 600px) - hide horizontal header, use mobile header + bottom nav */
+@media (width < 600px) {
+  .admin-header-horizontal {
+    display: none;
+  }
+
+  /* Show mobile header in horizontal mode on phones */
+  .layout-admin--horizontal .admin-header.mobile-only {
+    display: flex !important;
+  }
+
+  /* Add bottom padding for bottom nav in horizontal mode on phones */
+  .layout-admin--horizontal .admin-main {
+    padding-block-end: calc(var(--app-bottom-nav-height, 56px) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Tablet/Desktop (≥ 600px) - show horizontal header */
+@media (width >= 600px) {
+  .admin-header-horizontal {
+    display: block;
+  }
+
+  /* No bottom nav padding on tablet/desktop */
+  .layout-admin--horizontal .admin-main {
+    padding-block-end: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LAYOUT ADMIN - Horizontal mode adjustments
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* When using horizontal header, main content doesn't need sidebar margin */
+.layout-admin--horizontal .admin-main {
+  margin-inline-start: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ADMIN PAGE STYLES - Shared styles for admin pages
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Info card - highlighted informational box */
+.info-card {
+  padding: var(--space-4) var(--space-6);
+  background: var(--i-brand-subtle);
+  border-color: color-mix(in oklch, var(--i-brand), transparent 70%);
+}
+
+/* Coming soon card */
+.coming-soon-card {
+  padding: var(--space-6);
+  text-align: center;
+  background: var(--l-bg-sunken);
+}
+
+.coming-soon-card h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+.coming-soon-card .feature-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-4) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-align: start;
+  max-width: 20rem;
+  margin-inline: auto;
+}
+
+.coming-soon-card .feature-list li::before {
+  content: '•';
+  color: var(--i-brand);
+  margin-inline-end: var(--space-2);
+}
+
+/* Code block for config reference */
+.code-block {
+  display: block;
+  margin-block-start: var(--space-3);
+  padding: var(--space-4);
+  background: var(--l-bg-sunken);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  overflow-x: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ROLES PAGE STYLES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.roles-table th {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.roles-table th:first-child {
+  text-align: start;
+}
+
+.roles-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.roles-table td:first-child {
+  text-align: start;
+}
+
+.role-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.role-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--t-secondary);
+  flex-shrink: 0;
+}
+
+/* Permission icon wrapper for centering */
+.perm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.perm-yes {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--s-success);
+}
+
+.perm-no {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--t-tertiary);
+  opacity: 0.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SECTIONS PAGE STYLES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.sections-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.section-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--l-bg);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-md);
+}
+
+.section-drag {
+  cursor: grab;
+  color: var(--t-tertiary);
+}
+
+.drag-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.section-order {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--i-brand-subtle);
+  color: var(--i-brand);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+}
+
+.section-name {
+  flex: 1;
+  font-weight: var(--font-medium);
+}
+
+.section-status {
+  color: var(--t-secondary);
+}
+
+.status-enabled {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--s-success);
+}
+
+.status-disabled {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--t-tertiary);
+}

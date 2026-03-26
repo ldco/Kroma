@@ -1,0 +1,35 @@
+# ============================================
+# Ansible Inventory - Server Provisioning
+# ============================================
+# Copy to inventory.yml and fill in your values
+# cp inventory.example.yml inventory.yml
+#
+# Never commit inventory.yml to git!
+#
+# SINGLE SOURCE OF TRUTH: .kamal/secrets
+# These values MUST match your .kamal/secrets file:
+# - ansible_host = SERVER_IP
+# - domain = SITE_DOMAIN
+# ============================================
+
+all:
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    # Deploy user for Kamal (matches ssh.user in deploy.yml)
+    deploy_user: deploy
+    deploy_user_ssh_key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+
+  children:
+    # Production servers
+    production:
+      hosts:
+        prod-1:
+          ansible_host: YOUR_SERVER_IP  # = SERVER_IP in .kamal/secrets
+          domain: example.com           # = SITE_DOMAIN in .kamal/secrets
+
+    # Staging servers (optional)
+    # staging:
+    #   hosts:
+    #     stage-1:
+    #       ansible_host: YOUR_STAGING_IP
+    #       domain: staging.example.com

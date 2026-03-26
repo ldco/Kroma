@@ -1,0 +1,277 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PORTFOLIO GRID - Admin portfolio management grid
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--gap-lg);
+}
+
+.portfolio-item {
+  position: relative;
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition:
+    box-shadow var(--transition-normal) ease,
+    transform var(--transition-normal) ease;
+}
+
+.portfolio-item:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.portfolio-item-image {
+  position: relative;
+  aspect-ratio: 16/10;
+  background: var(--l-bg-sunken);
+  overflow: hidden;
+}
+
+.portfolio-item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.portfolio-item-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--t-muted);
+  font-size: 2rem;
+}
+
+.portfolio-item-info {
+  padding: var(--space-4);
+}
+
+.portfolio-item-title {
+  font-weight: var(--font-semibold);
+  font-size: var(--text-base);
+  color: var(--l-text);
+  margin-block-end: var(--space-1);
+}
+
+/* Reset link styles when portfolio-item is a link */
+a.portfolio-item {
+  text-decoration: none;
+  color: inherit;
+}
+
+.portfolio-item-category {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+}
+
+.portfolio-item-actions {
+  display: flex;
+  gap: var(--gap-xs);
+  padding: var(--space-2) var(--space-4);
+  border-block-start: 1px solid var(--l-border);
+}
+
+.portfolio-item-description {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  margin-block-start: var(--space-1);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.status-badge {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+}
+
+.type-badge {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline-end: var(--space-2);
+}
+
+/* Preview grid - shows up to 4 item thumbnails in a 2x2 grid */
+.portfolio-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  width: 100%;
+  height: 100%;
+}
+
+.portfolio-preview-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * MEDIA GRID - Gallery items grid
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: var(--gap-md);
+}
+
+.media-item {
+  position: relative;
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.media-item-preview {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--l-bg-sunken);
+  overflow: hidden;
+}
+
+.media-item-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.media-item-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--t-muted);
+  font-size: 2rem;
+}
+
+.media-item-caption {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  border-block-start: 1px solid var(--l-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.media-item-actions {
+  display: flex;
+  gap: var(--gap-xs);
+  padding: var(--space-2) var(--space-3);
+  border-block-start: 1px solid var(--l-border);
+  justify-content: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * UPLOAD AREA - Drag/drop upload zone
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: var(--space-6);
+  border: 2px dashed var(--l-border);
+  border-radius: var(--radius-lg);
+  background: var(--l-bg-sunken);
+  cursor: pointer;
+  transition: border-color var(--transition-fast) ease;
+}
+
+.upload-area:hover {
+  border-color: var(--c-primary);
+}
+
+.upload-preview {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-sm);
+  color: var(--t-muted);
+}
+
+.upload-placeholder svg {
+  font-size: 2.5rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * TYPE SELECTOR - Item type radio buttons
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.type-selector {
+  display: flex;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+
+.type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap-xs);
+  padding: var(--space-4);
+  min-width: 80px;
+  border: 2px solid var(--l-border);
+  border-radius: var(--radius-md);
+  background: var(--l-bg-elevated);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast) ease,
+    background var(--transition-fast) ease;
+}
+
+.type-option:hover {
+  border-color: var(--c-primary-hover);
+}
+
+.type-option.active {
+  border-color: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 10%, transparent);
+}
+
+.type-option svg {
+  font-size: 1.5rem;
+}
+
+.type-option span {
+  font-size: var(--text-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PAGE HEADER ENHANCEMENTS
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.page-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+}
+
+.page-subtitle {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  margin-block-start: var(--space-1);
+}

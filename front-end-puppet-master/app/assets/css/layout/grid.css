@@ -1,0 +1,177 @@
+/**
+ * 2025 Grid System
+ *
+ * PHILOSOPHY:
+ * 1. AUTO-FIT GRIDS are the default - they self-adapt without media queries!
+ * 2. Fixed column grids use mobile-first responsive approach
+ * 3. Container query grids for component-level responsive
+ */
+
+/* ══════════════════════════════════════════════════════════
+ * BASE GRID
+ * ══════════════════════════════════════════════════════════ */
+
+.grid {
+  display: grid;
+  gap: var(--space-4, 1rem);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * AUTO-FIT GRIDS (Self-responsive! No media queries needed!)
+ *
+ * These are the HOLY GRAIL of responsive grids:
+ * - Items wrap automatically based on available space
+ * - Works perfectly in any container size
+ * - No breakpoints to maintain!
+ * ══════════════════════════════════════════════════════════ */
+
+/* Default: ~280px minimum item width */
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-4, 1rem);
+}
+
+/* Small items: ~200px minimum */
+.grid-auto-sm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--space-4, 1rem);
+}
+
+/* Large items: ~350px minimum */
+.grid-auto-lg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
+  gap: var(--space-4, 1rem);
+}
+
+/* Extra large items: ~450px minimum (for cards with more content) */
+.grid-auto-xl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
+  gap: var(--space-4, 1rem);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FIXED COLUMN GRIDS (Mobile-first)
+ * Start with 1 column, expand at breakpoints
+ * ══════════════════════════════════════════════════════════ */
+
+/* Base: single column on mobile */
+.grid-2,
+.grid-3,
+.grid-4 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4, 1rem);
+}
+
+/* Tablet (≥ 640px): 2 columns */
+@media (--tablet) {
+  .grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop (≥ 1024px): full columns */
+@media (--desktop) {
+  .grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * EXPLICIT COLUMN CLASSES (No responsive, use when you know what you want)
+ * ══════════════════════════════════════════════════════════ */
+
+.grid-cols-1 {
+  grid-template-columns: 1fr;
+}
+.grid-cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.grid-cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.grid-cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.grid-cols-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+.grid-cols-6 {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * SPECIAL LAYOUTS
+ * ══════════════════════════════════════════════════════════ */
+
+/* Sidebar layout: sidebar + main content */
+.grid-sidebar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4, 1rem);
+}
+
+@media (--desktop) {
+  .grid-sidebar {
+    grid-template-columns: 280px 1fr;
+  }
+
+  .grid-sidebar-right {
+    grid-template-columns: 1fr 280px;
+  }
+}
+
+/* Feature grid: 1 large + 2 small */
+.grid-feature {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4, 1rem);
+}
+
+@media (--tablet) {
+  .grid-feature {
+    grid-template-columns: 2fr 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .grid-feature > :first-child {
+    grid-row: span 2;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * OVERFLOW PREVENTION
+ * Grid children default to min-width: auto which can cause overflow.
+ * Setting min-width: 0 allows children to shrink below content size.
+ * ══════════════════════════════════════════════════════════ */
+.grid > *,
+.grid-auto > *,
+.grid-auto-sm > *,
+.grid-auto-lg > *,
+.grid-auto-xl > *,
+.grid-2 > *,
+.grid-3 > *,
+.grid-4 > *,
+.grid-cols-1 > *,
+.grid-cols-2 > *,
+.grid-cols-3 > *,
+.grid-cols-4 > *,
+.grid-cols-5 > *,
+.grid-cols-6 > *,
+.grid-sidebar > *,
+.grid-feature > * {
+  min-width: 0;
+}

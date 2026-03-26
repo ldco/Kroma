@@ -1,0 +1,193 @@
+/**
+ * Clients/Sponsors Styles
+ *
+ * Logo strip and grid layouts.
+ */
+
+/* ==========================================================================
+   CLIENTS SECTION
+   ========================================================================== */
+
+.clients-section {
+  /* Simple container */
+}
+
+.clients-loading {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--l-text-secondary);
+}
+
+/* ==========================================================================
+   CLIENTS STRIP - Logo Row
+   ========================================================================== */
+
+.clients-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--gap-xl);
+}
+
+.clients-strip__item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4) var(--space-6);
+  transition: transform 0.2s ease;
+}
+
+.clients-strip__item:hover {
+  transform: scale(1.05);
+}
+
+.clients-strip__item img {
+  max-width: 140px;
+  max-height: 50px;
+  object-fit: contain;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+/* Grayscale effect with color reveal */
+.clients-strip--grayscale .clients-strip__item img {
+  filter: grayscale(100%);
+  opacity: 0.5;
+}
+
+.clients-strip--grayscale .clients-strip__item:hover img {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+
+/* SVG logo color handling */
+.clients-strip__item svg {
+  max-width: 140px;
+  max-height: 50px;
+  fill: currentColor;
+  color: var(--l-text-secondary);
+  transition: color 0.2s ease;
+}
+
+.clients-strip--grayscale .clients-strip__item svg {
+  opacity: 0.5;
+}
+
+.clients-strip--grayscale .clients-strip__item:hover svg {
+  color: var(--c-brand);
+  opacity: 1;
+}
+
+/* ==========================================================================
+   CLIENTS GRID - Card Layout - Unified Style
+   ========================================================================== */
+
+.clients-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--gap-md);
+  justify-content: center;
+}
+
+.clients-grid__item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-xl);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.clients-grid__item:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -8px oklch(0 0 0 / 0.12);
+}
+
+.clients-grid__item img {
+  max-width: 100%;
+  max-height: 40px;
+  object-fit: contain;
+  filter: grayscale(100%);
+  opacity: 0.6;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.clients-grid__item:hover img {
+  filter: grayscale(0%);
+  opacity: 1;
+}
+
+/* ==========================================================================
+   INFINITE SCROLL MARQUEE (Optional)
+   ========================================================================== */
+
+.clients-marquee {
+  overflow: hidden;
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    black 10%,
+    black 90%,
+    transparent
+  );
+}
+
+.clients-marquee__track {
+  display: flex;
+  gap: var(--gap-xl);
+  animation: marquee 30s linear infinite;
+  width: max-content;
+}
+
+.clients-marquee:hover .clients-marquee__track {
+  animation-play-state: paused;
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (--phone) {
+  .clients-strip {
+    gap: var(--gap-md);
+  }
+
+  .clients-strip__item {
+    padding: var(--space-3);
+  }
+
+  .clients-strip__item img,
+  .clients-strip__item svg {
+    max-width: 100px;
+    max-height: 36px;
+  }
+
+  .clients-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .clients-grid__item {
+    padding: var(--space-5);
+  }
+}
+
+/* ==========================================================================
+   REDUCE MOTION
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .clients-marquee__track {
+    animation: none;
+  }
+}

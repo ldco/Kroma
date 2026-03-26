@@ -1,0 +1,263 @@
+/**
+ * FAQ Accordion Styles
+ *
+ * Accordion with smooth expand animation.
+ */
+
+/* ==========================================================================
+   FAQ SECTION
+   ========================================================================== */
+
+.faq-section {
+  /* Simple container */
+}
+
+.faq-loading {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--l-text-secondary);
+}
+
+/* ==========================================================================
+   FAQ LIST CONTAINER
+   ========================================================================== */
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 800px;
+  margin-inline: auto;
+}
+
+/* ==========================================================================
+   FAQ ITEM - Unified Style
+   ========================================================================== */
+
+.faq-item {
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+
+.faq-item--open {
+  box-shadow: 0 8px 16px -6px oklch(0 0 0 / 0.08);
+}
+
+/* ==========================================================================
+   FAQ HEADER - Question Button
+   ========================================================================== */
+
+.faq-item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  gap: var(--space-4);
+  transition: background 0.2s ease;
+}
+
+.faq-item__header:hover {
+  background: var(--l-bg-sunken);
+}
+
+.faq-item__header:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: -2px;
+}
+
+/* ==========================================================================
+   FAQ QUESTION TEXT
+   ========================================================================== */
+
+.faq-item__question {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  line-height: var(--leading-snug);
+  color: var(--l-text);
+  transition: color 0.2s ease;
+}
+
+.faq-item--open .faq-item__question,
+.faq-item:hover .faq-item__question {
+  color: var(--c-brand);
+}
+
+/* ==========================================================================
+   FAQ ICON
+   ========================================================================== */
+
+.faq-item__icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--l-text-secondary);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.faq-item--open .faq-item__icon,
+.faq-item:hover .faq-item__icon {
+  color: var(--c-brand);
+}
+
+.faq-item--open .faq-item__icon {
+  transform: rotate(180deg);
+}
+
+/* Custom plus/minus icon using pseudo elements */
+.faq-item__icon-plus {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.faq-item__icon-plus::before,
+.faq-item__icon-plus::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+  border-radius: 1px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.faq-item__icon-plus::before {
+  width: 12px;
+  height: 2px;
+}
+
+.faq-item__icon-plus::after {
+  width: 2px;
+  height: 12px;
+}
+
+.faq-item--open .faq-item__icon-plus::after {
+  transform: rotate(90deg);
+  opacity: 0;
+}
+
+/* ==========================================================================
+   FAQ CONTENT - Smooth Expand Animation
+   ========================================================================== */
+
+.faq-item__content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.faq-item--open .faq-item__content {
+  grid-template-rows: 1fr;
+}
+
+.faq-item__answer {
+  overflow: hidden;
+  padding: 0 var(--space-5);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.faq-item--open .faq-item__answer {
+  padding: 0 var(--space-5) var(--space-4);
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.faq-item__answer p {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--l-text-secondary);
+}
+
+.faq-item__answer p + p {
+  margin-block-start: var(--space-3);
+}
+
+/* Links in answer */
+.faq-item__answer a {
+  color: var(--c-brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.faq-item__answer a:hover {
+  text-decoration: none;
+}
+
+/* ==========================================================================
+   FAQ CATEGORIES (Optional)
+   ========================================================================== */
+
+.faq-categories {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--gap-sm);
+  margin-block-end: var(--space-8);
+}
+
+.faq-category-btn {
+  padding: var(--space-2) var(--space-4);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--l-text-secondary);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.faq-category-btn:hover {
+  border-color: var(--c-brand);
+  color: var(--c-brand);
+}
+
+.faq-category-btn--active {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+  color: var(--c-brand-contrast, white);
+}
+
+/* ==========================================================================
+   NARROW CONTAINER
+   ========================================================================== */
+
+.container--narrow {
+  max-width: 800px;
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (--phone) {
+  .faq-item__header {
+    padding: var(--space-4);
+  }
+
+  .faq-item__question {
+    font-size: var(--text-sm);
+  }
+
+  .faq-item--open .faq-item__answer,
+  .faq-item__answer {
+    padding-inline: var(--space-4);
+  }
+
+  .faq-item__answer p {
+    font-size: var(--text-xs);
+  }
+}

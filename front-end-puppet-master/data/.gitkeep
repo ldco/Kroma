@@ -1,0 +1,2 @@
+# Keep this file to ensure data/ directory exists in git
+# SQLite database will be created here by db:push

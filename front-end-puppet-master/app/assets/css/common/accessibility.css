@@ -1,0 +1,109 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ACCESSIBILITY UTILITIES
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Screen reader support, skip links, focus management
+ */
+
+/* Visually hidden (for screen readers) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link - hidden until focused (WCAG 2.4.1) */
+.skip-link {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 9999;
+  padding: var(--space-3) var(--space-4);
+  background: var(--i-brand);
+  color: var(--i-brand-text);
+  font-weight: var(--font-semibold);
+  text-decoration: none;
+  transform: translateY(-100%);
+  transition: transform var(--transition-fast) var(--ease-out);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Focus visible outline */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Hide scrollbar but keep functionality */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * FORCED COLORS MODE (Windows High Contrast)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * When users enable high contrast mode, the browser strips most colors.
+ * We need to ensure interactive elements remain visible with borders.
+ *
+ * WCAG 2.1 Success Criterion 1.4.11: Non-text Contrast
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (forced-colors: active) {
+  /* Buttons need visible borders */
+  .btn,
+  button {
+    border: 1px solid currentColor;
+  }
+
+  /* Cards and panels need visible boundaries */
+  .card,
+  .panel,
+  .modal,
+  .dropdown,
+  .toast {
+    border: 1px solid currentColor;
+  }
+
+  /* Form inputs need visible borders */
+  .input,
+  input,
+  select,
+  textarea {
+    border: 1px solid currentColor;
+  }
+
+  /* Links need underlines when colors are forced */
+  a:not([class]),
+  a:not(.btn) {
+    text-decoration: underline;
+  }
+
+  /* Focus states need to be extra visible */
+  :focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 2px;
+  }
+
+  /* Disabled states should be distinguishable */
+  :disabled,
+  [disabled],
+  .disabled {
+    opacity: 0.5;
+    border-style: dashed;
+  }
+}

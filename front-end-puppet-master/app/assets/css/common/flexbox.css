@@ -1,0 +1,90 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * FLEXBOX UTILITIES
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Flex display, direction, alignment, and gap utilities
+ */
+
+/* Display */
+.flex {
+  display: flex;
+}
+.inline-flex {
+  display: inline-flex;
+}
+
+/* Direction */
+.flex-col {
+  flex-direction: column;
+}
+.flex-row {
+  flex-direction: row;
+}
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+/* Flex sizing */
+.flex-1 {
+  flex: 1;
+}
+.flex-shrink-0 {
+  flex-shrink: 0;
+}
+
+/* Align items (cross axis) */
+.items-start {
+  align-items: flex-start;
+}
+.items-center {
+  align-items: center;
+}
+.items-end {
+  align-items: flex-end;
+}
+.items-stretch {
+  align-items: stretch;
+}
+
+/* Justify content (main axis) */
+.justify-start {
+  justify-content: flex-start;
+}
+.justify-center {
+  justify-content: center;
+}
+.justify-end {
+  justify-content: flex-end;
+}
+.justify-between {
+  justify-content: space-between;
+}
+
+/* Gap utilities (works for both flex and grid) */
+.gap-1 {
+  gap: var(--space-1);
+}
+.gap-2 {
+  gap: var(--space-2);
+}
+.gap-3 {
+  gap: var(--space-3);
+}
+.gap-4 {
+  gap: var(--space-4);
+}
+.gap-6 {
+  gap: var(--space-6);
+}
+.gap-8 {
+  gap: var(--space-8);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * OVERFLOW PREVENTION
+ * Flex children default to min-width: auto which can cause overflow.
+ * Setting min-width: 0 allows children to shrink below content size.
+ * ══════════════════════════════════════════════════════════ */
+.flex > * {
+  min-width: 0;
+}

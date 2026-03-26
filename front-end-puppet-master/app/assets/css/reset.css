@@ -1,0 +1,149 @@
+/**
+ * Modern CSS Reset
+ * Based on Josh Comeau's reset + accessibility enhancements
+ */
+
+/* Box sizing rules */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Prevent font size inflation */
+html {
+  -moz-text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+
+  /* Smooth scrolling for anchor links */
+  scroll-behavior: smooth;
+
+  /* NOTE: We use scroll-margin-top per-section (in sections.css) instead of
+   * scroll-padding-top here. This allows precise control - hero gets 0 offset,
+   * other sections get header-height offset. scroll-padding would add to ALL anchors. */
+}
+
+/* Remove default margin and padding + word-break safety */
+* {
+  margin: 0;
+  padding: 0;
+  /* Prevent long words/URLs from causing horizontal overflow */
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Remove list styles */
+ul,
+ol {
+  list-style: none;
+}
+
+/* Set core body defaults */
+body {
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Set shorter line heights on headings and interactive elements */
+h1,
+h2,
+h3,
+h4,
+button,
+input,
+label {
+  line-height: 1.1;
+}
+
+/* Balance text wrapping on headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
+/* A elements that don't have a class get default styles */
+a:not([class]) {
+  text-decoration-skip-ink: auto;
+  color: currentColor;
+}
+
+/* Make images easier to work with */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Inherit fonts for inputs and buttons */
+input,
+button,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Make sure textareas without a rows attribute are not tiny */
+textarea:not([rows]) {
+  min-height: 10em;
+}
+
+/* Anything that has been anchored to should have extra scroll margin */
+:target {
+  scroll-margin-block: 5ex;
+}
+
+/* Remove all animations, transitions for people that prefer not to see them */
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Remove default button styles */
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* Remove tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Samsung Internet fix - prevent input zoom */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+/*
+ * Touch targets (WCAG 2.5.8):
+ * Minimum 44×44px applied ONLY to icon buttons and controls,
+ * NOT to text links. Applied per-component in:
+ * - buttons.css (.btn-icon)
+ * - nav.css (icon buttons)
+ * - social-nav.css (social links)
+ * - back-to-top.css
+ * - lightbox.css / modal.css (close buttons)
+ */

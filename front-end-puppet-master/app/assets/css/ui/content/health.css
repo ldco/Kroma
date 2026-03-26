@@ -1,0 +1,117 @@
+/**
+ * Health Page Component
+ *
+ * Styles for admin health monitoring page.
+ * Grid layout for status items, log viewer styling.
+ */
+
+/* Status grid - responsive 2-3 columns */
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.health-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--l-bg-sunken);
+  border-radius: var(--radius-md);
+}
+
+.health-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--t-secondary);
+  text-transform: capitalize;
+  min-width: 80px;
+}
+
+.health-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Log viewer */
+.log-container {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--l-bg-sunken);
+}
+
+.log-entry:hover {
+  background: var(--l-bg);
+}
+
+.log-time {
+  color: var(--t-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.log-message {
+  word-break: break-word;
+}
+
+/* Badge size variant */
+.badge-sm {
+  padding: var(--space-px) var(--space-1);
+  font-size: var(--text-xs);
+}
+
+/* Spin animation for refresh button */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Icon size */
+.icon-xs {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+/* Responsive adjustments */
+@media (--phone) {
+  .health-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .log-container {
+    max-height: 300px;
+  }
+
+  .log-entry {
+    flex-wrap: wrap;
+  }
+
+  .log-time {
+    width: 100%;
+  }
+}

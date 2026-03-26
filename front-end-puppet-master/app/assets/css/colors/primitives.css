@@ -1,0 +1,45 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * COLOR PRIMITIVES
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * THE ONLY COLORS YOU NEED TO DEFINE!
+ * Everything else is auto-calculated in auto.css
+ *
+ * p- prefix = "primitive"
+ *
+ * Colors derived from the Puppet Master logo:
+ *   - Brand: #aa0000 (dark red/maroon from logo accent)
+ *   - Black: #2f2f2f (charcoal gray from logo text)
+ *   - White: #f0f0f0 (off-white from logo light variant)
+ *   - Accent: #0f172a (deep slate for contrast)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+:root {
+  /* ══════════════════════════════════════════════════════════
+   * THE 4 PRIMITIVES - Change these to rebrand the entire site
+   * Colors extracted from the Puppet Master logo design
+   * ══════════════════════════════════════════════════════════ */
+
+  --p-black: #2f2f2f; /* Charcoal gray (from logo dark text) */
+  --p-white: #f0f0f0; /* Off-white (from logo light text) */
+  --p-brand: #aa0000; /* Dark red/maroon (from logo accent) */
+  --p-accent: #0f172a; /* Deep slate (for secondary contrast) */
+
+  /* Enable light-dark() function */
+  color-scheme: light dark;
+}
+
+/*
+ * Dark/Light mode class support (for @nuxtjs/color-mode)
+ * The module adds .dark or .light class to <html> element
+ */
+html.dark {
+  color-scheme: dark;
+}
+
+html.light {
+  color-scheme: light;
+}

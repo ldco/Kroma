@@ -1,0 +1,190 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PAGE LAYOUT - FUNDAMENTAL PAGE STRUCTURE
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * The base Holy Grail layout for all pages: Header → Main → Footer
+ * This is the FOUNDATION that all layouts build upon.
+ *
+ * ┌─────────────────────────────────────────┐
+ * │               HEADER (auto)             │
+ * ├─────────────────────────────────────────┤
+ * │                                         │
+ * │               MAIN (1fr)                │
+ * │           (grows to fill)               │
+ * │                                         │
+ * ├─────────────────────────────────────────┤
+ * │               FOOTER (auto)             │
+ * └─────────────────────────────────────────┘
+ *
+ * VISUAL MODES:
+ * ───────────────────────────────────────────────────────────────────────────
+ * MODE       | CONTENT WIDTH | SPACING  | NAV (Desktop)  | NAV (Mobile)
+ * ───────────────────────────────────────────────────────────────────────────
+ * Website    | 1280px (wide) | Spacious | Horizontal     | Hamburger overlay
+ * App        | 900px (dense) | Compact  | Sidebar        | Bottom tabs
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * APP MODE BREAKPOINTS (Material Design 3):
+ * ───────────────────────────────────────────────────────────────────────────
+ * < 600px   (phone)            → Bottom navigation bar
+ * 600-839px (tablet portrait)  → Navigation rail (narrow sidebar ~80px)
+ * ≥ 840px   (tablet/desktop)   → Full sidebar
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * Quick Reference:
+ * ───────────────────────────────────────────────────────────────────────────
+ * CLASS             | PURPOSE
+ * ───────────────────────────────────────────────────────────────────────────
+ * .layout           | Holy Grail grid (used by default.vue AND blank.vue)
+ * .layout-admin     | Admin/App panel (App mode: sidebar + bottom nav)
+ * .main             | Main content area (container query host)
+ * ───────────────────────────────────────────────────────────────────────────
+ */
+
+/* ==========================================================================
+   APP MODE BREAKPOINTS (Material Design 3)
+   ========================================================================== */
+
+:root {
+  /* App mode breakpoints - different from website mode! */
+  --bp-app-phone: 600px; /* Below this: bottom nav */
+  --bp-app-tablet: 840px; /* Below this: nav rail; above: full sidebar */
+
+  /* App mode dimensions */
+  --app-bottom-nav-height: 56px; /* Material Design standard */
+  --app-nav-rail-width: 80px; /* Navigation rail width */
+  --app-sidebar-width: 60px; /* Full sidebar width (compact) */
+}
+
+/* ==========================================================================
+   VISUAL MODE VARIABLES
+   ========================================================================== */
+
+/* Website mode - wider, more spacious (used by .layout) */
+.layout {
+  --content-max: 1280px;
+  --page-padding: var(--space-6);
+  --section-spacing: var(--space-section);
+}
+
+/* App mode - narrower, denser (used by .layout-admin) */
+.layout-admin {
+  --content-max: 960px;
+  --page-padding: var(--space-4);
+  --section-spacing: var(--space-4);
+}
+
+/* ==========================================================================
+   BASE LAYOUT - Holy Grail Grid (Header/Main/Footer)
+   ==========================================================================
+
+   All page layouts share this grid structure:
+   ┌─────────────────────────────────────────┐
+   │               HEADER (auto)             │  ← position:fixed works here
+   ├─────────────────────────────────────────┤
+   │               MAIN (1fr)                │  ← container queries work here
+   ├─────────────────────────────────────────┤
+   │               FOOTER (auto)             │
+   └─────────────────────────────────────────┘
+
+   Vue layouts using this:
+   - default.vue (.layout)      → includes TheHeader/TheFooter components
+   - blank.vue   (.layout)      → provides slots for optional header/footer
+
+   IMPORTANT: Fixed elements (headers, modals) must be OUTSIDE .main!
+   The .main element has `container-type: inline-size` which creates a
+   containing block for position:fixed descendants.
+
+   ========================================================================== */
+
+.layout {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100dvh;
+  /* Keep root wrapper uncontained so fixed header remains viewport-fixed across engines */
+}
+
+.main {
+  /* Container query host for responsive child components */
+  container-type: inline-size;
+  /* Architectural containment - content cannot overflow this boundary */
+  contain: layout style;
+
+  /*
+   * IMPORTANT: container-type creates a containing block for position:fixed!
+   * Any position:fixed element INSIDE .main will be fixed relative to .main,
+   * not the viewport. This is why headers/modals must be OUTSIDE .main.
+   *
+   * Correct:  .layout > .header + .main
+   * Wrong:    .layout > .main > .header
+   */
+}
+
+/* ==========================================================================
+   ADMIN LAYOUT - Narrow Icon Sidebar + Content
+   ========================================================================== */
+
+.layout-admin {
+  display: block; /* Not grid - sidebar is fixed, main fills viewport */
+  min-height: 100dvh;
+  /* Ensure admin layout never exceeds viewport width */
+  max-width: 100vw;
+}
+
+/* Sidebar, content, and header styles are in their own files:
+ * - layout/admin-sidebar.css
+ * - layout/admin-content.css
+ * - layout/admin-header.css
+ */
+
+/* ══════════════════════════════════════════════════════════
+ * ADMIN PAGE CONTAINERS
+ * Generic wrapper for admin pages (optional)
+ * ══════════════════════════════════════════════════════════ */
+
+.admin-page,
+.admin-settings,
+.admin-portfolio,
+.admin-users,
+.admin-translations,
+.admin-contacts {
+  /* These are just semantic wrappers - no special styles needed */
+  /* Keeping them defined prevents "class not found" warnings */
+}
+
+/* Component styles are in their own files:
+ * - ui/content/page-header.css
+ * - ui/content/state-indicators.css
+ * - ui/content/tabs.css (includes .tabs--underline for locale tabs)
+ * - ui/forms/search.css
+ * - ui/content/inbox.css
+ * - ui/content/settings-form.css
+ * - ui/content/portfolio-grid.css
+ */
+
+/* ==========================================================================
+   APP MODE RESPONSIVE - Material Design 3 Navigation Pattern
+   ==========================================================================
+
+   BREAKPOINTS:
+   - Phone (< 600px): Bottom navigation, sidebar hidden
+   - Tablet portrait (600-839px): Navigation rail (narrow ~80px)
+   - Tablet landscape/Desktop (≥ 840px): Full sidebar (60px)
+
+   NOTE: Responsive rules for each component are in their own files:
+   - admin-sidebar.css → sidebar visibility and width
+   - admin-content.css → content padding
+   - admin-header.css  → mobile header visibility
+   ========================================================================== */
+
+/* Phone: Reserve space for bottom nav + hide page title */
+@media (width < 600px) {
+  .layout-admin .admin-main {
+    padding-block-end: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .layout-admin .page-title {
+    display: none;
+  }
+}

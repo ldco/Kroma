@@ -1,0 +1,172 @@
+/**
+ * Scrollytelling CSS hooks
+ *
+ * Runtime sets:
+ * - --pm-scroll-progress (global on :root, 0..1)
+ * - --pm-scene-progress (per scene, 0..1)
+ * - --pm-parallax-x / --pm-parallax-y (per parallax element, px)
+ *
+ * Directive attributes:
+ * - data-parallax-speed: Scroll parallax intensity (default: 0.12)
+ * - data-parallax-axis: 'x' | 'y' | 'both'
+ * - data-parallax-clamp: Max travel in px (default: 160)
+ * - data-parallax-pointer: Pointer parallax intensity (0-2, default: 0)
+ * - data-parallax-pointer-axis: 'x' | 'y' | 'both'
+ * - data-parallax-pointer-clamp: Pointer travel clamp (default: 24)
+ * - data-parallax-float: Enable floating animation
+ *
+ * Scene attributes:
+ * - data-scrolly-scene: Scene marker
+ * - data-scrolly-scene-id: Scene name
+ * - data-scrolly-story: Enhanced scene tracking
+ */
+
+:root {
+  --pm-scroll-progress: 0;
+}
+
+[data-scrolly-scene],
+.scene-full-bleed {
+  --pm-scene-progress: 0;
+}
+
+/* ==========================================================================
+   PARALLAX TRANSFORM HOOKS
+   ========================================================================== */
+
+[data-parallax] {
+  --pm-parallax-x: 0px;
+  --pm-parallax-y: 0px;
+  transform: translate3d(var(--pm-parallax-x), var(--pm-parallax-y), 0);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* ==========================================================================
+   FLOATING ANIMATION
+   ========================================================================== */
+
+/**
+ * Floating animation for parallax layers
+ * Creates subtle up/down motion independent of scroll
+ */
+[data-parallax][data-parallax-float='true'] {
+  position: relative;
+}
+
+[data-parallax][data-parallax-float='true'] > * {
+  animation: pm-parallax-float 9s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes pm-parallax-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+/**
+ * Reverse floating animation (for layered depth effect)
+ * Use on adjacent layers to create opposing motion
+ */
+[data-parallax][data-parallax-float='true'][data-parallax-float-reverse='true'] > * {
+  animation: pm-parallax-float-reverse 11s ease-in-out infinite;
+  animation-delay: -4.5s; /* Offset from normal float */
+}
+
+@keyframes pm-parallax-float-reverse {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, 12px, 0);
+  }
+}
+
+/* ==========================================================================
+   SCENE PROGRESS RULES (optional visual effects)
+   ========================================================================== */
+
+/**
+ * Soft Lift V1 Rule Set
+ * Applies subtle opacity and blur changes based on scene progress
+ * Use: data-scrolly-rule="soft-lift-v1"
+ */
+[data-scrolly-rule='soft-lift-v1'] {
+  --pm-scene-opacity-min: 0.62;
+  --pm-scene-opacity-range: 0.24;
+  --pm-scene-opacity-max: 0.86;
+  --pm-scene-blur-min: 1px;
+  --pm-scene-blur-range: 1.5px;
+  --pm-scene-blur-max: 3px;
+  --pm-scene-title-shift: clamp(
+    -8px,
+    calc((0.5 - var(--pm-scene-progress)) * 16px),
+    8px
+  );
+}
+
+.layout.onepager [data-scrolly-rule='soft-lift-v1'] .section-title {
+  opacity: calc(
+    var(--pm-scene-opacity-min) +
+    var(--pm-scene-progress) * var(--pm-scene-opacity-range)
+  );
+  filter: blur(calc(
+    var(--pm-scene-blur-min) +
+    var(--pm-scene-progress) * var(--pm-scene-blur-range)
+  ));
+  transform: translate3d(0, var(--pm-scene-title-shift), 0);
+  transition:
+    opacity 220ms ease-out,
+    filter 220ms ease-out,
+    transform 220ms ease-out;
+}
+
+/* ==========================================================================
+   REDUCED MOTION SUPPORT
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Disable all parallax motion */
+  [data-parallax] {
+    transform: translate3d(0, 0, 0) !important;
+    transition: none !important;
+    animation: none !important;
+    will-change: auto;
+  }
+
+  /* Disable floating animations */
+  [data-parallax][data-parallax-float='true'] > * {
+    animation: none !important;
+  }
+
+  /* Disable scene progress effects */
+  [data-scrolly-rule] {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+}
+
+/* ==========================================================================
+   HELPER CLASSES
+   ========================================================================== */
+
+/**
+ * Optional helper class for layers that should move with runtime offsets
+ * Use this class if you need additional control or debugging
+ */
+.parallax-layer {
+  translate: var(--pm-parallax-x) var(--pm-parallax-y);
+  will-change: translate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallax-layer {
+    translate: 0 0;
+    will-change: auto;
+  }
+}

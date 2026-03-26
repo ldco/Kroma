@@ -1,0 +1,100 @@
+/**
+ * Search Input Component
+ *
+ * Input with search icon, clear button, and optional filters.
+ */
+
+.search-bar {
+  position: relative;
+  margin-block-end: var(--space-4);
+}
+
+.search-icon {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--t-muted);
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  pointer-events: none;
+}
+
+.search-bar .input {
+  padding-inline-start: var(--space-10);
+}
+
+/* Clear button */
+.search-clear {
+  position: absolute;
+  inset-inline-end: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  border: none;
+  background: transparent;
+  color: var(--t-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition:
+    opacity var(--transition-normal) ease,
+    color var(--transition-normal) ease,
+    background-color var(--transition-normal) ease;
+}
+
+.search-bar:focus-within .search-clear,
+.search-bar:hover .search-clear {
+  opacity: 1;
+}
+
+.search-clear:hover {
+  color: var(--t-primary);
+  background: var(--l-bg-sunken);
+}
+
+.search-clear:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* With clear button, add padding */
+.search-bar--clearable .input {
+  padding-inline-end: var(--space-10);
+}
+
+/* Search suggestions dropdown */
+.search-suggestions {
+  position: absolute;
+  top: 100%;
+  inset-inline: 0;
+  margin-block-start: var(--space-1);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.search-suggestion {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: background-color var(--transition-normal) ease;
+}
+
+.search-suggestion:hover,
+.search-suggestion.is-focused {
+  background: var(--l-bg-sunken);
+}
+
+.search-suggestion:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: -2px;
+}

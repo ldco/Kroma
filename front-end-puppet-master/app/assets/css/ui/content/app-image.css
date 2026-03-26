@@ -1,0 +1,55 @@
+/**
+ * AppImage component styles
+ */
+
+.app-image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.app-image__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Keep the browser broken-image glyph hidden until image load is confirmed. */
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.app-image__img--loaded {
+  opacity: 1;
+}
+
+.app-image__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--content-card-bg-sunken, var(--l-bg-sunken));
+  color: var(--t-secondary);
+}
+
+.app-image__placeholder svg {
+  width: var(--content-card-placeholder-icon, 48px);
+  height: var(--content-card-placeholder-icon, 48px);
+  opacity: var(--content-card-placeholder-opacity, 0.3);
+}
+
+.app-image__initials {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  opacity: 0.5;
+  text-transform: uppercase;
+}
+
+.app-image--sm .app-image__placeholder svg {
+  width: 24px;
+  height: 24px;
+}
+
+.app-image--lg .app-image__placeholder svg {
+  width: 64px;
+  height: 64px;
+}

@@ -1,0 +1,250 @@
+/**
+ * Run Detail Page Styles
+ *
+ * Run review and candidate approval workflow.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RUN DETAIL PAGE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.run-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.run-detail-loading {
+  padding: var(--space-8) 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RUN META
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.run-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block-start: var(--space-2);
+}
+
+.run-date {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * INFO CARD
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.run-info-section {
+  margin-block-end: var(--space-4);
+}
+
+.info-card {
+  padding: var(--space-4);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+}
+
+.info-card__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--t-primary);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.info-card__grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.info-item {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.info-item__label {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--t-muted);
+  min-width: 8rem;
+}
+
+.info-item__value {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--t-primary);
+  flex: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WINNER SECTION
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.winner-section {
+  margin-block-end: var(--space-4);
+}
+
+.winner-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--i-success-subtle);
+  border: 2px solid var(--i-success);
+  border-radius: var(--radius-lg);
+}
+
+.winner-card__badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--i-success);
+  color: var(--t-on-brand);
+  border-radius: var(--radius-full);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+}
+
+.winner-card__image {
+  max-width: 100%;
+  width: 300px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.winner-card__meta {
+  display: flex;
+  gap: var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CANDIDATES SECTION
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.candidates-section {
+  margin-block-end: var(--space-4);
+}
+
+.section-header {
+  margin-block-end: var(--space-4);
+}
+
+.section-header__subtitle {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  margin-block-start: var(--space-1);
+}
+
+.candidates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-block-end: var(--space-4);
+}
+
+.candidates-actions {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WAITING STATE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.waiting-section {
+  padding: var(--space-8) 0;
+}
+
+.waiting-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.waiting-state__icon {
+  width: var(--icon-2xl);
+  height: var(--icon-2xl);
+  color: var(--i-accent);
+  animation: spin 1s linear infinite;
+}
+
+.waiting-state__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--t-primary);
+  margin: 0;
+}
+
+.waiting-state__description {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  margin: 0;
+  max-width: 24rem;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@media (--phone) {
+  .info-card__grid {
+    gap: var(--space-2);
+  }
+
+  .info-item {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .info-item__label {
+    min-width: auto;
+  }
+
+  .candidates-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .winner-card__meta {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .candidates-actions {
+    width: 100%;
+  }
+
+  .candidates-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

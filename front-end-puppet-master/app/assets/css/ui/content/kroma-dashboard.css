@@ -1,0 +1,261 @@
+/**
+ * Dashboard Styles
+ *
+ * Kroma dashboard page styles.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DASHBOARD CONTAINER
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.kroma-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * PAGE HEADER
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.page-header__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.page-header__title {
+  font-family: var(--font-heading);
+  font-size: var(--heading-3);
+  font-weight: var(--font-bold);
+  color: var(--t-primary);
+  margin: 0;
+}
+
+.page-header__subtitle {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  margin: 0;
+}
+
+.page-header__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * STATS GRID
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+}
+
+.stat-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.stat-card__icon--projects {
+  background: var(--i-brand-subtle);
+  color: var(--i-brand);
+}
+
+.stat-card__icon--runs {
+  background: var(--i-accent-subtle);
+  color: var(--i-accent);
+}
+
+.stat-card__icon--assets {
+  background: var(--i-success-subtle);
+  color: var(--i-success);
+}
+
+.stat-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-card__value {
+  font-family: var(--font-heading);
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  color: var(--t-primary);
+}
+
+.stat-card__label {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DASHBOARD SECTION
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.dashboard-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-header__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--t-primary);
+  margin: 0;
+}
+
+.section-header__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--i-brand);
+  text-decoration: none;
+  transition: color var(--transition-fast) var(--ease-smooth);
+}
+
+.section-header__link:hover {
+  color: var(--i-brand-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * QUICK ACTIONS
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.quick-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: var(--t-primary);
+  transition:
+    transform var(--transition-fast) var(--ease-smooth),
+    border-color var(--transition-fast) var(--ease-smooth),
+    box-shadow var(--transition-fast) var(--ease-smooth);
+}
+
+.quick-action-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--i-brand);
+  box-shadow: var(--shadow-md);
+}
+
+.quick-action-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  background: var(--i-brand-subtle);
+  border-radius: var(--radius-md);
+  color: var(--i-brand);
+  flex-shrink: 0;
+}
+
+.quick-action-card__content {
+  flex: 1;
+}
+
+.quick-action-card__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--t-primary);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.quick-action-card__description {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  margin: 0;
+  line-height: var(--leading-relaxed);
+}
+
+.quick-action-card__arrow {
+  color: var(--t-muted);
+  flex-shrink: 0;
+  transition: transform var(--transition-fast) var(--ease-smooth);
+}
+
+.quick-action-card:hover .quick-action-card__arrow {
+  transform: translateX(4px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LOADING & EMPTY STATES
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.projects-loading {
+  padding: var(--space-8) 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+@media (--phone) {
+  .page-header {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .page-header__actions {
+    width: 100%;
+  }
+
+  .page-header__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dashboard-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}

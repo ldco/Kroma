@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.nuxt/
+.output/
+dist/
+
+# Data
+data/
+*.db
+
+# Coverage
+coverage/
+
+# Generated
+*.generated.*
+
+# Assets that shouldn't be formatted
+public/
+*.svg
+*.ico

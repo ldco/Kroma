@@ -71,7 +71,7 @@ This keeps local UX fast and zero-ops while preserving a clean upgrade path for 
 **🎉 Step B COMPLETE — Backend Contract Freeze Done**
 
 - Primary backend is Rust (`src-tauri`), started with `npm run backend:rust` on `127.0.0.1:8788`.
-- Rust API contract mounts **68 routes** covered by contract + endpoint tests.
+- Rust API contract mounts **74 routes** covered by contract + endpoint tests.
 - **Zero Python dependencies** - all scripts migrated to native Rust:
   - ✅ DB operations → `cargo run -- db:init`, `db:ensure-user`
   - ✅ Tool installation → `cargo run -- tools:install`
@@ -246,6 +246,7 @@ console.log(data);
 | `IAT_MASTER_KEY_PREVIOUS` | Comma-separated base64url 32-byte prior keys used to decrypt existing ciphertext during rotation | None | No |
 | `IAT_AGENT_API_URL` | Optional agent dispatch target URL | None | No |
 | `IAT_AGENT_API_TOKEN` | Optional agent dispatch bearer token | None | No |
+| `KROMA_CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins for the API server | `http://localhost:3000,http://localhost:3001` | No |
 
 For desktop/local mode, keep `KROMA_BACKEND_DB_URL` unset and use SQLite (`KROMA_BACKEND_DB`).
 

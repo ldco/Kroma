@@ -1,0 +1,74 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ADMIN SIDEBAR - Fixed navigation sidebar for admin/app mode
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * BREAKPOINTS (Material Design 3):
+ * - Phone (< 600px): Hidden, use bottom nav instead
+ * - Tablet (600-839px): Navigation rail (~80px)
+ * - Desktop (≥ 840px): Full sidebar (~60px)
+ */
+
+/* --------------------------------------------------------------------------
+   BASE STYLES
+   -------------------------------------------------------------------------- */
+
+.layout-admin .admin-sidebar {
+  position: fixed;
+  inset-block: 0; /* top: 0; bottom: 0; */
+  inset-inline-start: 0; /* left in LTR, right in RTL */
+  display: flex;
+  flex-direction: column;
+  width: var(--admin-sidebar-width, 60px);
+  background: var(--l-bg-elevated);
+  border-inline-end: 1px solid var(--l-border);
+  overflow: visible; /* Allow tooltips to overflow */
+  z-index: var(--z-fixed);
+}
+
+.layout-admin .admin-main {
+  margin-inline-start: var(--admin-sidebar-width, 60px);
+  container-type: inline-size;
+  min-height: 100dvh;
+}
+
+/* --------------------------------------------------------------------------
+   PHONE (< 600px) - Hide sidebar, use bottom nav
+   -------------------------------------------------------------------------- */
+@media (width < 600px) {
+  .layout-admin .admin-sidebar {
+    display: none;
+  }
+
+  .layout-admin .admin-main {
+    margin-inline-start: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   TABLET PORTRAIT (600-839px) - Navigation Rail
+   -------------------------------------------------------------------------- */
+@media (width >= 600px) and (width < 840px) {
+  .layout-admin .admin-sidebar {
+    display: flex;
+    width: var(--app-nav-rail-width, 80px);
+  }
+
+  .layout-admin .admin-main {
+    margin-inline-start: var(--app-nav-rail-width, 80px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   TABLET LANDSCAPE / DESKTOP (≥ 840px) - Full Sidebar
+   -------------------------------------------------------------------------- */
+@media (width >= 840px) {
+  .layout-admin .admin-sidebar {
+    display: flex;
+    width: var(--app-sidebar-width, 60px);
+  }
+
+  .layout-admin .admin-main {
+    margin-inline-start: var(--app-sidebar-width, 60px);
+  }
+}

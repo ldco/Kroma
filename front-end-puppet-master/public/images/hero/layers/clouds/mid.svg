@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200">
+  <!-- Mid cloud layer - medium opacity clouds -->
+  <defs>
+    <linearGradient id="cloudGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:var(--p-white);stop-opacity:0.5" />
+      <stop offset="100%" style="stop-color:var(--p-white);stop-opacity:0.2" />
+    </linearGradient>
+  </defs>
+  <ellipse cx="150" cy="110" rx="100" ry="45" fill="url(#cloudGrad2)" />
+  <ellipse cx="320" cy="90" rx="130" ry="55" fill="url(#cloudGrad2)" />
+  <ellipse cx="500" cy="120" rx="110" ry="40" fill="url(#cloudGrad2)" />
+  <ellipse cx="650" cy="100" rx="120" ry="50" fill="url(#cloudGrad2)" />
+</svg>

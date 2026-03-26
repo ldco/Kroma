@@ -1,0 +1,68 @@
+/**
+ * Back to Top Button
+ *
+ * Fixed position button to scroll back to top.
+ * Appears after scrolling down, hides when at top.
+ */
+
+.back-to-top {
+  position: fixed;
+  inset-block-end: var(--space-6);
+  inset-inline-end: var(--space-6);
+  z-index: var(--z-sticky);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+
+  background: var(--l-bg-elevated);
+  color: var(--t-secondary);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease,
+    transform var(--transition-normal) ease,
+    box-shadow var(--transition-normal) ease;
+}
+
+.back-to-top:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.back-to-top:hover {
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-xl);
+}
+
+.back-to-top:active {
+  transform: translateY(0);
+}
+
+/* Hide when lightbox/modal is open */
+body.lightbox-open .back-to-top,
+body.modal-open .back-to-top {
+  display: none;
+}
+
+/* Transition animations */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition:
+    opacity var(--transition-slow) ease,
+    transform var(--transition-slow) ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}

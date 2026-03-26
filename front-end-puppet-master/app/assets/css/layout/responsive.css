@@ -1,0 +1,231 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 2025 HOLY GRAIL RESPONSIVE SYSTEM
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * PHILOSOPHY:
+ * 1. FLUID FIRST - Use clamp() for typography/spacing (no breakpoints!)
+ * 2. INTRINSIC LAYOUTS - Use auto-fit/minmax grids (self-adapting!)
+ * 3. CONTAINER QUERIES - Components own their responsive behavior
+ * 4. MEDIA QUERIES - Only for page-level layout (header/nav visibility)
+ *
+ * BREAKPOINTS (defined in breakpoints.css):
+ * --phone     < 640px   (phones)
+ * --tablet    ≥ 640px   (tablets, small laptops)
+ * --desktop   ≥ 1024px  (laptops, desktops)
+ * --large     ≥ 1280px  (large desktops)
+ *
+ * NO !important NEEDED:
+ * This file is in layer(utilities) which has highest priority.
+ * Layer ordering handles cascade - utilities always win over components.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/* ══════════════════════════════════════════════════════════
+ * RESPONSIVE SPACING (fluid, no breakpoints needed)
+ * ══════════════════════════════════════════════════════════ */
+
+:root {
+  --space-responsive: clamp(1rem, 0.5rem + 2vw, 2rem);
+  --space-section: clamp(2rem, 1rem + 4vw, 4rem);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * MOBILE FIRST - Default styles (< 640px)
+ * ══════════════════════════════════════════════════════════ */
+
+/* NOTE: .header-nav, .header-hamburger, .header-actions visibility
+ * is now controlled by skeleton/header.css with adaptive nav support.
+ * This allows smart detection of overflow on desktop. */
+
+/* Mobile menu button (legacy): shown by default, hidden on desktop */
+.mobile-menu-btn {
+  display: flex;
+}
+
+/* Desktop-only elements: hidden on mobile */
+.desktop-only {
+  display: none;
+}
+
+/* Mobile-only elements: shown on mobile (flex to preserve child layout) */
+.mobile-only {
+  display: flex;
+}
+
+/* Mobile-only block variant (for non-flex elements) */
+.mobile-only-block {
+  display: block;
+}
+
+/* Mobile spacer for balanced header layout (matches hamburger button) */
+.mobile-spacer {
+  width: var(--touch-target);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * TABLET AND UP (≥ 640px)
+ * ══════════════════════════════════════════════════════════ */
+
+@media (--tablet) {
+  .hide-tablet-up {
+    display: none;
+  }
+  .show-tablet-up {
+    display: block;
+  }
+  .flex-tablet-up {
+    display: flex;
+  }
+
+  /* Allow 2-column grids on tablets */
+  .grid-tablet-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* NOTE: .mobile-only is NOT hidden here - it stays visible until desktop
+     This prevents the "dead zone" where neither hamburger nor desktop nav is visible
+     (640px-1023px range). Only hide mobile-only at desktop (1024px+). */
+}
+
+/* ══════════════════════════════════════════════════════════
+ * DESKTOP (≥ 1024px)
+ * ══════════════════════════════════════════════════════════ */
+
+@media (--desktop) {
+  /* NOTE: .header-nav visibility is controlled by skeleton/header.css
+   * with adaptive nav support (hides when items overflow) */
+
+  /* Hide mobile menu button (legacy) */
+  .mobile-menu-btn {
+    display: none;
+  }
+
+  /* Desktop-only elements: shown on desktop */
+  .desktop-only {
+    display: flex;
+  }
+
+  /* Mobile-only elements: hidden on desktop */
+  .mobile-only,
+  .mobile-only-block {
+    display: none;
+  }
+
+  /* Utility classes */
+  .hide-desktop {
+    display: none;
+  }
+  .show-desktop {
+    display: block;
+  }
+  .flex-desktop {
+    display: flex;
+  }
+
+  /* Allow multi-column grids */
+  .grid-desktop-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .grid-desktop-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * LARGE DESKTOP (≥ 1280px)
+ * ══════════════════════════════════════════════════════════ */
+
+@media (--large) {
+  .hide-lg {
+    display: none;
+  }
+  .show-lg {
+    display: block;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * ORIENTATION UTILITIES (for specific use cases)
+ * Use these sparingly - width-based is usually better
+ * ══════════════════════════════════════════════════════════ */
+
+@media (orientation: portrait) {
+  .hide-portrait {
+    display: none;
+  }
+  .stack-portrait {
+    flex-direction: column;
+  }
+}
+
+@media (orientation: landscape) {
+  .hide-landscape {
+    display: none;
+  }
+  .stack-landscape {
+    flex-direction: column;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * CONTAINER QUERY RESPONSIVE UTILITIES
+ * Components can use these when wrapped in .cq container
+ * ══════════════════════════════════════════════════════════ */
+
+/* Small container (< 300px) */
+@container (max-width: 299px) {
+  .cq-stack {
+    flex-direction: column;
+  }
+  .cq-hide-sm {
+    display: none;
+  }
+}
+
+/* Medium container (300px - 500px) */
+@container (min-width: 300px) and (max-width: 499px) {
+  .cq-show-md {
+    display: block;
+  }
+  .cq-flex-md {
+    display: flex;
+  }
+}
+
+/* Large container (≥ 500px) */
+@container (min-width: 500px) {
+  .cq-show-lg {
+    display: block;
+  }
+  .cq-flex-lg {
+    display: flex;
+  }
+  .cq-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Extra large container (≥ 700px) */
+@container (min-width: 700px) {
+  .cq-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * PRINT STYLES
+ * ══════════════════════════════════════════════════════════ */
+
+@media print {
+  .no-print {
+    display: none;
+  }
+  .header-nav {
+    display: flex;
+  }
+  .mobile-menu-btn {
+    display: none;
+  }
+}

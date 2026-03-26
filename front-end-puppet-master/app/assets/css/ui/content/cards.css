@@ -1,0 +1,68 @@
+/**
+ * Card Component
+ *
+ * Basic card container with header, body, footer sections.
+ * Use for any boxed content: admin panels, info boxes, etc.
+ */
+
+.card {
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  padding: var(--space-4) var(--space-6);
+  border-block-end: 1px solid var(--l-border);
+}
+
+/* Reset any heading inside card header - no margins, consistent weight */
+.card-header h1,
+.card-header h2,
+.card-header h3,
+.card-header h4,
+.card-header h5,
+.card-header h6,
+.card-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  margin: 0;
+  line-height: var(--leading-normal);
+}
+
+.card-body {
+  padding: var(--space-6);
+}
+
+.card-footer {
+  padding: var(--space-4) var(--space-6);
+  border-block-start: 1px solid var(--l-border);
+  background: var(--l-bg-sunken);
+}
+
+/* Card with image */
+.card-image {
+  position: relative;
+  aspect-ratio: 16/10;
+  overflow: hidden;
+  background: var(--l-bg-sunken);
+}
+
+.card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Card actions row */
+.card-actions {
+  display: flex;
+  gap: var(--gap-xs);
+  padding: var(--space-2) var(--space-3);
+  border-block-start: 1px solid var(--l-border);
+}

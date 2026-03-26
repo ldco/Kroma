@@ -1,0 +1,152 @@
+/**
+ * Loading Placeholders (HIGH-06)
+ *
+ * Animated placeholders for content loading states.
+ * Uses CSS animations for smooth performance.
+ */
+
+/* Base placeholder styling */
+.placeholder-base {
+  background: var(--color-placeholder-base, #e0e0e0);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Dark mode support */
+:root.dark .placeholder-base {
+  --color-placeholder-base: #3a3a3a;
+  --color-placeholder-shine: #4a4a4a;
+}
+
+/* Pulse animation (default) */
+.placeholder-pulse {
+  animation: placeholder-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes placeholder-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Wave animation (shimmer effect) */
+.placeholder-wave::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-placeholder-shine, rgba(255, 255, 255, 0.4)),
+    transparent
+  );
+  animation: placeholder-wave 1.5s ease-in-out infinite;
+}
+
+@keyframes placeholder-wave {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Text placeholder */
+.placeholder-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+}
+
+/* Card placeholder */
+.placeholder-card {
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.placeholder-card__content {
+  padding: 1rem;
+}
+
+.placeholder-card__title-placeholder {
+  margin-block-end: 1em;
+}
+
+/* Table placeholder */
+.placeholder-table {
+  width: 100%;
+}
+
+.placeholder-table__header {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.placeholder-table__header .placeholder-base {
+  background: var(--color-placeholder-header, #c0c0c0);
+}
+
+.placeholder-table__row {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.placeholder-table__row:last-child {
+  border-bottom: none;
+}
+
+/* Avatar placeholder */
+.placeholder-avatar {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* List item placeholder */
+.placeholder-list-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 0;
+}
+
+/* Grid placeholder */
+.placeholder-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+/* Button placeholder */
+.placeholder-button {
+  display: inline-block;
+  height: 2.5rem;
+  min-width: 6rem;
+  border-radius: 4px;
+}
+
+/* Image placeholder */
+.placeholder-image {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .placeholder-pulse,
+  .placeholder-wave::after {
+    animation: none;
+  }
+}

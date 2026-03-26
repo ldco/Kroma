@@ -1,0 +1,331 @@
+/**
+ * FOOTER STYLES
+ *
+ * ALIGNMENT ARCHITECTURE:
+ * ────────────────────────────────────────────────────────────
+ * Social icons and nav links MUST align row-by-row.
+ * This is achieved by making BOTH use identical layout rules:
+ *
+ *   1. Same item height: 36px (--footer-link-height)
+ *   2. Same row-gap: 0 (items touch vertically)
+ *   3. Same column-gap: controlled by --footer-link-gap
+ *   4. Both vertically center their content within 36px
+ *
+ * This way, when either wraps, rows naturally align.
+ * ────────────────────────────────────────────────────────────
+ *
+ * Variables:
+ *   --footer-padding-block    Vertical padding
+ *   --footer-link-height      Height of clickable items (icons & nav links)
+ *   --footer-link-gap         Horizontal gap between items
+ */
+
+:root {
+  --footer-padding-block: var(--space-8) var(--space-4);
+  --footer-link-height: 28px; /* Compact icons: 28px container, 18px icon */
+  --footer-link-gap: var(--gap-xs);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * BASE FOOTER
+ * ══════════════════════════════════════════════════════════ */
+
+.footer {
+  background: var(--l-bg-elevated);
+  border-block-start: 1px solid var(--l-border);
+  padding-block: var(--footer-padding-block);
+}
+
+.footer--contained > .container {
+  max-width: var(--content-default);
+}
+
+.footer--full > .container {
+  max-width: none;
+}
+
+.footer-rich {
+  --footer-padding-block: var(--space-6) var(--space-4);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FOOTER GRID
+ * ══════════════════════════════════════════════════════════ */
+
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'logo cta'
+    'social nav';
+  align-items: start;
+  gap: var(--gap-sm) var(--gap-lg);
+}
+
+.footer-logo {
+  grid-area: logo;
+}
+
+.footer-cta {
+  grid-area: cta;
+  justify-self: end;
+  align-self: center;
+  display: inline-flex;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * SOCIAL NAV IN FOOTER
+ *
+ * Overrides social-nav defaults to match footer alignment system.
+ * Uses smaller icons (28px) than default (36px) for compact footer.
+ * ══════════════════════════════════════════════════════════ */
+
+.footer-grid .social-nav {
+  grid-area: social;
+  width: 50cqw;
+  max-width: 50cqw;
+  gap: var(--gap-sm); /* Equal horizontal & vertical gap */
+}
+
+/* Smaller icons in footer */
+.footer-grid .social-nav-link {
+  width: var(--footer-link-height);
+  height: var(--footer-link-height);
+}
+
+.footer-grid .social-nav-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FOOTER NAV
+ *
+ * Nav links use SAME layout as social-nav so rows align.
+ * ══════════════════════════════════════════════════════════ */
+
+.footer-nav-inline {
+  grid-area: nav;
+  justify-self: end;
+  align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  /* MUST match social-nav gaps for row alignment */
+  row-gap: 0;
+  column-gap: var(--gap-md);
+}
+
+.footer-nav-inline a {
+  /* MUST match social-nav-link height for row alignment */
+  display: flex;
+  align-items: center;
+  height: var(--footer-link-height);
+  color: var(--t-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: color var(--transition-normal) ease;
+}
+
+.footer-nav-inline a:hover {
+  color: var(--t-primary);
+}
+
+.footer-nav-inline a:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * MOBILE LAYOUT
+ * ══════════════════════════════════════════════════════════ */
+
+@media (--phone) {
+  .footer-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas: 'logo' 'cta' 'social' 'nav';
+    justify-items: center;
+    text-align: center;
+    gap: var(--gap-md);
+  }
+
+  .footer-cta {
+    justify-self: center;
+    margin-bottom: var(--gap-sm);
+  }
+
+  .footer-grid .social-nav {
+    width: auto;
+    max-width: none;
+    justify-content: center;
+  }
+
+  /* Bigger icons on mobile */
+  .footer-grid .social-nav-link {
+    width: 36px;
+    height: 36px;
+  }
+
+  .footer-grid .social-nav-icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .footer-nav-inline {
+    justify-self: center;
+    justify-content: center;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FOOTER CTA BUTTON
+ * ══════════════════════════════════════════════════════════ */
+
+.footer-cta-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  padding: var(--space-2) var(--space-4);
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+  font-weight: var(--font-medium);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-normal) ease;
+}
+
+.footer-cta-button:hover {
+  background: var(--i-brand-hover);
+}
+
+.footer-cta-button:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * LEGAL BAR
+ * ══════════════════════════════════════════════════════════ */
+
+.legal-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+  font-size: var(--text-xs);
+  color: var(--t-muted);
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--l-border);
+}
+
+.legal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Horizontal gap between items, tiny vertical gap when wrapping */
+  column-gap: var(--gap-xs);
+  row-gap: var(--gap-2xs);
+}
+
+.legal-sep {
+  opacity: 0.5;
+}
+
+.legal-links {
+  display: flex;
+  gap: var(--gap-xs);
+  font-size: var(--text-sm);
+}
+
+.legal-links a {
+  color: var(--t-muted);
+  text-decoration: none;
+  transition: color var(--transition-normal) ease;
+}
+
+.legal-links a:hover {
+  color: var(--t-primary);
+}
+
+.legal-links a:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+@media (--phone) {
+  .legal-bar {
+    align-items: center;
+    text-align: center;
+  }
+  .legal-row,
+  .legal-links {
+    justify-content: center;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * MADE WITH (humble branding at bottom of footer)
+ * ══════════════════════════════════════════════════════════ */
+
+.footer-made-with {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-block-start: var(--space-4);
+}
+
+.made-with {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  font-size: var(--text-xs);
+  color: var(--t-muted);
+}
+
+.made-with-text {
+  opacity: 0.6;
+}
+
+.made-with-link {
+  display: inline-flex;
+  align-items: center;
+  transition: opacity var(--transition-normal) ease;
+}
+
+.made-with-link:hover {
+  opacity: 0.7;
+}
+
+.made-with-link:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.made-with-logo {
+  height: var(--icon-sm);
+  width: auto;
+}
+
+/* Theme-aware logo (language is handled via dynamic src path) */
+.made-with .light-logo {
+  display: block;
+}
+.made-with .dark-logo {
+  display: none;
+}
+:root.dark .made-with .light-logo {
+  display: none;
+}
+:root.dark .made-with .dark-logo {
+  display: block;
+}
+
+/* Phone: stack text on top of logo */
+@media (--phone) {
+  .made-with {
+    flex-direction: column;
+    gap: 0;
+  }
+}

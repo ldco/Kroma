@@ -1,0 +1,225 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * INBOX LAYOUT - Message list + detail (like settings style)
+ * Desktop: Side-by-side, both independently scrollable
+ * Mobile: Accordion cards (click to expand inline)
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+.inbox-layout {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) 2fr; /* ~288px min, scales with font-size */
+  gap: var(--space-4);
+  /* Fixed height so both columns scroll independently */
+  max-height: calc(100vh - var(--space-32) - var(--space-12)); /* ~176px for header/footer */
+  min-height: var(--space-32); /* 128px = 8rem */
+}
+
+/* Message list - scrollable column of separate cards */
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  padding-inline-end: var(--space-2); /* Space for scrollbar */
+}
+
+/* Detail panel - fixed height, content scrolls inside */
+.inbox-detail {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.inbox-detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.inbox-detail-meta {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.inbox-detail-meta p {
+  margin: var(--space-1) 0;
+}
+
+.inbox-detail-body {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.inbox-detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  height: 100%;
+  min-height: var(--space-24); /* 96px = 6rem */
+  color: var(--t-muted);
+}
+
+/* ─────────────────────────────────────────
+ * Contact Item - Each message is a card
+ * ───────────────────────────────────────── */
+
+.contact-item {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.contact-item.is-selected {
+  border-color: var(--i-brand);
+  background: var(--i-brand-subtle);
+}
+
+/* Unread indicator: bold text + accent left border + dot */
+.contact-item.is-unread {
+  border-inline-start: 3px solid var(--i-brand);
+}
+
+.contact-item.is-unread .contact-name,
+.contact-item.is-unread .contact-subject {
+  font-weight: var(--font-semibold);
+}
+
+/* Unread dot indicator next to name */
+.contact-item.is-unread .contact-name::before {
+  content: '';
+  display: inline-block;
+  width: var(--space-2); /* 8px */
+  height: var(--space-2);
+  margin-inline-end: var(--space-2);
+  background: var(--i-brand);
+  border-radius: var(--radius-full);
+  vertical-align: middle;
+}
+
+/* Preview button - clickable area */
+.contact-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--transition-fast) ease;
+}
+
+.contact-preview:hover {
+  background: var(--l-bg-sunken);
+}
+
+.contact-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.contact-name {
+  font-weight: var(--font-medium);
+  color: var(--t-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contact-date {
+  font-size: var(--text-xs);
+  color: var(--t-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.contact-subject {
+  font-size: var(--text-sm);
+  color: var(--t-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contact-excerpt {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─────────────────────────────────────────
+ * Expanded Content - Mobile accordion only
+ * ───────────────────────────────────────── */
+
+/* Hide expanded content on desktop (use detail panel instead) */
+.contact-expanded {
+  display: none;
+}
+
+/* Mobile: Accordion cards layout */
+@media (--phone) {
+  .inbox-layout {
+    display: flex;
+    flex-direction: column;
+    max-height: none;
+  }
+
+  /* Hide detail panel on mobile - use accordion instead */
+  .inbox-detail {
+    display: none;
+  }
+
+  /* List fills available space */
+  .inbox-list {
+    padding-inline-end: 0;
+  }
+
+  .contact-item.is-selected {
+    border-color: var(--i-brand);
+  }
+
+  /* Show expanded content inline */
+  .contact-expanded {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    padding-block-start: 0;
+    background: var(--l-bg-elevated);
+    border-block-start: 1px solid var(--l-border);
+  }
+
+  .contact-expanded-actions {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    padding-block-start: var(--space-2);
+  }
+
+  .contact-expanded-meta {
+    font-size: var(--text-sm);
+    color: var(--t-secondary);
+  }
+
+  .contact-expanded-meta p {
+    margin: var(--space-1) 0;
+  }
+
+  .contact-expanded-body {
+    white-space: pre-wrap;
+    line-height: 1.5;
+    color: var(--t-primary);
+  }
+}

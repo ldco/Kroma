@@ -1,0 +1,23 @@
+# Browserslist configuration
+# https://github.com/browserslist/browserslist
+#
+# Target: Modern browsers from 2023+ (supports color-mix, container queries, :has())
+# Coverage: ~90%+ of global users
+#
+# Run `npx browserslist` to see the full list of matched browsers
+
+# Modern evergreen browsers
+last 2 Chrome versions
+last 2 Firefox versions
+last 2 Safari versions
+last 2 Edge versions
+
+# Mobile browsers
+last 2 ChromeAndroid versions
+last 2 iOS versions
+
+# Exclude old browsers explicitly
+not dead
+not IE 11
+not op_mini all
+

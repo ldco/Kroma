@@ -1,0 +1,159 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LANGUAGE-SPECIFIC FONT OVERRIDES
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * This file handles multi-language font selection using the :lang() selector.
+ * The browser automatically applies the correct font based on the HTML lang
+ * attribute (e.g., <html lang="he"> for Hebrew).
+ *
+ * WHY THIS APPROACH:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   1. Not all fonts support all languages (scripts)
+ *   2. Some scripts need specific fonts (Hebrew, Arabic, CJK)
+ *   3. :lang() is CSS-native, no JavaScript required
+ *   4. Fonts are only loaded when that language is used
+ *
+ * HOW IT WORKS:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   1. Default font is set in variables.css (--font-brand-primary)
+ *   2. When <html lang="XX"> is set, :lang(XX) rules override the default
+ *   3. Browser loads only the fonts needed for the current language
+ *
+ * ADDING A NEW LANGUAGE:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   1. Find a font that supports that language's script
+ *   2. Add @font-face in font-faces.css (or Google Fonts in nuxt.config.ts)
+ *   3. Add :lang(XX) override below
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * HEBREW (he, he-IL)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Recommended fonts: Heebo, Rubik, Assistant, Noto Sans Hebrew
+ * Load via Google Fonts: https://fonts.google.com/?subset=hebrew
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(he) {
+  --font-brand-primary: 'Heebo', 'Noto Sans Hebrew', var(--fallback-sans);
+  direction: rtl;
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ARABIC (ar, ar-SA, ar-EG, etc.)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Recommended fonts: Cairo, Tajawal, Noto Sans Arabic
+ * Load via Google Fonts: https://fonts.google.com/?subset=arabic
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(ar) {
+  --font-brand-primary: 'Cairo', 'Noto Sans Arabic', var(--fallback-sans);
+  direction: rtl;
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RUSSIAN / CYRILLIC (ru, uk, bg, sr, etc.)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Many Latin fonts include Cyrillic (Montserrat, Roboto, Open Sans).
+ * Only override if using a font without Cyrillic support.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(ru),
+:lang(uk),
+:lang(bg) {
+  --font-brand-primary: 'Montserrat', 'Noto Sans', var(--fallback-sans);
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CHINESE (zh, zh-CN, zh-TW, zh-HK)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Simplified Chinese: Noto Sans SC, Source Han Sans SC
+ * Traditional Chinese: Noto Sans TC, Source Han Sans TC
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(zh-CN),
+:lang(zh-Hans) {
+  --font-brand-primary: 'Noto Sans SC', var(--fallback-sans);
+}
+
+:lang(zh-TW),
+:lang(zh-Hant) {
+  --font-brand-primary: 'Noto Sans TC', var(--fallback-sans);
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * JAPANESE (ja)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Recommended: Noto Sans JP, Source Han Sans JP
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(ja) {
+  --font-brand-primary: 'Noto Sans JP', var(--fallback-sans);
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * KOREAN (ko)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Recommended: Noto Sans KR, Source Han Sans KR
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(ko) {
+  --font-brand-primary: 'Noto Sans KR', var(--fallback-sans);
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * THAI (th)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Recommended: Noto Sans Thai, Sarabun
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+:lang(th) {
+  --font-brand-primary: 'Noto Sans Thai', var(--fallback-sans);
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * CJK LAYOUT OPTIMIZATION
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * These are LAYOUT rules, not font rules. They improve text handling for
+ * Chinese, Japanese, and Korean scripts without changing fonts.
+ *
+ * NOTE: Fonts are a designer decision - configure in puppet-master.config.ts
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+:lang(ja),
+:lang(zh),
+:lang(zh-CN),
+:lang(zh-TW),
+:lang(ko) {
+  /* Better line breaking for CJK text */
+  line-break: strict;
+  /* Don't break within CJK words/characters inappropriately */
+  word-break: keep-all;
+}

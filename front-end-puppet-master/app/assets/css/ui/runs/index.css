@@ -1,0 +1,10 @@
+/**
+ * Runs UI Styles
+ *
+ * Entry point for run-related CSS.
+ */
+
+@import './run-status.css';
+@import './candidate-card.css';
+@import './runs-table.css';
+@import './run-detail.css';

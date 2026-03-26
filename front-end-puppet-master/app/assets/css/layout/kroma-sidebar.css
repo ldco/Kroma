@@ -1,0 +1,261 @@
+/**
+ * Kroma Sidebar Layout
+ *
+ * Vertical sidebar navigation for Kroma app.
+ * - Visible on tablet landscape / desktop (≥ 640px)
+ * - Hidden on phones (< 640px), replaced by bottom nav
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SIDEBAR CONTAINER
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.kroma-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--kroma-sidebar-width);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--l-bg-elevated);
+  border-inline-end: 1px solid var(--l-border);
+  z-index: 100;
+  transition: width var(--transition-normal) var(--ease-smooth);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SIDEBAR HEADER (LOGO)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: var(--t-primary);
+}
+
+.sidebar-logo-text {
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--i-brand);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SIDEBAR NAVIGATION
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  flex: 1;
+}
+
+.sidebar-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: var(--t-secondary);
+  transition:
+    background-color var(--transition-fast) var(--ease-smooth),
+    color var(--transition-fast) var(--ease-smooth);
+}
+
+.sidebar-nav-link:hover {
+  background: var(--l-bg-sunken);
+  color: var(--t-primary);
+}
+
+.sidebar-nav-link--active {
+  background: var(--i-brand-subtle);
+  color: var(--i-brand);
+}
+
+.sidebar-nav-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  flex-shrink: 0;
+}
+
+.sidebar-nav-label {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SIDEBAR FOOTER
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-block-start: 1px solid var(--l-border);
+}
+
+.sidebar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--t-secondary);
+  transition:
+    background-color var(--transition-fast) var(--ease-smooth),
+    color var(--transition-fast) var(--ease-smooth);
+}
+
+.sidebar-icon-btn:hover {
+  background: var(--l-bg-sunken);
+  color: var(--t-primary);
+}
+
+.sidebar-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+/* User avatar in sidebar footer */
+.sidebar-user-wrapper {
+  position: relative;
+}
+
+.sidebar-user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: var(--i-brand);
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: transform var(--transition-fast) var(--ease-smooth);
+}
+
+.sidebar-user-avatar:hover {
+  transform: scale(1.05);
+}
+
+.avatar-initials {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--t-on-brand);
+}
+
+/* User menu dropdown */
+.sidebar-user-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: var(--space-2);
+  width: 16rem;
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 101;
+  overflow: hidden;
+}
+
+.user-menu-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.user-menu-name {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--t-primary);
+}
+
+.user-menu-email {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--t-muted);
+}
+
+.user-menu-role {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--t-muted);
+  text-transform: capitalize;
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: var(--l-border);
+}
+
+.user-menu-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--t-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  transition:
+    background-color var(--transition-fast) var(--ease-smooth),
+    color var(--transition-fast) var(--ease-smooth);
+}
+
+.user-menu-action:hover {
+  background: var(--l-bg-sunken);
+  color: var(--t-primary);
+}
+
+.user-menu-icon {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  flex-shrink: 0;
+}
+
+.user-menu-logout {
+  color: var(--c-error);
+}
+
+.user-menu-logout:hover {
+  color: var(--c-error-hover);
+  background: var(--l-error-subtle);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Hide sidebar on phones - bottom nav takes over */
+@media (--phone) {
+  .kroma-sidebar {
+    display: none;
+  }
+}

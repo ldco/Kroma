@@ -1,0 +1,508 @@
+/**
+ * Navigation Styles
+ */
+
+.nav-link {
+  position: relative;
+  color: var(--t-secondary);
+  font-weight: var(--font-medium);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  white-space: nowrap; /* Prevent text from wrapping to new line */
+  flex-shrink: 0; /* Prevent shrinking - needed for adaptive nav overflow detection */
+  transition:
+    color var(--transition-normal) ease,
+    background-color var(--transition-normal) ease;
+}
+
+.nav-link:hover {
+  color: var(--t-primary);
+  background: var(--i-brand-subtle);
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Active state - supports both .active and Vue router classes */
+.nav-link.active,
+.nav-link.router-link-active,
+.nav-link.router-link-exact-active {
+  color: var(--i-brand);
+}
+
+.nav-link.active::after,
+.nav-link.router-link-active::after,
+.nav-link.router-link-exact-active::after {
+  content: '';
+  position: absolute;
+  inset-block-end: 2px; /* Inside the link padding, not below it */
+  inset-inline: var(--space-3);
+  height: 2px;
+  background: var(--i-brand);
+  border-radius: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * NAV LINKS CONTAINER
+ * ═══════════════════════════════════════════════════════════ */
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-xs);
+}
+
+/* Vertical layout for mobile menu and sidebar */
+.nav-links--vertical {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Vertical nav link - no underline, full width highlight */
+.nav-links--vertical .nav-link.router-link-active::after,
+.nav-links--vertical .nav-link.router-link-exact-active::after {
+  display: none;
+}
+
+.nav-links--vertical .nav-link.router-link-active,
+.nav-links--vertical .nav-link.router-link-exact-active {
+  background: var(--i-brand-subtle);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * SIDEBAR NAV (for admin panel)
+ * Narrow icon-only sidebar with hover tooltips
+ * ═══════════════════════════════════════════════════════════ */
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.sidebar-header a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Logo with text at bottom - crop to show only icon */
+.sidebar-header .logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  object-position: top center; /* Show top part (icon), hide bottom (text) */
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-block-start: 1px solid var(--l-border);
+  margin-block-start: auto;
+}
+
+/* Icon-only nav links with tooltip */
+.sidebar-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: 0 auto;
+  border-radius: var(--radius-sm);
+  color: var(--t-secondary);
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.sidebar-nav-link:hover {
+  background: var(--i-brand-subtle);
+  color: var(--t-primary);
+}
+
+.sidebar-nav-link:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.sidebar-nav-link.router-link-exact-active {
+  background: var(--i-brand);
+  color: var(--i-brand-text);
+}
+
+.sidebar-nav-link svg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  flex-shrink: 0;
+}
+
+/* Tooltip that slides out on hover */
+.sidebar-nav-link .sidebar-tooltip {
+  position: absolute;
+  inset-inline-start: 100%;
+  top: 50%;
+  transform: translateY(-50%) translateX(-8px);
+  padding: var(--space-2) var(--space-3);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--t-primary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-normal) ease,
+    transform var(--transition-normal) ease,
+    visibility var(--transition-normal);
+  z-index: var(--z-popover);
+  margin-inline-start: var(--space-2);
+}
+
+.sidebar-nav-link:hover .sidebar-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* RTL support for tooltip */
+[dir='rtl'] .sidebar-nav-link .sidebar-tooltip {
+  transform: translateY(-50%) translateX(8px);
+}
+
+[dir='rtl'] .sidebar-nav-link:hover .sidebar-tooltip {
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Icon-only button for footer actions */
+.sidebar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: 0 auto;
+  border-radius: var(--radius-sm);
+  color: var(--t-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+  position: relative;
+}
+
+.sidebar-icon-btn:hover {
+  background: var(--i-brand-subtle);
+  color: var(--t-primary);
+}
+
+.sidebar-icon-btn:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.sidebar-icon-btn svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.sidebar-icon-btn .sidebar-tooltip {
+  position: absolute;
+  inset-inline-start: 100%;
+  top: 50%;
+  transform: translateY(-50%) translateX(-8px);
+  padding: var(--space-2) var(--space-3);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--t-primary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-normal) ease,
+    transform var(--transition-normal) ease,
+    visibility var(--transition-normal);
+  z-index: var(--z-popover);
+  margin-inline-start: var(--space-2);
+}
+
+.sidebar-icon-btn:hover .sidebar-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+}
+
+[dir='rtl'] .sidebar-icon-btn .sidebar-tooltip {
+  transform: translateY(-50%) translateX(8px);
+}
+
+[dir='rtl'] .sidebar-icon-btn:hover .sidebar-tooltip {
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Language switcher button - shows language code */
+.sidebar-lang-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  margin: 0 auto;
+  border-radius: var(--radius-sm);
+  color: var(--t-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.sidebar-lang-btn:hover {
+  background: var(--i-brand-subtle);
+  color: var(--t-primary);
+}
+
+.sidebar-lang-btn:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.sidebar-lang-code {
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Language switcher wrapper for positioning */
+.sidebar-lang-wrapper {
+  position: relative;
+}
+
+/* Language panel - slides out on click */
+.sidebar-lang-panel {
+  position: absolute;
+  inset-inline-start: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-popover);
+  margin-inline-start: var(--space-2);
+}
+
+.sidebar-lang-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--t-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.sidebar-lang-option:hover {
+  background: var(--i-brand-subtle);
+  color: var(--t-primary);
+}
+
+.sidebar-lang-option.active {
+  background: var(--i-brand);
+  color: var(--i-brand-text);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * USER AVATAR & MENU (for sidebar)
+ * ═══════════════════════════════════════════════════════════ */
+
+.sidebar-user-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) 0;
+  border-block-end: 1px solid var(--l-border);
+}
+
+.sidebar-user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--i-brand);
+  color: var(--i-brand-text);
+  border: none;
+  cursor: pointer;
+  transition:
+    transform var(--transition-normal) ease,
+    box-shadow var(--transition-normal) ease;
+}
+
+.sidebar-user-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.15);
+}
+
+.sidebar-user-avatar:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.avatar-initials {
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  text-transform: uppercase;
+}
+
+/* User menu popover - opens UPWARD since avatar is at bottom of sidebar */
+.sidebar-user-menu {
+  position: absolute;
+  inset-inline-start: 100%;
+  inset-block-end: 0;
+  min-width: 180px;
+  padding: var(--space-3);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-popover);
+  margin-inline-start: var(--space-4); /* Good spacing from sidebar */
+  text-align: start;
+}
+
+.user-menu-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--l-border);
+  margin-block-end: var(--space-2);
+}
+
+.user-menu-name {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--t-primary);
+  word-break: break-word;
+}
+
+.user-menu-email {
+  font-size: var(--text-xs);
+  color: var(--t-secondary);
+  word-break: break-all;
+}
+
+.user-menu-role {
+  font-size: var(--text-xs);
+  color: var(--t-tertiary);
+  text-transform: capitalize;
+}
+
+/* Menu action button (generic style for Change Password, etc.) */
+.user-menu-action {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--t-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: start;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.user-menu-action:hover {
+  background: var(--l-bg-elevated);
+  color: var(--t-primary);
+}
+
+.user-menu-action svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+}
+
+.user-menu-logout {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--t-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: start;
+  transition:
+    background-color var(--transition-normal) ease,
+    color var(--transition-normal) ease;
+}
+
+.user-menu-logout:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--i-error), transparent 90%);
+  color: var(--i-error);
+}
+
+.user-menu-logout:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.user-menu-logout svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  flex-shrink: 0;
+}

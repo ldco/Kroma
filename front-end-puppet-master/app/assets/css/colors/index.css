@@ -1,0 +1,9 @@
+/**
+ * Color System
+ * 
+ * The genius: Define 4 HEX primitives, EVERYTHING else is auto-calculated!
+ * Uses modern CSS: color-mix(), light-dark(), OKLCH
+ */
+
+@import './primitives.css';
+@import './auto.css';

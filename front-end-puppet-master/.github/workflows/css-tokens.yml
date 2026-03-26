@@ -1,0 +1,87 @@
+name: CSS Token Validation
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'app/assets/css/**/*.css'
+      - 'scripts/lint-css-tokens.js'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'app/assets/css/**/*.css'
+      - 'scripts/lint-css-tokens.js'
+
+jobs:
+  validate-css-tokens:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: ./app
+        run: npm ci
+
+      - name: Validate CSS tokens
+        id: validate
+        working-directory: ./app
+        run: |
+          echo "Running CSS token validation..."
+          echo ""
+
+          # Run the linter and capture output
+          set +e
+          OUTPUT=$(npm run lint:css-tokens 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          echo "$OUTPUT"
+
+          # Check for zero CSS files error (invalid path)
+          if echo "$OUTPUT" | grep -q "No CSS files found"; then
+            echo ""
+            echo "::error::CSS token validation FAILED - No CSS files found"
+            echo ""
+            echo "💡 The CSS_DIR path in scripts/lint-css-tokens.js is incorrect."
+            echo "   Expected: app/assets/css/"
+            echo "   Verify the directory structure and update the script."
+            echo ""
+            exit 1
+          fi
+
+          # Check for errors vs warnings
+          if echo "$OUTPUT" | grep -q "❌.*error(s) found"; then
+            echo ""
+            echo "::error::CSS token validation FAILED with errors"
+            echo ""
+            echo "💡 To fix:"
+            echo "   1. Undefined variables: Define in app/assets/css/colors/auto.css"
+            echo "   2. Self-referential vars: Remove cycles like --x: var(--x)"
+            echo "   3. Hardcoded colors: Use CSS tokens instead"
+            echo "   4. See CONTRIBUTING.md for token system docs"
+            echo ""
+            exit 1
+          elif echo "$OUTPUT" | grep -q "⚠️.*warning(s) found"; then
+            echo ""
+            echo "::warning::CSS token validation passed with warnings"
+            echo "Consider migrating deprecated tokens for future compatibility."
+            exit 0
+          else
+            echo ""
+            echo "✅ CSS token validation passed!"
+            exit 0
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ CSS token validation completed successfully"
+          echo ""
+          echo "All CSS variables are properly defined."

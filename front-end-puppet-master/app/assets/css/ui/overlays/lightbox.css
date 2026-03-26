@@ -1,0 +1,261 @@
+/**
+ * Lightbox Component
+ *
+ * Full-screen media viewer for images and videos.
+ * Navigation, info panel, keyboard support.
+ */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: oklch(0% 0 0 / 92%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  isolation: isolate; /* Create new stacking context */
+}
+
+.lightbox-close {
+  position: absolute;
+  top: var(--space-4);
+  inset-inline-end: var(--space-4);
+  z-index: 10;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(100% 0 0 / 10%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    transform var(--transition-normal) ease;
+}
+
+.lightbox-close:hover {
+  background: oklch(100% 0 0 / 20%);
+  transform: scale(1.1);
+}
+
+.lightbox-close:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Navigation arrows */
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(100% 0 0 / 10%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-normal) ease,
+    transform var(--transition-normal) ease;
+}
+
+.lightbox-nav:hover {
+  background: oklch(100% 0 0 / 25%);
+  transform: translateY(-50%) scale(1.05);
+}
+
+.lightbox-nav:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.lightbox-nav--prev,
+.lightbox-prev {
+  inset-inline-start: var(--space-4);
+}
+.lightbox-nav--next,
+.lightbox-next {
+  inset-inline-end: var(--space-4);
+}
+
+/* Simple lightbox nav buttons (used by portfolio gallery) */
+.lightbox-prev,
+.lightbox-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(100% 0 0 / 10%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 2rem;
+  font-weight: 300;
+  transition:
+    background-color var(--transition-normal) ease,
+    transform var(--transition-normal) ease;
+}
+
+.lightbox-prev:hover,
+.lightbox-next:hover {
+  background: oklch(100% 0 0 / 25%);
+  transform: translateY(-50%) scale(1.05);
+}
+
+.lightbox-prev:focus-visible,
+.lightbox-next:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.lightbox-nav svg {
+  width: var(--icon-xl);
+  height: var(--icon-xl);
+}
+
+/* Content area */
+.lightbox-content {
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lightbox-media {
+  max-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    var(--shadow-xl),
+    0 0 100px oklch(0% 0 0 / 30%);
+}
+
+/* Info section */
+.lightbox-info {
+  margin-block-start: var(--space-6);
+  text-align: center;
+  color: white;
+  max-inline-size: 600px;
+}
+
+.lightbox-category {
+  font-size: var(--text-sm);
+  color: var(--i-brand);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.lightbox-title {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+  margin-block-start: var(--space-2);
+}
+
+.lightbox-description {
+  font-size: var(--text-base);
+  color: oklch(100% 0 0 / 70%);
+  margin-block-start: var(--space-3);
+  line-height: 1.6;
+}
+
+.lightbox-counter {
+  display: inline-block;
+  margin-block-start: var(--space-4);
+  font-size: var(--text-sm);
+  color: oklch(100% 0 0 / 50%);
+}
+
+/* Simple lightbox caption (used by portfolio gallery) */
+.lightbox-caption {
+  position: absolute;
+  inset-block-end: var(--space-6);
+  inset-inline: var(--space-4);
+  text-align: center;
+  color: white;
+  font-size: var(--text-base);
+  text-shadow: 0 2px 4px oklch(0% 0 0 / 50%);
+}
+
+/* Lightbox content image/video */
+.lightbox-content img,
+.lightbox-content video {
+  max-width: 90vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+}
+
+/* Lightbox animations */
+.lightbox-enter-active,
+.lightbox-leave-active {
+  transition: opacity var(--transition-slow) ease;
+}
+
+.lightbox-enter-from,
+.lightbox-leave-to {
+  opacity: 0;
+}
+
+.lightbox-slide-enter-active,
+.lightbox-slide-leave-active {
+  transition: all var(--transition-slow) ease;
+}
+
+.lightbox-slide-enter-from {
+  opacity: 0;
+  transform: scale(0.95) translateX(20px);
+}
+
+.lightbox-slide-leave-to {
+  opacity: 0;
+  transform: scale(0.95) translateX(-20px);
+}
+
+[dir='rtl'] .lightbox-slide-enter-from {
+  transform: scale(0.95) translateX(-20px);
+}
+
+[dir='rtl'] .lightbox-slide-leave-to {
+  transform: scale(0.95) translateX(20px);
+}
+
+/* Responsive */
+@media (--phone) {
+  .lightbox-nav {
+    width: var(--touch-target);
+    height: var(--touch-target);
+  }
+
+  .lightbox-nav svg {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+  }
+
+  .lightbox-title {
+    font-size: var(--text-xl);
+  }
+}

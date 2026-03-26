@@ -1,0 +1,255 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * BOTTOM NAVIGATION - Mobile App-Style Navigation
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Material Design 3 inspired bottom navigation for app mode.
+ * Used on phones (< 600px) as primary navigation.
+ *
+ * PWA READY:
+ * - Uses env(safe-area-inset-bottom) for iOS notch/home indicator
+ * - Fixed positioning with proper z-index layering
+ * - Touch-friendly targets (48px minimum)
+ *
+ * ACCESSIBILITY:
+ * - Proper focus states
+ * - Active state indication
+ * - Labels always visible (Material 3 recommendation)
+ */
+
+/* ==========================================================================
+   BOTTOM NAV CONTAINER
+   ========================================================================== */
+
+.bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  height: var(--app-bottom-nav-height, 56px);
+  /* Add iOS safe area padding for notch/home indicator */
+  padding-block-end: env(safe-area-inset-bottom, 0px);
+
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+
+  background: var(--l-bg-elevated);
+  border-block-start: 1px solid var(--l-border);
+
+  /* Ensure it's above content but below modals */
+  z-index: var(--z-fixed);
+
+  /* Smooth animations */
+  transition: transform var(--transition-normal) ease;
+}
+
+/* Hide bottom nav on tablet and up (use sidebar instead) */
+@media (width >= 600px) {
+  .bottom-nav {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   BOTTOM NAV ITEMS
+   ========================================================================== */
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+
+  /* EQUAL WIDTH: Each item takes equal space regardless of label length
+     This is the Material Design / iOS / Android standard approach */
+  flex: 1 1 0;
+
+  /* Touch target: min 48x48 (Material), Apple recommends 44x44 */
+  min-width: 48px;
+  min-height: 48px;
+  padding: var(--space-1) var(--space-2);
+
+  /* Reset button/link styles */
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+
+  /* Default colors */
+  color: var(--t-secondary);
+
+  /* Smooth transitions */
+  transition:
+    color var(--transition-normal) ease,
+    background-color var(--transition-normal) ease;
+
+  /* For active indicator positioning */
+  position: relative;
+  border-radius: var(--radius-lg);
+}
+
+.bottom-nav-item:hover {
+  color: var(--t-primary);
+  background: var(--l-bg-sunken);
+}
+
+.bottom-nav-item:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   ACTIVE STATE - Clean color change only
+   ========================================================================== */
+
+.bottom-nav-item.router-link-exact-active,
+.bottom-nav-item.is-active {
+  color: var(--i-brand);
+}
+
+/* Active icon gets filled style for visual weight */
+.bottom-nav-item.router-link-exact-active svg,
+.bottom-nav-item.is-active svg {
+  stroke-width: 2.5;
+}
+
+/* Active label gets bolder weight */
+.bottom-nav-item.router-link-exact-active .bottom-nav-label,
+.bottom-nav-item.is-active .bottom-nav-label {
+  font-weight: var(--font-semibold);
+}
+
+/* ==========================================================================
+   ICON & LABEL
+   ========================================================================== */
+
+.bottom-nav-item svg,
+.bottom-nav-icon {
+  width: var(--icon-lg, 24px);
+  height: var(--icon-lg, 24px);
+  flex-shrink: 0;
+}
+
+.bottom-nav-label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* ==========================================================================
+   BADGE - Notification dot
+   ========================================================================== */
+
+.bottom-nav-item .badge-dot {
+  position: absolute;
+  top: 2px;
+  inset-inline-end: calc(50% - 18px);
+}
+
+/* ==========================================================================
+   ANIMATION - Subtle bounce on tap (optional)
+   ========================================================================== */
+
+.bottom-nav-item:active {
+  transform: scale(0.95);
+}
+
+/* ==========================================================================
+   MORE MENU - Overflow items (when > 5 nav items)
+   ========================================================================== */
+
+/* Wrapper for More button - needs position for menu positioning */
+.bottom-nav-more-wrapper {
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* Backdrop for closing menu when clicking outside */
+.bottom-nav-more-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 40%);
+  z-index: var(--z-drawer-backdrop);
+}
+
+/* Bottom sheet style menu */
+.bottom-nav-more-menu {
+  position: fixed;
+  inset-inline: 0;
+  /* Position above bottom nav with safe area */
+  bottom: calc(var(--app-bottom-nav-height, 56px) + env(safe-area-inset-bottom, 0px));
+  background: var(--l-bg-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-xl);
+  z-index: var(--z-drawer);
+  padding: var(--space-2) 0;
+
+  /* Prevent content from going behind rounded corners */
+  overflow: hidden;
+}
+
+/* Individual overflow menu item */
+.bottom-nav-more-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  color: var(--t-primary);
+  text-decoration: none;
+  transition: background-color var(--transition-fast) ease;
+}
+
+.bottom-nav-more-item:hover,
+.bottom-nav-more-item:focus-visible {
+  background: var(--l-bg-sunken);
+}
+
+.bottom-nav-more-item.router-link-exact-active {
+  color: var(--i-brand);
+  background: var(--l-bg-sunken);
+}
+
+.bottom-nav-more-icon {
+  width: var(--icon-md, 20px);
+  height: var(--icon-md, 20px);
+  flex-shrink: 0;
+}
+
+.bottom-nav-more-label {
+  flex: 1;
+  font-size: var(--text-base);
+  font-weight: var(--font-medium);
+}
+
+/* Badge in overflow menu */
+.bottom-nav-more-item .badge-dot {
+  position: static;
+  margin-inline-start: auto;
+}
+
+/* Small badge dot on More button (indicates badge in overflow) */
+.badge-dot-small {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  font-size: 0;
+  padding: 0;
+}
+
+/* ==========================================================================
+   TRANSITIONS - Slide up for bottom sheet
+   ========================================================================== */
+
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform var(--transition-normal) var(--ease-out);
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+}

@@ -1,0 +1,201 @@
+/**
+ * Scroll Reveal Animations
+ *
+ * Modern scroll-triggered reveal animations using IntersectionObserver.
+ * Uses existing keyframes from keyframes.css.
+ *
+ * Usage with v-reveal directive:
+ *   <div v-reveal>Fade up on scroll</div>
+ *   <div v-reveal="'fade-left'">Slide from left</div>
+ *   <div v-reveal="{ animation: 'scale', delay: 200 }">Scale with delay</div>
+ *
+ * Accessibility: Respects prefers-reduced-motion automatically.
+ */
+
+/* ==========================================================================
+   Reveal Base State
+   Elements start hidden and transition to visible when .revealed is added
+   ========================================================================== */
+
+/* Base reveal state - hidden until observed */
+[data-reveal] {
+  opacity: 0;
+  will-change: opacity, transform;
+  transition:
+    opacity var(--transition-slow, 0.5s) var(--ease-out, ease-out),
+    transform var(--transition-slow, 0.5s) var(--ease-out, ease-out);
+}
+
+/* Revealed state */
+[data-reveal].revealed {
+  opacity: 1;
+  transform: translate(0, 0) scale(1);
+}
+
+/* ==========================================================================
+   Reveal Animation Variants
+   Different starting positions for variety
+   ========================================================================== */
+
+/* Fade Up (default) */
+[data-reveal="fade-up"],
+[data-reveal=""] {
+  transform: translateY(30px);
+}
+
+/* Fade Down */
+[data-reveal="fade-down"] {
+  transform: translateY(-30px);
+}
+
+/* Fade Left */
+[data-reveal="fade-left"] {
+  transform: translateX(30px);
+}
+
+/* Fade Right */
+[data-reveal="fade-right"] {
+  transform: translateX(-30px);
+}
+
+/* Scale Up */
+[data-reveal="scale"] {
+  transform: scale(0.9);
+}
+
+/* Scale Down */
+[data-reveal="scale-down"] {
+  transform: scale(1.1);
+}
+
+/* Fade Only (no transform) */
+[data-reveal="fade"] {
+  transform: none;
+}
+
+/* Zoom In */
+[data-reveal="zoom"] {
+  transform: scale(0.8);
+}
+
+/* Flip (subtle 3D) */
+[data-reveal="flip"] {
+  transform: perspective(1000px) rotateX(10deg);
+  transform-origin: bottom;
+}
+
+/* Slide Up (larger movement) */
+[data-reveal="slide-up"] {
+  transform: translateY(60px);
+}
+
+/* ==========================================================================
+   Delay Classes
+   Stagger reveals for grouped elements
+   ========================================================================== */
+
+[data-reveal-delay="100"] {
+  transition-delay: 100ms;
+}
+
+[data-reveal-delay="200"] {
+  transition-delay: 200ms;
+}
+
+[data-reveal-delay="300"] {
+  transition-delay: 300ms;
+}
+
+[data-reveal-delay="400"] {
+  transition-delay: 400ms;
+}
+
+[data-reveal-delay="500"] {
+  transition-delay: 500ms;
+}
+
+[data-reveal-delay="600"] {
+  transition-delay: 600ms;
+}
+
+/* ==========================================================================
+   Duration Modifiers
+   ========================================================================== */
+
+[data-reveal-duration="fast"] {
+  transition-duration: var(--transition-fast, 0.2s);
+}
+
+[data-reveal-duration="slow"] {
+  transition-duration: var(--transition-slower, 0.8s);
+}
+
+[data-reveal-duration="slower"] {
+  transition-duration: 1s;
+}
+
+/* ==========================================================================
+   Easing Modifiers
+   ========================================================================== */
+
+[data-reveal-ease="bounce"] {
+  transition-timing-function: var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+
+[data-reveal-ease="smooth"] {
+  transition-timing-function: var(--ease-in-out, ease-in-out);
+}
+
+/* ==========================================================================
+   Stagger Groups
+   Auto-delay children for cascading reveals
+   ========================================================================== */
+
+[data-reveal-stagger] > [data-reveal]:nth-child(1) { transition-delay: 0ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(2) { transition-delay: 100ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(3) { transition-delay: 200ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(4) { transition-delay: 300ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(5) { transition-delay: 400ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(6) { transition-delay: 500ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(7) { transition-delay: 600ms; }
+[data-reveal-stagger] > [data-reveal]:nth-child(8) { transition-delay: 700ms; }
+
+/* Faster stagger variant */
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(1) { transition-delay: 0ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(2) { transition-delay: 50ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(3) { transition-delay: 100ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(4) { transition-delay: 150ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(5) { transition-delay: 200ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(6) { transition-delay: 250ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(7) { transition-delay: 300ms; }
+[data-reveal-stagger="fast"] > [data-reveal]:nth-child(8) { transition-delay: 350ms; }
+
+/* ==========================================================================
+   Accessibility - Reduced Motion
+   Disable animations for users who prefer reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  [data-reveal].revealed {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   Print Styles
+   Show everything when printing
+   ========================================================================== */
+
+@media print {
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

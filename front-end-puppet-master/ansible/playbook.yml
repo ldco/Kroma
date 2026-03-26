@@ -1,0 +1,44 @@
+# ============================================
+# PuppetMaster Server Setup Playbook
+# ============================================
+# Prepares a fresh Selectel VPS for Kamal deployment
+#
+# Usage:
+#   ansible-playbook playbook.yml
+#   ansible-playbook playbook.yml --limit production
+#   ansible-playbook playbook.yml --tags docker
+#
+# What it does:
+# 1. Updates system packages
+# 2. Installs Docker
+# 3. Configures firewall (UFW)
+# 4. Creates deploy user for Kamal
+# 5. Hardens SSH security
+# ============================================
+
+- name: Prepare server for PuppetMaster deployment
+  hosts: all
+  become: true
+
+  roles:
+    - common
+    - security
+    - docker
+    - deploy-user
+
+  post_tasks:
+    - name: Display completion message
+      debug:
+        msg: |
+          ========================================
+          Server {{ inventory_hostname }} is ready!
+          ========================================
+
+          IP: {{ ansible_host }}
+          Deploy user: {{ deploy_user }}
+
+          Next steps:
+          1. Update deploy.yml with this IP
+          2. Run: npm run deploy:setup
+          3. Run: npm run deploy
+          ========================================

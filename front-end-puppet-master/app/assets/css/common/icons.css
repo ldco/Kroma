@@ -1,0 +1,31 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ICON SIZE UTILITIES
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Standard icon sizes using design tokens
+ */
+
+.icon-xs {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+.icon-sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.icon-md {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+.icon-lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+.icon-xl {
+  width: var(--icon-xl);
+  height: var(--icon-xl);
+}
+.icon-2xl {
+  width: var(--icon-2xl);
+  height: var(--icon-2xl);
+}

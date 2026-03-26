@@ -1,0 +1,107 @@
+/**
+ * Master-Detail Layout
+ *
+ * Two-column split view: list on one side, detail on other.
+ * Use for email/inbox, contacts, settings, etc.
+ */
+
+.master-detail {
+  display: grid;
+  grid-template-columns: clamp(280px, 30vw, 400px) 1fr;
+  gap: var(--gap-md);
+  min-height: 500px;
+}
+
+.master-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.master-panel .card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-panel .card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Detail content sections */
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detail-header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.detail-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.detail-meta {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+  margin-block-end: var(--space-4);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--l-border);
+}
+
+.detail-meta p {
+  margin: var(--space-1) 0;
+}
+
+.detail-body {
+  flex: 1;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* Empty detail state */
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--t-muted);
+}
+
+/* Responsive: stack on smaller screens */
+@media (--below-desktop) {
+  .master-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .master-panel,
+  .detail-panel {
+    min-height: 300px;
+  }
+}
+
+/* Variant: narrower master panel */
+.master-detail--narrow {
+  grid-template-columns: clamp(240px, 25vw, 300px) 1fr;
+}
+
+/* Variant: wider master panel */
+.master-detail--wide {
+  grid-template-columns: clamp(320px, 35vw, 500px) 1fr;
+}
+
+/* Variant: equal split */
+.master-detail--equal {
+  grid-template-columns: 1fr 1fr;
+}

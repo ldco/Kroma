@@ -1,0 +1,838 @@
+/**
+ * Input Styles
+ */
+
+.input {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--l-bg);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-md);
+  color: var(--t-primary);
+  transition:
+    border-color var(--transition-normal) ease,
+    box-shadow var(--transition-normal) ease;
+}
+
+.input::placeholder {
+  color: var(--t-muted);
+}
+
+.input:hover {
+  border-color: var(--l-border-strong);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--i-brand);
+  box-shadow: 0 0 0 3px var(--i-focus-ring);
+}
+
+.input:disabled {
+  background: var(--l-bg-sunken);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Error state */
+.input.error {
+  border-color: var(--d-error);
+}
+
+.input.error:focus {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--d-error), transparent 70%);
+}
+
+/* Textarea */
+textarea.input {
+  min-height: 120px;
+  resize: vertical;
+}
+
+/* Select */
+select.input {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  padding-inline-end: var(--space-10);
+  /* Override browser accent color for options */
+  accent-color: var(--i-brand);
+}
+
+/* Style options (limited browser support but helps) */
+select.input option {
+  background: var(--l-bg);
+  color: var(--t-primary);
+  padding: var(--space-2);
+}
+
+select.input option:checked,
+select.input option:hover {
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+}
+
+/* RTL select arrow */
+[dir='rtl'] select.input {
+  background-position: left var(--space-3) center;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * SEARCH INPUT - Safari browser normalization
+ * ══════════════════════════════════════════════════════════ */
+
+/* Remove Safari's native search decorations for consistent styling */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  display: none;
+}
+
+/* Normalize date/time pickers across browsers */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--transition-normal) ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* Form group */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Spacing between form groups (in normal flow) */
+.form-group + .form-group {
+  margin-block-start: var(--space-4);
+}
+
+/* Explicit vertical stack contract for reusable wrappers */
+.stack > * + * {
+  margin-block-start: var(--space-4);
+}
+
+/* Reset margin when inside any grid container (gap handles spacing) */
+.form-grid > .form-group + .form-group,
+.form-row--2col > .form-group + .form-group,
+form.modal-body > .form-group + .form-group,
+form.modal-body .form-row--2col .form-group + .form-group {
+  margin-block-start: 0;
+}
+
+.form-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--t-primary);
+}
+
+.form-hint {
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+}
+
+/* Form status messages */
+.form-success {
+  padding: var(--space-4);
+  margin-block-start: var(--space-3);
+  background: oklch(0.9 0.1 145 / 0.15);
+  border: 1px solid oklch(0.6 0.15 145);
+  border-radius: var(--radius-lg);
+  color: oklch(0.45 0.15 145);
+  font-weight: var(--font-medium);
+  text-align: center;
+  animation: formStatusSlideIn 0.3s ease;
+}
+
+.form-error {
+  padding: var(--space-4);
+  margin-block-start: var(--space-3);
+  background: oklch(0.9 0.1 25 / 0.15);
+  border: 1px solid oklch(0.6 0.15 25);
+  border-radius: var(--radius-lg);
+  color: oklch(0.45 0.15 25);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  text-align: center;
+  animation: formStatusSlideIn 0.3s ease;
+}
+
+@keyframes formStatusSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Contact form layout */
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--gap-xl);
+  max-width: 800px;
+  margin-inline: auto;
+}
+
+@media (--tablet) {
+  .contact-grid:has(.contact-info) {
+    grid-template-columns: 1fr auto;
+    max-width: 1000px;
+  }
+}
+
+.contact-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  padding: var(--space-6);
+  background: var(--l-bg-elevated);
+  border-radius: var(--radius-lg);
+}
+
+.contact-info-item {
+  display: flex;
+  gap: var(--gap-md);
+  align-items: flex-start;
+}
+
+.contact-info-icon {
+  font-size: 1.5rem;
+}
+
+.contact-info-item p {
+  color: var(--t-secondary);
+  margin: 0;
+}
+
+/* Checkbox & Radio */
+.checkbox,
+.radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+}
+
+.checkbox input,
+.radio input {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  accent-color: var(--i-brand);
+  flex-shrink: 0;
+}
+
+.checkbox input:focus-visible,
+.radio input:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * TOGGLE SWITCH - iOS-style toggle for boolean settings
+ * ══════════════════════════════════════════════════════════
+ * Usage:
+ *   <label class="toggle">
+ *     <input type="checkbox" v-model="value" />
+ *     <span class="toggle-track"></span>
+ *     <span class="toggle-label">Label text</span>
+ *   </label>
+ * ══════════════════════════════════════════════════════════ */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Hide the actual checkbox */
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* The track (background) */
+.toggle-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  background: var(--l-border-strong);
+  border-radius: 999px;
+  transition:
+    background-color var(--transition-normal) ease,
+    box-shadow var(--transition-normal) ease;
+}
+
+/* The thumb (circle) */
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--l-bg);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transition: transform var(--transition-normal) ease;
+}
+
+/* Checked state - track turns brand color */
+.toggle input:checked + .toggle-track {
+  background: var(--i-brand);
+}
+
+/* Checked state - thumb moves to end */
+.toggle input:checked + .toggle-track::after {
+  transform: translateX(16px);
+}
+
+/* RTL support for thumb movement */
+[dir='rtl'] .toggle input:checked + .toggle-track::after {
+  transform: translateX(-16px);
+}
+
+/* Focus state */
+.toggle input:focus-visible + .toggle-track {
+  box-shadow: 0 0 0 3px var(--i-focus-ring);
+}
+
+/* Hover state */
+.toggle:hover .toggle-track {
+  background: var(--t-muted);
+}
+
+.toggle:hover input:checked + .toggle-track {
+  background: var(--i-brand-hover);
+}
+
+/* Disabled state */
+.toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Label text */
+.toggle-label {
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+}
+
+/* Small variant */
+.toggle--sm .toggle-track {
+  width: 28px;
+  height: 16px;
+}
+
+.toggle--sm .toggle-track::after {
+  width: 12px;
+  height: 12px;
+}
+
+.toggle--sm input:checked + .toggle-track::after {
+  transform: translateX(12px);
+}
+
+[dir='rtl'] .toggle--sm input:checked + .toggle-track::after {
+  transform: translateX(-12px);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * AUTH FORMS - Login, Register, Forgot Password
+ * ══════════════════════════════════════════════════════════ */
+
+/* Full-page centered auth layout */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: var(--space-4);
+  background: var(--l-bg);
+}
+
+/* Auth card container */
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-6);
+  background: var(--l-bg-elevated);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-logo {
+  display: flex;
+  justify-content: center;
+  margin-block-end: var(--space-6);
+}
+
+.auth-logo-img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.auth-title {
+  text-align: center;
+  margin-block-end: var(--space-6);
+  font-size: var(--text-2xl);
+  font-weight: var(--font-semibold);
+}
+
+/* Auth form layout */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Checkbox in auth form should be closer to previous field */
+.auth-form .checkbox,
+.auth-form .radio {
+  margin-block-start: calc(-1 * var(--space-1));
+}
+
+/* Primary action button in auth form needs more visual separation */
+.auth-form .btn-primary {
+  margin-block-start: var(--space-2);
+}
+
+/* Input with icon */
+.input-with-icon {
+  position: relative;
+}
+
+.input-with-icon .input-icon {
+  position: absolute;
+  inset-inline-start: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--t-muted);
+  width: 1.25rem;
+  height: 1.25rem;
+  pointer-events: none;
+}
+
+.input-with-icon .input {
+  padding-inline-start: calc(var(--space-3) + 1.25rem + var(--space-2));
+}
+
+/* Input with action button (right side, e.g., password visibility toggle) */
+.input-with-action {
+  position: relative;
+}
+
+.input-with-action .input {
+  padding-inline-end: calc(var(--space-3) + 1.25rem + var(--space-2));
+}
+
+.input-with-action .input-action {
+  position: absolute;
+  inset-inline-end: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--t-muted);
+  cursor: pointer;
+  transition: color var(--transition-normal) ease;
+}
+
+.input-with-action .input-action:hover {
+  color: var(--t-primary);
+}
+
+.input-with-action .input-action:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.input-with-action .input-action svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Combined: icon on left + action on right (password fields) */
+.input-with-icon.input-with-action .input {
+  padding-inline-start: calc(var(--space-3) + 1.25rem + var(--space-2));
+  padding-inline-end: calc(var(--space-3) + 1.25rem + var(--space-2));
+}
+
+/* Auth footer links */
+.auth-footer {
+  margin-block-start: var(--space-6);
+  text-align: center;
+}
+
+.auth-link {
+  font-size: var(--text-sm);
+  color: var(--t-muted);
+  text-decoration: none;
+  transition: color var(--transition-normal) ease;
+}
+
+.auth-link:hover {
+  color: var(--i-brand);
+}
+
+.auth-link:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FORM ACTIONS - Button row for form submissions
+ * ══════════════════════════════════════════════════════════ */
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  justify-content: flex-end;
+}
+
+.form-actions--start {
+  justify-content: flex-start;
+}
+
+.form-actions--center {
+  justify-content: center;
+}
+
+.form-actions--between {
+  justify-content: space-between;
+}
+
+/* Form grid for multi-column layouts */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: var(--space-4);
+}
+
+.form-grid .form-group--full {
+  grid-column: 1 / -1;
+}
+
+/* Spacing when form-group follows form-grid */
+.form-grid + .form-group {
+  margin-block-start: var(--space-4);
+}
+
+/* Spacing when form-grid follows form-group */
+.form-group + .form-grid {
+  margin-block-start: var(--space-4);
+}
+
+/* Deterministic spacing between dense form grids and action rows */
+.form-grid + .page-actions,
+.form-grid + .form-actions,
+.form-row + .page-actions {
+  margin-block-start: var(--space-6);
+}
+
+/* Deterministic spacing for generic grid-to-CTA chains */
+.grid + .cta {
+  margin-block-start: var(--space-6);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * SEGMENTED CONTROLS - finite mutually exclusive choices
+ * ══════════════════════════════════════════════════════════ */
+
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--l-bg-sunken);
+  border: 1px solid var(--l-border);
+  border-radius: var(--radius-lg);
+}
+
+.segmented-control__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--t-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast) ease,
+    border-color var(--transition-fast) ease,
+    color var(--transition-fast) ease;
+}
+
+.segmented-control__item:hover:not(:disabled) {
+  background: var(--l-bg-elevated);
+  color: var(--t-primary);
+}
+
+.segmented-control__item:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+.segmented-control__item[aria-pressed='true'],
+.segmented-control__item.is-active {
+  background: var(--i-brand-subtle);
+  border-color: color-mix(in srgb, var(--i-brand), transparent 60%);
+  color: var(--i-brand);
+}
+
+.segmented-control__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.segmented-control + .segmented-control {
+  margin-block-start: var(--space-3);
+}
+
+@media (--phone) {
+  .segmented-control {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .segmented-control__item {
+    flex: 1 1 auto;
+  }
+}
+
+/* Image upload preview */
+.image-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.image-preview {
+  max-width: 200px;
+  max-height: 150px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--l-border);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * INPUT ROW - Input with adjacent button (e.g., upload)
+ * ══════════════════════════════════════════════════════════ */
+
+.input-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.input-row > .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.input-row > .btn {
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FORM ROW - Horizontal layout for checkboxes/radios
+ * ══════════════════════════════════════════════════════════ */
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block-start: var(--space-4);
+}
+
+/* Form checkbox - consistent checkbox styling */
+.form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--t-secondary);
+}
+
+.form-checkbox input[type="checkbox"] {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  accent-color: var(--i-brand);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.form-checkbox input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--i-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * SPACING UTILITIES - For quick margin adjustments
+ * ══════════════════════════════════════════════════════════ */
+
+.mt-1 { margin-block-start: var(--space-1); }
+.mt-2 { margin-block-start: var(--space-2); }
+.mt-3 { margin-block-start: var(--space-3); }
+.mt-4 { margin-block-start: var(--space-4); }
+.mt-6 { margin-block-start: var(--space-6); }
+
+.mb-1 { margin-block-end: var(--space-1); }
+.mb-2 { margin-block-end: var(--space-2); }
+.mb-3 { margin-block-end: var(--space-3); }
+.mb-4 { margin-block-end: var(--space-4); }
+.mb-6 { margin-block-end: var(--space-6); }
+
+/* ══════════════════════════════════════════════════════════
+ * FILE INPUT - Custom styled file chooser button
+ * ══════════════════════════════════════════════════════════ */
+
+/* Hide the native file input */
+input[type="file"] {
+  position: relative;
+  color: transparent;
+}
+
+input[type="file"]::file-selector-button {
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-normal) ease;
+  margin-inline-end: var(--space-3);
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: var(--i-brand-hover);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * INLINE ADD BUTTON - Small button for adding items inline
+ * ══════════════════════════════════════════════════════════ */
+
+.btn-add-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  background: var(--i-brand);
+  color: var(--t-on-brand);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--transition-normal) ease;
+}
+
+.btn-add-inline:hover {
+  background: var(--i-brand-hover);
+}
+
+.btn-add-inline svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FORM SECTION - Grouped fields with header
+ * ══════════════════════════════════════════════════════════ */
+
+.form-section {
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--l-border);
+}
+
+.form-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--space-2);
+}
+
+.form-section-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--t-primary);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * FORM DIVIDER - Visual separator with optional label
+ * ══════════════════════════════════════════════════════════
+ * Usage:
+ *   <div class="form-divider"><span>Content</span></div>
+ *   <div class="form-divider"></div>
+ * ══════════════════════════════════════════════════════════ */
+
+.form-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+  color: var(--t-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.form-divider::before,
+.form-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--l-border);
+}
+
+/* When no label, just show line */
+.form-divider:empty::before {
+  flex: 1;
+}
+
+.form-divider:empty::after {
+  display: none;
+}

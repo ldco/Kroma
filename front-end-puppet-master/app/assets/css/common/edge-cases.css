@@ -1,0 +1,96 @@
+/**
+ * Edge Cases & Browser Fixes
+ * Handling the weird stuff that browsers do
+ *
+ * 2025 UPDATE: Modern browsers support dvh/svh/lvh natively
+ * No more JS hacks needed for viewport height!
+ */
+
+/* ══════════════════════════════════════════════════════════
+ * VIEWPORT HEIGHT UTILITIES
+ * Using modern dynamic viewport units (dvh/svh/lvh)
+ * Supported in all modern browsers since 2023
+ * ══════════════════════════════════════════════════════════ */
+
+/* Dynamic viewport height - adjusts when browser UI shows/hides */
+.h-dvh {
+  height: 100dvh;
+}
+.min-h-dvh {
+  /* Progressive enhancement: fallback → WebKit → modern */
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  min-height: 100dvh;
+}
+
+/* Small viewport height - smallest possible viewport (UI visible) */
+.h-svh {
+  height: 100svh;
+}
+.min-h-svh {
+  min-height: 100svh;
+}
+
+/* Large viewport height - largest possible viewport (UI hidden) */
+.h-lvh {
+  height: 100lvh;
+}
+.min-h-lvh {
+  min-height: 100lvh;
+}
+
+/* Fallback for very old browsers (pre-2023) */
+@supports not (height: 100dvh) {
+  .h-dvh,
+  .min-h-dvh {
+    height: 100vh;
+    min-height: 100vh;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+ * iOS Safe Area (for notched devices)
+ * ══════════════════════════════════════════════════════════ */
+
+.safe-area-top {
+  padding-block-start: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-block-end: env(safe-area-inset-bottom);
+}
+
+.safe-area-inline-start {
+  padding-inline-start: env(safe-area-inset-left);
+}
+
+.safe-area-inline-end {
+  padding-inline-end: env(safe-area-inset-right);
+}
+
+/* Legacy aliases for backwards compatibility */
+.safe-area-left {
+  padding-inline-start: env(safe-area-inset-left);
+}
+.safe-area-right {
+  padding-inline-end: env(safe-area-inset-right);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * iOS Momentum Scrolling
+ * ══════════════════════════════════════════════════════════ */
+
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Prevent scroll chaining (bouncing) at boundaries */
+  overscroll-behavior: contain;
+}
+
+/* ══════════════════════════════════════════════════════════
+ * SCROLLBAR STYLING
+ *
+ * NOTE: Scrollbar styles are defined in scrollbars.css
+ * This section is intentionally empty to avoid duplication.
+ * ══════════════════════════════════════════════════════════ */

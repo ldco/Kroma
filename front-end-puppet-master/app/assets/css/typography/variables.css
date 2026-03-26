@@ -1,0 +1,170 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * TYPOGRAPHY VARIABLES - 4-LAYER ARCHITECTURE
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ARCHITECTURE OVERVIEW:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   LAYER 1: FALLBACK STACKS     System fonts (never change per-client)
+ *   LAYER 2: BRAND FONTS         Client's brand fonts (change per-project)
+ *   LAYER 3: SEMANTIC ALIASES    What you use in CSS (body, heading, ui, code)
+ *   LAYER 4: SIZES & SPACING     Font sizes, weights, line heights
+ *
+ * QUICK USAGE:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   font-family: var(--font-body);      ← Body text
+ *   font-family: var(--font-heading);   ← Headings, titles
+ *   font-family: var(--font-ui);        ← Buttons, labels, nav
+ *   font-family: var(--font-code);      ← Code blocks, monospace
+ *
+ * FOR CLIENT PROJECTS:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   1. Choose the right fallback stack for client's font type:
+ *      - Sans-serif font → use var(--fallback-sans)
+ *      - Serif font → use var(--fallback-serif)
+ *      - Slab-serif font → use var(--fallback-slab)
+ *
+ *   2. Override brand fonts in client/overrides.css:
+ *      :root {
+ *        --font-brand-primary: 'ClientFont', var(--fallback-sans);
+ *        --font-brand-accent: 'ClientDisplay', var(--fallback-serif);
+ *      }
+ *
+ *   3. Load fonts via:
+ *      - Google Fonts: nuxt.config.ts <link> tags (for preconnect)
+ *      - Self-hosted: typography/font-faces.css (@font-face rules)
+ *
+ * MULTI-LANGUAGE SUPPORT:
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ *   See typography/lang-overrides.css for per-language font selection.
+ *   Uses :lang() selector for automatic font switching.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LAYER 1: SYSTEM FALLBACK STACKS
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * These are NEVER changed per-client. They provide graceful degradation
+ * when web fonts fail to load. Match client's brand font TYPE to the
+ * correct fallback stack.
+ *
+ * IMPORTANT: Font type should match!
+ *   - Sans-serif brand font → use --fallback-sans
+ *   - Serif brand font → use --fallback-serif
+ *   - Slab-serif brand font → use --fallback-slab
+ * ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --fallback-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+
+  --fallback-serif: Georgia, 'Times New Roman', Times, 'Noto Serif', serif;
+
+  --fallback-slab: Rockwell, 'Roboto Slab', 'Zilla Slab', Georgia, serif;
+
+  --fallback-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LAYER 2: BRAND FONTS
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * CHANGE THESE for each client project.
+ * Default: Montserrat (PuppetMaster branding)
+ *
+ * Pattern: 'BrandFont', var(--fallback-type)
+ *   - Use --fallback-sans for sans-serif fonts
+ *   - Use --fallback-serif for serif fonts
+ *   - Use --fallback-slab for slab-serif fonts
+ * ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* PRIMARY: Main body text font */
+  --font-brand-primary: 'Montserrat', var(--fallback-sans);
+
+  /* ACCENT: Headings, decorative elements (defaults to primary) */
+  --font-brand-accent: var(--font-brand-primary);
+
+  /* MONO: Code, technical content (rarely changed per-client) */
+  --font-brand-mono: var(--fallback-mono);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LAYER 3: SEMANTIC ALIASES
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * USE THESE in your CSS. Never use Layer 1 or 2 directly in components.
+ * This layer provides semantic meaning to font choices.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Body text - articles, paragraphs, general content */
+  --font-body: var(--font-brand-primary);
+
+  /* Headings - h1-h6, section titles, hero text */
+  --font-heading: var(--font-brand-accent);
+
+  /* UI elements - buttons, labels, navigation, forms */
+  --font-ui: var(--font-brand-primary);
+
+  /* Code - code blocks, inline code, technical content */
+  --font-code: var(--font-brand-mono);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * LAYER 4: SIZES, WEIGHTS & SPACING
+ * ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Font Sizes (static)
+   * ───────────────────────────────────────────────────────────────────────── */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-3xl: 1.875rem; /* 30px */
+  --text-4xl: 2.25rem; /* 36px */
+  --text-5xl: 3rem; /* 48px */
+  --text-6xl: 3.75rem; /* 60px */
+
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Fluid Heading Sizes (responsive)
+   * ───────────────────────────────────────────────────────────────────────── */
+  --heading-1: clamp(2.25rem, 5vw, 3.75rem);
+  --heading-2: clamp(1.875rem, 4vw, 3rem);
+  --heading-3: clamp(1.5rem, 3vw, 2.25rem);
+  --heading-4: clamp(1.25rem, 2.5vw, 1.875rem);
+
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Font Weights
+   * ───────────────────────────────────────────────────────────────────────── */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-black: 800;
+
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Line Heights
+   * ───────────────────────────────────────────────────────────────────────── */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* ─────────────────────────────────────────────────────────────────────────
+   * Letter Spacing
+   * ───────────────────────────────────────────────────────────────────────── */
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.025em;
+}

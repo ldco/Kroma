@@ -1,0 +1,189 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CUSTOM FONT FACES - Self-Hosted Fonts
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Use this file when:
+ *   ✓ Client has custom brand fonts (not on Google Fonts)
+ *   ✓ Need offline/PWA support
+ *   ✓ Want maximum performance (no external requests)
+ *   ✓ Font licensing requires self-hosting
+ *
+ * Use Google Fonts (nuxt.config.ts) when:
+ *   ✓ Using common fonts available on Google Fonts
+ *   ✓ Quick prototyping
+ *   ✓ CDN caching benefits outweigh extra request
+ *
+ * FILE ORGANIZATION:
+ *   assets/css/typography/
+ *   ├── fonts/               ← Place .woff2 files here
+ *   │   ├── ClientFont-Regular.woff2
+ *   │   ├── ClientFont-Medium.woff2
+ *   │   └── ClientFont-Bold.woff2
+ *   ├── font-faces.css       ← This file (@font-face rules)
+ *   └── variables.css        ← Update --font-brand-primary
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EXAMPLE 1: Basic Brand Font (Multiple Weights)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Standard setup for a client's primary brand font with multiple weights.
+ * Always use WOFF2 format (best compression, universal support).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+@font-face {
+  font-family: 'ClientBrand';
+  src: url('./fonts/ClientBrand-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ClientBrand';
+  src: url('./fonts/ClientBrand-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ClientBrand';
+  src: url('./fonts/ClientBrand-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ClientBrand';
+  src: url('./fonts/ClientBrand-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
+/* Then in variables.css or client/overrides.css:
+ * :root {
+ *   --font-brand-primary: 'ClientBrand', var(--fallback-sans);
+ * }
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EXAMPLE 2: Separate Display/Accent Font
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * When client uses a different font for headings/display text.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+@font-face {
+  font-family: 'ClientDisplay';
+  src: url('./fonts/ClientDisplay-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ClientDisplay';
+  src: url('./fonts/ClientDisplay-Black.woff2') format('woff2');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
+/* Then in variables.css or client/overrides.css:
+ * :root {
+ *   --font-brand-accent: 'ClientDisplay', var(--fallback-serif);
+ * }
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EXAMPLE 3: Variable Font (Single File, All Weights)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Modern variable fonts contain all weights in one file.
+ * Smaller total download if using 3+ weights.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+@font-face {
+  font-family: 'ClientVariable';
+  src: url('./fonts/ClientVariable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EXAMPLE 4: Unicode-Range Subsetting (Multi-Language)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ADVANCED: Load different font files for different character sets.
+ * Browser only downloads the files it needs based on page content.
+ *
+ * Use this when:
+ *   - Same font, but separate files for Latin/Cyrillic/etc subsets
+ *   - Google Fonts uses this technique automatically
+ *
+ * Common Unicode Ranges:
+ *   Latin:     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+ *              U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193,
+ *              U+2212, U+2215, U+FEFF, U+FFFD
+ *   Latin-Ext: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB,
+ *              U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF
+ *   Cyrillic:  U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116
+ *   Hebrew:    U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+@font-face {
+  font-family: 'ClientBrand';
+  src: url('./fonts/ClientBrand-Latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                 U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193,
+                 U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'ClientBrand';
+  src: url('./fonts/ClientBrand-Cyrillic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+*/
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * FONT-DISPLAY VALUES REFERENCE
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *   swap      Show fallback immediately, swap when font loads (FOUT)
+ *             Best for: Body text, most use cases
+ *
+ *   block     Hide text briefly (3s), then show fallback if not loaded
+ *             Best for: Icon fonts, critical branding
+ *
+ *   fallback  Short block (100ms), then fallback, swap only if fast
+ *             Best for: Balance between swap and optional
+ *
+ *   optional  Short block (100ms), only use if already cached
+ *             Best for: Maximum performance, non-critical fonts
+ *
+ *   auto      Browser decides (usually same as block)
+ *             Avoid: Unpredictable behavior
+ *
+ * RECOMMENDATION: Use 'swap' for brand fonts, 'optional' for decorative.
+ * ═══════════════════════════════════════════════════════════════════════════ */

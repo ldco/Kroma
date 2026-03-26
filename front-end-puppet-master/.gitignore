@@ -1,0 +1,124 @@
+# ══════════════════════════════════════════════════════════════
+# NUXT / BUILD OUTPUTS
+# ══════════════════════════════════════════════════════════════
+.output/
+.nuxt/
+.nitro/
+.cache/
+dist/
+.data/
+
+# ══════════════════════════════════════════════════════════════
+# DEPENDENCIES
+# ══════════════════════════════════════════════════════════════
+node_modules/
+
+# ══════════════════════════════════════════════════════════════
+# ENVIRONMENT & SECRETS (never commit!)
+# ══════════════════════════════════════════════════════════════
+.env
+.env.*
+!.env.example
+
+# Kamal deployment secrets
+.kamal/secrets
+!.kamal/secrets.example
+
+# Ansible inventory (contains server IPs)
+ansible/inventory.yml
+!ansible/inventory.example.yml
+
+# ══════════════════════════════════════════════════════════════
+# DATABASE
+# ══════════════════════════════════════════════════════════════
+# SQLite database and WAL files
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+
+# ══════════════════════════════════════════════════════════════
+# USER UPLOADS
+# ══════════════════════════════════════════════════════════════
+public/uploads/*
+!public/uploads/.gitkeep
+
+# ══════════════════════════════════════════════════════════════
+# TESTING
+# ══════════════════════════════════════════════════════════════
+# Vitest
+coverage/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# ══════════════════════════════════════════════════════════════
+# LOGS & DEBUG
+# ══════════════════════════════════════════════════════════════
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ══════════════════════════════════════════════════════════════
+# IDE & EDITORS
+# ══════════════════════════════════════════════════════════════
+.idea/
+.fleet/
+*.swp
+*.swo
+*~
+
+# VSCode - ignore workspace but keep shared settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# ══════════════════════════════════════════════════════════════
+# OS FILES
+# ══════════════════════════════════════════════════════════════
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ══════════════════════════════════════════════════════════════
+# TYPESCRIPT
+# ══════════════════════════════════════════════════════════════
+*.tsbuildinfo
+
+# ══════════════════════════════════════════════════════════════
+# QWEN CODE
+# ══════════════════════════════════════════════════════════════
+.qwen.json
+.qwen/settings.local.json
+.qwen-data/sessions/
+.qwen-data/tasks/
+.rag/
+temp/
+
+# Qwen Token Monitor data
+.qwen-monitor/
+
+# ══════════════════════════════════════════════════════════════
+# CLAUDE CODE (legacy)
+# ══════════════════════════════════════════════════════════════
+.claude.json
+.claude/settings.local.json
+.claude-data/sessions/
+.claude-data/tasks/
+.claude-monitor/
+
+# ══════════════════════════════════════════════════════════════
+# PMNATIVE BOOTSTRAP (LOCAL UNTIL V1 EXTRACT)
+# ══════════════════════════════════════════════════════════════
+pm-native/

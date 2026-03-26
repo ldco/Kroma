@@ -1,0 +1,32 @@
+{
+  "project": "Puppet Master",
+  "version": "1.0.0",
+  "stack": {
+    "frontend": "Nuxt3 (Vue 3.5, TypeScript)",
+    "backend": "Nitro (H3)",
+    "database": "SQLite (Drizzle ORM)",
+    "mobile": null
+  },
+  "roles": ["fullstack-nuxt", "frontend", "backend", "security", "ux-ui", "devops"],
+  "defaultRole": "fullstack-nuxt",
+  "team": ["fullstack-nuxt", "frontend", "backend", "security", "ux-ui", "devops"],
+  "rag": {
+    "enabled": false,
+    "indexed_at": null,
+    "files_count": null,
+    "exclude": [
+      "node_modules",
+      ".nuxt",
+      ".output",
+      "dist",
+      ".git",
+      "*.min.js",
+      "*.min.css",
+      "*.map",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "data/sqlite.db"
+    ]
+  },
+  "globalLibrary": "~/.claude"
+}

@@ -1,0 +1,48 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PUPPET MASTER CSS ENTRY POINT
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Pure CSS architecture - no Tailwind!
+ * ONE unified CSS system - works for site, admin, and app modes.
+ *
+ * LAYER ARCHITECTURE (Q34 Decision):
+ * ───────────────────────────────────────────────────────────────────────────
+ * | Layer      | Purpose                    | Override Priority |
+ * |------------|----------------------------|--------------------|
+ * | reset      | CSS reset/normalize        | Lowest             |
+ * | primitives | Raw values (colors, fonts) | ↓                  |
+ * | semantic   | Calculated values          | ↓                  |
+ * | components | UI styling                 | ↓                  |
+ * | utilities  | Override helpers           | Highest            |
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * FILE → LAYER MAPPING:
+ * - reset.css           → layer(reset)
+ * - colors/primitives   → layer(primitives)
+ * - typography/vars     → layer(primitives)
+ * - colors/auto         → layer(semantic)
+ * - typography/base     → layer(semantic)
+ * - skeleton/*          → layer(components)
+ * - ui/*                → layer(components)
+ * - layout/responsive   → layer(utilities)
+ * - common/utilities    → layer(utilities)
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/* Layer order declaration - determines cascade priority */
+@layer reset, primitives, semantic, components, utilities;
+
+/* Import layers in order */
+@import './reset.css' layer(reset);
+@import './colors/index.css' layer(primitives);
+@import './typography/index.css' layer(primitives);
+@import './layout/index.css' layer(components);
+@import './animations/index.css' layer(components);
+@import './skeleton/index.css' layer(components);
+@import './ui/index.css' layer(components);
+
+/* Utilities layer - MUST be last to override components without !important */
+@import './common/index.css' layer(utilities);
+@import './layout/responsive.css' layer(utilities);
