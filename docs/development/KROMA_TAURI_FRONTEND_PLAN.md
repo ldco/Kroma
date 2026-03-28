@@ -41,11 +41,13 @@ Build a **desktop-first comic/graphic-novel production UI** using Tauri, enablin
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **Backend (Rust)** | ✅ Step B Complete | 68 API routes, contract-frozen, 60+ tests passing |
-| **Frontend Framework** | ✅ Puppet Master 2 | Nuxt 3 + Pure CSS system (93 files) - CANONICAL |
+| **Backend (Rust)** | ✅ Step B Complete | 74 API routes, contract-frozen, 60+ integration tests passing |
+| **Frontend Framework** | ✅ Puppet Master 2 | Nuxt 3 + Pure CSS system - CANONICAL |
 | **Phase 1: App Shell & Projects** | ✅ Complete | Layout, navigation, projects CRUD |
 | **Phase 2: Provider Setup** | 🔄 In Progress | Provider account management (API endpoints fixed) |
 | **Tauri Integration** | ⏳ Future | Desktop app wrapper (after web UI complete) |
+
+**Metrics Source:** See `../operations/metrics.md` for current route counts, test totals, and project metrics.
 
 ### Recent Changes (2026-03-24)
 
