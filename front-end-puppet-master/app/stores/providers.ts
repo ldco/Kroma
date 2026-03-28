@@ -3,6 +3,7 @@
  *
  * Manages provider account state for Kroma app.
  * All API calls are scoped to a project slug as per backend contract.
+ * Uses useKromaApi for direct backend communication with Bearer auth.
  */
 import { defineStore } from 'pinia'
 import type { ProviderAccount, CreateProviderInput } from '~/types/kroma'
@@ -62,11 +63,10 @@ export const useProvidersStore = defineStore('providers', {
       this.error = null
 
       try {
-        const response = await apiFetch<{ providers: ProviderAccount[] }>(
-          `/api/projects/${projectSlug}/provider-accounts`
-        )
-        this.providers = response.providers
-        return response.providers
+        const api = useKromaApi()
+        const response = await api.getProviders(projectSlug)
+        this.providers = response
+        return response
       } catch (error) {
         this.error = 'Failed to load providers'
         console.error('Error fetching providers:', error)
@@ -84,13 +84,8 @@ export const useProvidersStore = defineStore('providers', {
       this.error = null
 
       try {
-        const response = await apiFetch<ProviderAccount>(
-          `/api/projects/${projectSlug}/provider-accounts`,
-          {
-            method: 'POST',
-            body: input
-          }
-        )
+        const api = useKromaApi()
+        const response = await api.createProvider(projectSlug, input)
 
         // Add to local state
         this.providers.push(response)
@@ -114,13 +109,8 @@ export const useProvidersStore = defineStore('providers', {
       this.error = null
 
       try {
-        const response = await apiFetch<ProviderAccount>(
-          `/api/projects/${projectSlug}/provider-accounts/${providerCode}`,
-          {
-            method: 'PUT',
-            body: input
-          }
-        )
+        const api = useKromaApi()
+        const response = await api.updateProvider(projectSlug, providerCode, input)
 
         // Update in local state
         const index = this.providers.findIndex(p => p.provider_code === providerCode)
@@ -147,12 +137,8 @@ export const useProvidersStore = defineStore('providers', {
       this.error = null
 
       try {
-        await apiFetch(
-          `/api/projects/${projectSlug}/provider-accounts/${providerCode}`,
-          {
-            method: 'DELETE'
-          }
-        )
+        const api = useKromaApi()
+        await api.deleteProvider(projectSlug, providerCode)
 
         // Remove from local state
         this.providers = this.providers.filter(p => p.provider_code !== providerCode)

@@ -2,6 +2,7 @@
  * Runs Pinia Store
  *
  * Manages run state for Kroma app.
+ * Uses useKromaApi for direct backend communication with Bearer auth.
  */
 import { defineStore } from 'pinia'
 import type { Run, RunConfig, Candidate } from '~/types/kroma'
@@ -77,9 +78,10 @@ export const useRunsStore = defineStore('runs', {
       this.error = null
 
       try {
-        const response = await apiFetch<{ runs: Run[] }>(`/api/projects/${projectSlug}/runs`)
-        this.runs = response.runs
-        return response.runs
+        const api = useKromaApi()
+        const response = await api.getRuns(projectSlug)
+        this.runs = response
+        return response
       } catch (error) {
         this.error = 'Failed to load runs'
         console.error('Error fetching runs:', error)
@@ -97,7 +99,8 @@ export const useRunsStore = defineStore('runs', {
       this.error = null
 
       try {
-        const response = await apiFetch<Run>(`/api/projects/${projectSlug}/runs/${runId}`)
+        const api = useKromaApi()
+        const response = await api.getRun(projectSlug, runId)
         this.activeRun = response
         return response
       } catch (error) {
@@ -117,10 +120,8 @@ export const useRunsStore = defineStore('runs', {
       this.error = null
 
       try {
-        const response = await apiFetch<Run>(`/api/projects/${projectSlug}/runs/trigger`, {
-          method: 'POST',
-          body: config
-        })
+        const api = useKromaApi()
+        const response = await api.triggerRun(projectSlug, config)
 
         // Add to local state
         this.runs.unshift(response)

@@ -9,14 +9,15 @@
  * Navigation items:
  * - Dashboard (/app)
  * - Projects (/app/projects)
- * - Providers (/app/providers)
  * - Quick Tools (/app/quick-tools)
  * - Settings (/app/settings)
+ *
+ * Note: Provider management is project-scoped and accessed via
+ * /app/projects/[slug]/providers from within a project context.
  */
 import type { Component } from 'vue'
 import IconDashboard from '~icons/tabler/dashboard'
 import IconFolder from '~icons/tabler/folder'
-import IconPalette from '~icons/tabler/palette'
 import IconTools from '~icons/tabler/tools'
 import IconSettings from '~icons/tabler/settings'
 import IconLogout from '~icons/tabler/logout'
@@ -28,15 +29,20 @@ const route = useRoute()
 const localePath = useLocalePath()
 const { user, logout, isLoading } = useAuth()
 const { t } = useI18n()
+const kromaAuth = useKromaAuthStore()
+
+// Initialize Kroma auth from localStorage on mount
+onMounted(() => {
+  kromaAuth.initFromStorage()
+})
 
 // User menu state
 const userMenuOpen = ref(false)
 
-// Navigation items
+// Navigation items (providers removed - now project-scoped)
 const navItems = [
   { to: '/app', label: 'app.dashboard', icon: IconDashboard },
   { to: '/app/projects', label: 'app.projects', icon: IconFolder },
-  { to: '/app/providers', label: 'app.providers', icon: IconPalette },
   { to: '/app/quick-tools', label: 'app.quickTools', icon: IconTools },
   { to: '/app/settings', label: 'app.settings', icon: IconSettings }
 ]

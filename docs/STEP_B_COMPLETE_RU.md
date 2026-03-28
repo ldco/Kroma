@@ -319,7 +319,7 @@ cargo run -- secrets-rotate --project-slug my_project --from-key-ref local-maste
 
 **Файл:** `openapi/backend-api.openapi.yaml`
 
-- 68 endpoints документировано
+- 74 endpoints документировано
 - `ErrorResponse` / `ErrorKind` схемы определены
 - Все endpoints ссылаются на `ErrorResponse` для ошибок
 

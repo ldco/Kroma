@@ -1,75 +1,59 @@
 # Migration Status (Rust vs Scripts)
 
-Last updated: 2026-02-27
-Status: Active migration (partial)
+Last updated: 2026-03-24
+Status: **Migration COMPLETE — 100% Rust**
 
 ## Summary
 
-Kroma is in a partial migration state:
+Kroma migration to Rust is **COMPLETE**:
 
-1. Rust (`src-tauri`) is now the primary backend for metadata/API.
-2. `scripts/` is still required for pipeline execution and local tool orchestration.
-3. Some Python fallback paths remain for compatibility while Rust migration closes remaining gaps.
+1. Rust (`src-tauri`) is the exclusive backend for metadata/API/pipeline.
+2. All Python/Node.js scripts have been migrated to Rust.
+3. Zero Python/Node.js dependencies in backend runtime.
 
-## What Is Already in Rust (Primary)
+## What Is Already in Rust (Complete)
 
-These areas are implemented in the Rust backend and are the main path today:
+All subsystems are now in Rust:
 
 | Subsystem | Status | Notes |
 | --- | --- | --- |
-| HTTP API server (`axum`) | `Primary (Rust)` | `npm run backend:rust`, default `127.0.0.1:8788` |
-| OpenAPI contract + route parity | `Primary (Rust)` | Contract-first route catalog and parity tests |
-| SQLite schema management | `Primary (Rust)` | Tables created/normalized on startup |
-| Projects CRUD | `Primary (Rust)` | Project creation, detail, listing |
-| Storage config API | `Primary (Rust)` | Local + S3 settings |
-| Runs read APIs | `Primary (Rust)` | Runs/run detail/job list |
-| Assets + asset links APIs | `Primary (Rust)` | Asset registry and relationships |
-| Analytics read APIs | `Primary (Rust)` | `quality-reports`, `cost-events` |
-| Exports read APIs | `Primary (Rust)` | Export listing/detail |
-| Prompt templates CRUD | `Primary (Rust)` | Implemented and tested |
-| Provider accounts CRUD | `Primary (Rust)` | Implemented and tested |
-| Style guides CRUD | `Primary (Rust)` | Implemented and tested |
-| Characters CRUD | `Primary (Rust)` | Implemented and tested |
-| Reference sets CRUD | `Primary (Rust)` | Sets + items |
-| Chat / instructions / voice / secrets APIs | `Primary (Rust)` | Implemented and tested |
-| Bootstrap prompt exchange | `Primary (Rust)` | `bootstrap-prompt`, `bootstrap-import`, `dry_run` preview |
-
-## What Still Lives in `scripts/` (Active)
-
-These are still actively used and not yet migrated to Rust:
-
-| Subsystem | Current Runtime | Status | Why it remains |
-| --- | --- | --- | --- |
-| Image generation pipeline | `scripts/image-lab.mjs` (Node.js) | `Active (Scripts)` | Main generation orchestration, spend guards, staged runs |
-| QA guard helpers | Python scripts | `Active (Scripts)` | Existing image QA implementation/tooling |
-| Local post-process wrappers | Python scripts | `Active (Scripts)` | rembg / Real-ESRGAN / color correction wrappers |
-| Tool setup/install helpers | Python/Bash scripts | `Active (Scripts)` | Environment/tool bootstrapping |
-
-## Legacy / Compatibility Paths (Still Present)
-
-These are still in repo and usable, but no longer the recommended primary path:
-
-| Subsystem | Current Runtime | Status | Migration Intent |
-| --- | --- | --- | --- |
-| `scripts/backend.py` | Python | `Legacy-Compatible` | Keep temporarily while Rust parity gaps close |
-
-## Not Yet Migrated to Rust (Key Gaps)
-
-| Area | Status | Notes |
-| --- | --- | --- |
-| Pipeline execution mutation parity | `Planned` | Rust API does not yet replace full script-run execution flow |
-| Export mutation parity (`create export`, `sync-s3`) | `Planned / Partial` | Rust has export read APIs; write/sync parity still pending |
-| Agent worker runtime | `Primary (Rust)` | Rust `agent-worker` loop now processes confirmed instructions with retry/backoff and secret fallback target resolution |
-| Auth/token system | `Planned` | No `/auth/*` endpoints yet |
-| `audit_events` schema + API | `Planned` | Table still missing |
+| HTTP API server (`axum`) | `✅ Rust` | `npm run backend:rust`, default `127.0.0.1:8788` |
+| OpenAPI contract + route parity | `✅ Rust` | 74 routes, contract-first |
+| SQLite schema management | `✅ Rust` | Tables created/normalized on startup |
+| Projects CRUD | `✅ Rust` | Project creation, detail, listing |
+| Storage config API | `✅ Rust` | Local + S3 settings |
+| Runs read/write APIs | `✅ Rust` | Runs, trigger, review, jobs |
+| Assets + asset links APIs | `✅ Rust` | Asset registry and relationships |
+| Analytics read APIs | `✅ Rust` | `quality-reports`, `cost-events` |
+| Exports read APIs | `✅ Rust` | Export listing/detail |
+| Prompt templates CRUD | `✅ Rust` | Implemented and tested |
+| Provider accounts CRUD | `✅ Rust` | Implemented and tested |
+| Style guides CRUD | `✅ Rust` | Implemented and tested |
+| Characters CRUD | `✅ Rust` | Implemented and tested |
+| Reference sets CRUD | `✅ Rust` | Sets + items |
+| Chat / instructions / secrets APIs | `✅ Rust` | Implemented and tested |
+| Bootstrap prompt exchange | `✅ Rust` | `bootstrap-prompt`, `bootstrap-import` |
+| Auth/token system | `✅ Rust` | `/auth/token`, `/auth/tokens`, `/auth/tokens/{id}` |
+| Agent worker runtime | `✅ Rust` | `agent-worker` with retry/backoff |
+| Pipeline execution | `✅ Rust` | Rust pipeline runtime |
+| QA guard helpers | `✅ Rust` | Native Rust QA checks |
+| Post-process (bg-remove, upscale, color) | `✅ Rust` | CLI commands via Rust |
+| Tool setup/install | `✅ Rust` | `cargo run -- tools:install` |
 
 ## Recommended Golden Path (Today)
 
-Use this split until migration is complete:
+Use Rust exclusively:
 
-1. Use Rust backend (`npm run backend:rust`) for project metadata and UI-facing APIs.
-2. Use `scripts/image-lab.mjs` for generation/post-process pipeline runs.
-3. Use legacy Python scripts only when a Rust parity feature is not available yet.
+1. **Start backend:** `npm run backend:rust` (or `cargo run --manifest-path src-tauri/Cargo.toml`)
+2. **Database init:** `npm run backend:init` (or `cargo run -- db:init`)
+3. **Create user:** `npm run backend:user:local -- --username local --display-name "Local User"`
+4. **Install tools:** `npm run tools:setup` (or `cargo run -- tools:install all`)
+5. **Run pipeline:** `cargo run -- generate-one --project-slug <slug> --prompt "..."`
+6. **Post-process:** `cargo run -- upscale`, `cargo run -- bgremove`, `cargo run -- color`
+7. **QA checks:** `cargo run -- qa --project-slug <slug>`
+8. **Worker:** `npm run backend:worker` (or `cargo run -- agent-worker`)
+
+**All operations are now Rust-native. No Python/Node.js scripts required.**
 
 ## How to Read "Migration Complete"
 

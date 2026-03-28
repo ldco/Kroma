@@ -2,6 +2,7 @@
  * Projects Pinia Store
  *
  * Manages project state for Kroma app.
+ * Uses useKromaApi for direct backend communication with Bearer auth.
  */
 import { defineStore } from 'pinia'
 import type { Project, ProjectSummary, ProjectDetail, CreateProjectInput } from '~/types/kroma'
@@ -43,15 +44,17 @@ export const useProjectsStore = defineStore('projects', {
   actions: {
     /**
      * Fetch all projects
+     * Uses Kroma API with Bearer token auth
      */
     async fetchProjects() {
       this.isLoading = true
       this.error = null
 
       try {
-        const response = await apiFetch<{ projects: ProjectSummary[] }>('/api/projects')
-        this.projects = response.projects
-        return response.projects
+        const api = useKromaApi()
+        const response = await api.getProjects()
+        this.projects = response
+        return response
       } catch (error) {
         this.error = 'Failed to load projects'
         console.error('Error fetching projects:', error)
@@ -69,7 +72,8 @@ export const useProjectsStore = defineStore('projects', {
       this.error = null
 
       try {
-        const response = await apiFetch<ProjectDetail>(`/api/projects/${slug}`)
+        const api = useKromaApi()
+        const response = await api.getProject(slug)
         this.activeProject = response
         return response
       } catch (error) {
@@ -89,10 +93,8 @@ export const useProjectsStore = defineStore('projects', {
       this.error = null
 
       try {
-        const response = await apiFetch<Project>('/api/projects', {
-          method: 'POST',
-          body: input
-        })
+        const api = useKromaApi()
+        const response = await api.createProject(input)
 
         // Refresh projects list
         await this.fetchProjects()
@@ -115,10 +117,8 @@ export const useProjectsStore = defineStore('projects', {
       this.error = null
 
       try {
-        const response = await apiFetch<Project>(`/api/projects/${slug}`, {
-          method: 'PUT',
-          body: input
-        })
+        const api = useKromaApi()
+        const response = await api.updateProject(slug, input)
 
         // Update in local state
         const index = this.projects.findIndex(p => p.slug === slug)

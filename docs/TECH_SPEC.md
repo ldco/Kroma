@@ -85,7 +85,7 @@ Build a production-grade toolkit for comic/graphic-novel production where:
 ## 4. Architecture Baseline
 
 1. Backend service: REST API + job orchestration.
-2. DB: PostgreSQL in production, SQLite allowed for local/dev bootstrap.
+2. DB: SQLite (default for desktop-first architecture). PostgreSQL is deferred until a hosted multi-user deployment mode is introduced; see ROADMAP.md for the persistence model decision.
 3. File storage: local filesystem and optional S3.
 4. Queue: asynchronous job execution layer (can start with in-process worker, later external queue).
 

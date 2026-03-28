@@ -15,20 +15,8 @@ impl DbConfig {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct DbFacade {
-    config: DbConfig,
-}
-
-impl DbFacade {
-    pub fn new(config: DbConfig) -> Self {
-        Self { config }
-    }
-
-    pub fn app_db_path(&self) -> &Path {
-        self.config.app_db_path.as_path()
-    }
-}
+// Note: DbFacade struct was removed (unused abstraction layer)
+// ProjectsStore is the primary database interface
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresConfig {

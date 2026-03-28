@@ -48,7 +48,7 @@ All API errors now follow a consistent structure with `error_kind` and `error_co
 
 ### 3. API Contract Freeze
 
-**68 endpoints** documented in OpenAPI with stable contracts:
+**74 endpoints** documented in OpenAPI with stable contracts:
 
 | Journey | Endpoints | Status |
 |---------|-----------|--------|
