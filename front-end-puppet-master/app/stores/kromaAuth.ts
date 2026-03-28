@@ -27,17 +27,8 @@ export const useKromaAuthStore = defineStore('kromaAuth', {
     /**
      * Check if authenticated (has token)
      */
-    isAuthenticated: (state) => !!state.token,
-
-    /**
-     * Check if currently bootstrapping
-     */
-    isBootstrapping: (state) => state.isBootstrapping,
-
-    /**
-     * Get current error message
-     */
-    error: (state) => state.error
+    isAuthenticated: (state) => !!state.token
+    // Note: isBootstrapping and error are accessed directly from state
   },
 
   actions: {
@@ -82,6 +73,8 @@ export const useKromaAuthStore = defineStore('kromaAuth', {
      * Only works when:
      * - No tokens exist yet
      * - Backend is bound to loopback (127.0.0.1)
+     * 
+     * Response format: { ok: true, auth_token: { token: string, ... } }
      */
     async bootstrapToken(): Promise<string | null> {
       this.isBootstrapping = true
@@ -96,8 +89,18 @@ export const useKromaAuthStore = defineStore('kromaAuth', {
           // No auth header needed for bootstrap
         })
 
-        // Response format: { token: string, ... }
-        const token = (response as any)?.token
+        // Response format: { ok: true, auth_token: { token: string, ... } }
+        const envelope = response as any
+        
+        // Check if response indicates success
+        if (!envelope?.ok) {
+          this.error = `Bootstrap failed: ${envelope?.error || 'unknown error'}`
+          return null
+        }
+        
+        // Extract token from auth_token field
+        const token = envelope?.auth_token?.token
+        
         if (token) {
           this.setToken(token)
           return token

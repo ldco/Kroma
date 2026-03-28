@@ -34,15 +34,20 @@ export default defineNuxtRouteMiddleware(async to => {
   
   // For /app routes, check Kroma Bearer token
   if (isAppRoute) {
-    // Check if we have a Kroma token
     if (import.meta.client) {
-      const token = localStorage.getItem('kroma_bearer_token')
+      const kromaAuth = useKromaAuthStore()
+      kromaAuth.initFromStorage()
       
-      if (!token) {
-        // No token - redirect to onboarding/setup
-        // For now, redirect to projects page which will trigger token bootstrap
-        // In the future, this could redirect to a dedicated onboarding page
-        return navigateTo('/app/projects', { replace: true })
+      if (!kromaAuth.token) {
+        // Attempt to bootstrap the first token (J00 onboarding)
+        const token = await kromaAuth.bootstrapToken()
+        
+        if (!token) {
+          // Bootstrap failed — redirect to a non-app error or onboarding page
+          // Do NOT redirect to an /app/* route (infinite loop)
+          return navigateTo('/', { replace: true })
+        }
+        // Token bootstrapped successfully — allow navigation to proceed
       }
     }
   }

@@ -148,28 +148,73 @@ export function useKromaApi(): UseKromaApiReturn {
   const bootstrapToken = () => bootstrapKromaToken()
   
   // Projects API
-  const getProjects = () => kromaFetch<any[]>('/api/projects', { method: 'GET' }, [])
-  const getProject = (slug: string) => kromaFetch<any>(`/api/projects/${slug}`, { method: 'GET' })
-  const createProject = (input: any) => kromaFetch<any>('/api/projects', { method: 'POST', body: input })
-  const updateProject = (slug: string, input: any) => kromaFetch<any>(`/api/projects/${slug}`, { method: 'PUT', body: input })
-  
+  const getProjects = async () => {
+    const response = await kromaFetch<any>('/api/projects', { method: 'GET' }, { projects: [] })
+    return (response as any)?.projects ?? []
+  }
+  const getProject = async (slug: string) => {
+    const response = await kromaFetch<any>(`/api/projects/${slug}`, { method: 'GET' })
+    return (response as any)?.project ?? response
+  }
+  const createProject = async (input: any) => {
+    const response = await kromaFetch<any>('/api/projects', { method: 'POST', body: input })
+    const envelope = response as any
+    if (envelope?.ok) {
+      return envelope.project ?? response
+    }
+    return response
+  }
+  const updateProject = async (slug: string, input: any) => {
+    const response = await kromaFetch<any>(`/api/projects/${slug}`, { method: 'PUT', body: input })
+    const envelope = response as any
+    if (envelope?.ok) {
+      return envelope.project ?? response
+    }
+    return response
+  }
+
   // Providers API
-  const getProviders = (projectSlug: string) => 
-    kromaFetch<any[]>(`/api/projects/${projectSlug}/provider-accounts`, { method: 'GET' }, [])
-  const createProvider = (projectSlug: string, input: any) =>
-    kromaFetch<any>(`/api/projects/${projectSlug}/provider-accounts`, { method: 'POST', body: input })
-  const updateProvider = (projectSlug: string, providerCode: string, input: any) =>
-    kromaFetch<any>(`/api/projects/${projectSlug}/provider-accounts/${providerCode}`, { method: 'PUT', body: input })
-  const deleteProvider = (projectSlug: string, providerCode: string) =>
-    kromaFetch<void>(`/api/projects/${projectSlug}/provider-accounts/${providerCode}`, { method: 'DELETE' })
-  
+  const getProviders = async (projectSlug: string) => {
+    const response = await kromaFetch<any>(`/api/projects/${projectSlug}/provider-accounts`, { method: 'GET' }, { providers: [] })
+    return (response as any)?.providers ?? []
+  }
+  const createProvider = async (projectSlug: string, input: any) => {
+    const response = await kromaFetch<any>(`/api/projects/${projectSlug}/provider-accounts`, { method: 'POST', body: input })
+    const envelope = response as any
+    if (envelope?.ok) {
+      return envelope.provider ?? response
+    }
+    return response
+  }
+  const updateProvider = async (projectSlug: string, providerCode: string, input: any) => {
+    const response = await kromaFetch<any>(`/api/projects/${projectSlug}/provider-accounts/${providerCode}`, { method: 'PUT', body: input })
+    const envelope = response as any
+    if (envelope?.ok) {
+      return envelope.provider ?? response
+    }
+    return response
+  }
+  const deleteProvider = async (projectSlug: string, providerCode: string) => {
+    await kromaFetch<void>(`/api/projects/${projectSlug}/provider-accounts/${providerCode}`, { method: 'DELETE' })
+  }
+
   // Runs API
-  const getRuns = (projectSlug: string) =>
-    kromaFetch<any[]>(`/api/projects/${projectSlug}/runs`, { method: 'GET' }, [])
-  const getRun = (projectSlug: string, runId: string) =>
-    kromaFetch<any>(`/api/projects/${projectSlug}/runs/${runId}`, { method: 'GET' })
-  const triggerRun = (projectSlug: string, config: any) =>
-    kromaFetch<any>(`/api/projects/${projectSlug}/runs/trigger`, { method: 'POST', body: config })
+  const getRuns = async (projectSlug: string) => {
+    const response = await kromaFetch<any>(`/api/projects/${projectSlug}/runs`, { method: 'GET' }, { runs: [] })
+    return (response as any)?.runs ?? []
+  }
+  const getRun = async (projectSlug: string, runId: string) => {
+    const response = await kromaFetch<any>(`/api/projects/${projectSlug}/runs/${runId}`, { method: 'GET' })
+    return (response as any)?.run ?? response
+  }
+  const triggerRun = async (projectSlug: string, config: any) => {
+    const response = await kromaFetch<any>(`/api/projects/${projectSlug}/runs/trigger`, { method: 'POST', body: config })
+    const envelope = response as any
+    if (envelope?.ok) {
+      return envelope.run ?? response
+    }
+    return response
+  }
   
   return {
     // Token management
