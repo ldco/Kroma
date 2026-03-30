@@ -114,7 +114,7 @@ export default [
         showError: 'readonly',
         clearError: 'readonly',
         useSafeConfig: 'readonly',
-        useHydration: 'readonly'
+        useComponentHydration: 'readonly'
       }
     },
     plugins: {

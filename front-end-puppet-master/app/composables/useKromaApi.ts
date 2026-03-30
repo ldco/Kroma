@@ -2,35 +2,38 @@
  * Kroma API Composable
  *
  * Direct API client for Kroma backend (http://127.0.0.1:8788)
- * Uses Bearer token authentication from kromaAuth store and handles Kroma-specific response format.
+ * Uses Bearer token authentication from localStorage.
  *
  * Unlike the Puppet Master apiFetch, this composable:
  * - Calls the Kroma backend directly (not PM's Nitro server)
- * - Uses Bearer token auth from kromaAuth store (persisted in localStorage)
+ * - Uses Bearer token auth from localStorage
  * - Handles Kroma's response format (no { success, data } envelope)
  */
 
 // Kroma backend base URL
 const KROMA_API_BASE = 'http://127.0.0.1:8788'
+const TOKEN_STORAGE_KEY = 'kroma_bearer_token'
 
 /**
- * Get the current Kroma Bearer token from kromaAuth store
+ * Get the current Kroma Bearer token from localStorage
  */
 function getKromaToken(): string | null {
   if (import.meta.client) {
-    const authStore = useKromaAuthStore()
-    return authStore.token
+    return localStorage.getItem(TOKEN_STORAGE_KEY)
   }
   return null
 }
 
 /**
- * Set the Kroma Bearer token via kromaAuth store (persists to localStorage)
+ * Set the Kroma Bearer token in localStorage
  */
 function setKromaToken(token: string | null): void {
   if (import.meta.client) {
-    const authStore = useKromaAuthStore()
-    authStore.setToken(token)
+    if (token) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token)
+    } else {
+      localStorage.removeItem(TOKEN_STORAGE_KEY)
+    }
   }
 }
 
@@ -75,8 +78,31 @@ function handleKromaApiError(error: any, fallbackValue?: any): any {
  * Calls POST /auth/token to create the first admin token
  */
 async function bootstrapKromaToken(): Promise<string | null> {
-  const authStore = useKromaAuthStore()
-  return await authStore.bootstrapToken()
+  try {
+    const response = await $fetch(`${KROMA_API_BASE}/auth/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    const envelope = response as any
+    if (!envelope?.ok) {
+      console.error('Bootstrap failed:', envelope?.error)
+      return null
+    }
+
+    const token = envelope?.auth_token?.token
+    if (token) {
+      setKromaToken(token)
+      return token
+    }
+
+    return null
+  } catch (error) {
+    console.error('Failed to bootstrap token:', error)
+    return null
+  }
 }
 
 /**
@@ -84,8 +110,11 @@ async function bootstrapKromaToken(): Promise<string | null> {
  * Bootstraps if none exists (first-run scenario)
  */
 async function ensureKromaToken(): Promise<string | null> {
-  const authStore = useKromaAuthStore()
-  return await authStore.ensureToken()
+  let token = getKromaToken()
+  if (!token) {
+    token = await bootstrapKromaToken()
+  }
+  return token
 }
 
 /**

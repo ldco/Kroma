@@ -1,5 +1,5 @@
 /**
- * useHydration - Track component hydration state
+ * useComponentHydration - Track component hydration state
  *
  * Prevents SSR hydration mismatches by deferring client-only state
  * until the component is mounted on the client.
@@ -7,7 +7,7 @@
  * @example
  * ```vue
  * <script setup>
- * const { isHydrated } = useHydration()
+ * const { isHydrated } = useComponentHydration()
  * </script>
  *
  * <template>
@@ -20,7 +20,7 @@
  * @see https://nuxt.com/docs/guide/going-further/experimental-features#inlinetemplate
  */
 
-export function useHydration() {
+export function useComponentHydration() {
   const isHydrated = ref(false)
 
   onMounted(() => {

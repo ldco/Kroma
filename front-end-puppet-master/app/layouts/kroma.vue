@@ -24,6 +24,7 @@ import IconLogout from '~icons/tabler/logout'
 import IconKey from '~icons/tabler/key'
 import IconMoon from '~icons/tabler/moon'
 import IconSun from '~icons/tabler/sun'
+import { bootstrapKromaToken } from '~/composables/useKromaApi'
 
 const route = useRoute()
 const localePath = useLocalePath()
@@ -31,9 +32,10 @@ const { user, logout, isLoading } = useAuth()
 const { t } = useI18n()
 const kromaAuth = useKromaAuthStore()
 
-// Initialize Kroma auth from localStorage on mount
+// Initialize Kroma auth from localStorage on mount (non-blocking)
 onMounted(() => {
-  kromaAuth.initFromStorage()
+  // Just trigger bootstrap in background - don't await
+  bootstrapKromaToken().catch(console.error)
 })
 
 // User menu state
