@@ -109,13 +109,15 @@ All production runtime code is 100% Rust.
 
 ## 🚀 Quick Start
 
-This is the recommended golden path for first-time setup: start the Rust backend and verify it responds to real API requests.
+This is the recommended golden path for first-time setup. The Kroma development environment consists of two services:
+- **Backend**: Rust API server on `127.0.0.1:8788`
+- **Frontend**: Nuxt.js application on `localhost:3000/app`
 
 ### Prerequisites
 
 - Git
 - Node.js `>=20` (from `package.json`)
-- Python 3 (`python3` available on PATH)
+- Python 3 (`python3` available on PATH) - for external tools only
 - Rust toolchain (`cargo`, `rustc`)
 - `curl`
 
@@ -124,6 +126,24 @@ This is the recommended golden path for first-time setup: start the Rust backend
 ```bash
 git clone https://github.com/ldco/Kroma.git
 cd Kroma/app
+```
+
+### First-Time Setup
+
+Install dependencies for both backend and frontend:
+
+```bash
+# Root dependencies
+npm install
+
+# Frontend dependencies (required for GUI development)
+npm run frontend:install
+```
+
+Alternatively, install frontend dependencies directly:
+
+```bash
+cd front-end-puppet-master
 npm install
 ```
 
@@ -150,15 +170,56 @@ REMOVE_BG_API_KEY=[YOUR_REMOVE_BG_API_KEY]
 
 ### Run Locally
 
+#### Option 1: Start Both Services (Recommended)
+
+Use the provided startup script to launch both backend and frontend with automatic health checks and coordinated shutdown:
+
+```bash
+./start-dev.sh
+```
+
+This script:
+- Validates directory structure and dependencies
+- Installs frontend dependencies if missing
+- Starts both backend and frontend services
+- Performs health checks to verify both services are ready
+- Handles coordinated shutdown on Ctrl+C or service failure
+
+**Success criteria:** Both health checks pass and you see:
+```
+=== Servers Running ===
+Backend:  http://127.0.0.1:8788
+Frontend: http://localhost:3000/app
+```
+
+#### Option 2: Backend Only
+
+For backend-only development:
+
 ```bash
 npm run backend:rust
 ```
 
 This starts the Rust API on `127.0.0.1:8788` by default (`KROMA_BACKEND_BIND` overrides it).
 
+#### Option 3: Manual Two-Service Startup
+
+Start backend and frontend in separate terminals:
+
+**Terminal 1 (Backend):**
+```bash
+npm run backend:rust
+```
+
+**Terminal 2 (Frontend):**
+```bash
+cd front-end-puppet-master
+npm run dev
+```
+
 ### ✅ Success Check
 
-In a second terminal:
+#### Backend Health Check
 
 ```bash
 curl -s http://127.0.0.1:8788/health
@@ -169,7 +230,15 @@ You should see JSON containing:
 - `"status": "ok"`
 - `"service": "kroma-backend-core"`
 
-Now verify a full API round-trip:
+#### Frontend Health Check
+
+```bash
+curl -s http://localhost:3000/app
+```
+
+You should receive an HTML response (the Nuxt app shell).
+
+#### Full API Round-Trip Test
 
 ```bash
 curl -s -X POST http://127.0.0.1:8788/api/projects \

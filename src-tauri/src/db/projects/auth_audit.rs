@@ -426,15 +426,16 @@ impl ProjectsStore {
             conn.execute(
                 "
                 INSERT INTO audit_events
-                  (id, project_id, actor_user_id, event_code, payload_json, created_at)
+                  (id, project_id, actor_user_id, event_code, action, payload_json, created_at)
                 VALUES
-                  (?1, ?2, ?3, ?4, ?5, ?6)
+                  (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                 ",
                 params![
                     id,
                     project_id,
                     input.actor_user_id,
                     event_code,
+                    "",  // action - can be extended in the future
                     payload_json,
                     created_at
                 ],

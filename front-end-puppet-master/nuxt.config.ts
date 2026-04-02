@@ -62,8 +62,8 @@ export default defineNuxtConfig({
     '@nuxtjs/color-mode',
     '@nuxtjs/i18n',
     '@pinia/nuxt',
-    // Critical CSS inlining for faster FCP/LCP
-    '@nuxtjs/critters',
+    // Critical CSS inlining - only in production (causes memory issues in dev)
+    ...(process.env.NODE_ENV === 'production' ? ['@nuxtjs/critters'] : []),
     // PWA module - conditionally loaded based on config.features.pwa
     ...(config.features.pwa ? ['@vite-pwa/nuxt'] : [])
   ],
@@ -159,34 +159,32 @@ export default defineNuxtConfig({
   // i18n configuration
   // NOTE: Translations come from DATABASE via API, not per-locale files!
   // A single loader.ts handles ALL locales - no manual file creation needed
-  // Fallbacks in fallbacks.ts provide minimal bootstrap translations
   i18n: {
-    // Locales from config - ALL use the same loader.ts file
-    // preload: true ensures translations are available during hydration
-    locales: config.locales.map(l => ({ ...l, file: 'loader.ts', preload: true })),
-    langDir: '.', // loader.ts is in i18n/ directory
+    // FIX: Don't specify files - let the dynamic loader handle everything
+    // This avoids the path resolution bug in @nuxtjs/i18n
+    locales: config.locales.map(l => ({
+      ...l,
+      preload: l.code === config.defaultLocale // Only preload default locale in dev
+    })),
+    // Dynamic loader is registered via vueI18n config
+    langDir: undefined, // No static locale files
+    localeFiles: [], // Explicitly no locale files
     defaultLocale: config.defaultLocale,
     strategy: 'prefix_except_default',
     detectBrowserLanguage: {
       useCookie: true,
       cookieKey: 'pm-i18n-redirected',
       fallbackLocale: config.defaultLocale,
-      // alwaysRedirect: false - don't override user's explicit language selection
-      // redirectOn: 'root' - only detect on first visit to root path
       alwaysRedirect: false,
       redirectOn: 'root'
     },
-    // Bundle options - optimized for production (Comment 3)
     bundle: {
       fullInstall: false,
       dropMessageCompiler: true
     },
-    // Compilation options
     compilation: {
       strictMessage: true
-      // Note: JIT mode is the default in vue-i18n@10+
     },
-    // Vue I18n options
     vueI18n: './i18n/i18n.config.ts'
   },
 
@@ -260,6 +258,17 @@ export default defineNuxtConfig({
 
   // Vite configuration
   vite: {
+    // Dev build optimizations
+    build: {
+      // Skip minification in dev for faster builds
+      minify: process.env.NODE_ENV === 'production',
+      // Reduce sourcemap memory in dev
+      sourcemap: process.env.NODE_ENV === 'production'
+    },
+    // Optimize deps loading
+    optimizeDeps: {
+      include: ['vue', 'vue-router', 'pinia']
+    },
     plugins: [
       Icons({
         compiler: 'vue3',
@@ -271,6 +280,8 @@ export default defineNuxtConfig({
 
   // Nitro configuration
   nitro: {
+    // Reduce workers in dev to save memory
+    ...(process.env.NODE_ENV !== 'production' ? { workers: 1 } : {}),
     // Scheduled tasks (MED-02: Session cleanup)
     scheduledTasks: {
       // Run session cleanup every hour at minute 0
@@ -340,6 +351,8 @@ export default defineNuxtConfig({
       features: config.features,
       // PM Mode - env var overrides config file (allows framework devs to set PM_MODE=develop)
       pmMode: process.env.PM_MODE || config.pmMode || 'unconfigured',
+      // Kroma Backend API Base URL - environment-driven API routing
+      kromaApiBaseUrl: process.env.KROMA_API_BASE_URL || 'http://127.0.0.1:8788',
       // External monitoring dashboard URL (constructed from subdomain + domain)
       uptimeKumaUrl:
         process.env.UPTIME_KUMA_SUBDOMAIN && process.env.SITE_DOMAIN

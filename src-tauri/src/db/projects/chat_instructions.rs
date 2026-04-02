@@ -126,9 +126,9 @@ impl ProjectsStore {
             conn.execute(
                 "
                 INSERT INTO chat_sessions
-                  (id, project_id, title, status, created_at, updated_at)
+                  (id, project_id, user_id, title, status, created_at, updated_at)
                 VALUES
-                  (?1, ?2, ?3, 'active', ?4, ?4)
+                  (?1, ?2, NULL, ?3, 'active', ?4, ?4)
             ",
                 params![id, project.id, title, now],
             )?;
@@ -668,6 +668,7 @@ pub(super) fn ensure_chat_and_instruction_tables(
         CREATE TABLE IF NOT EXISTS chat_sessions (
           id TEXT PRIMARY KEY,
           project_id TEXT NOT NULL,
+          user_id TEXT,
           title TEXT NOT NULL,
           status TEXT NOT NULL,
           created_at TEXT NOT NULL,

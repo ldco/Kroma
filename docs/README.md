@@ -1,6 +1,6 @@
 # Kroma Documentation Index
 
-**Last Updated:** 2026-03-28  
+**Last Updated:** 2026-03-31
 **Status:** Reorganized - Canonical structure established
 
 ---
@@ -23,6 +23,42 @@ docs/
     ├── status/            # Superseded status reports
     └── internal/          # Session notes, phase diaries
 ```
+
+---
+
+## Local Development Quick Start
+
+**Two-Service Architecture:** Kroma consists of two services that must both be running for full-stack development:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Backend | `127.0.0.1:8788` | Rust API server with SQLite persistence |
+| Frontend | `localhost:3000` | Nuxt.js application |
+
+### Startup Contract
+
+**Prerequisites:**
+1. Rust toolchain installed (`curl https://sh.rustup.rs -sSf | sh`)
+2. Node.js >=20 installed
+3. Frontend dependencies installed: `npm run frontend:install`
+
+**Start both services:**
+```bash
+./start-dev.sh
+```
+
+**Verify both services are healthy:**
+```bash
+# Backend health
+curl -s http://127.0.0.1:8788/health
+
+# Frontend health (should return HTML)
+curl -s http://localhost:3000/app
+```
+
+**For detailed setup instructions, see:** [README.md](../README.md#quick-start)
+
+**Frontend prerequisites:** See [front-end-puppet-master/README.md](../front-end-puppet-master/README.md) for frontend-specific setup requirements.
 
 ---
 
@@ -89,11 +125,18 @@ Before merging documentation changes with command examples, verify:
 
 **Current valid commands:**
 ```bash
+# Startup (both services)
+./start-dev.sh                # Start backend + frontend with health checks
+
 # Backend
 npm run backend:rust          # Start Rust API server
 npm run backend:worker        # Start agent worker
 npm run backend:init          # Initialize database
 npm run backend:user:local    # Create local admin user
+
+# Frontend
+npm run frontend:install      # Install frontend dependencies
+npm run frontend:dev          # Start frontend dev server
 
 # Rust CLI
 cargo run -- db:init

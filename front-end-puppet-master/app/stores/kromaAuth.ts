@@ -4,11 +4,26 @@
  * Manages Kroma Bearer token authentication.
  * Stores token in localStorage for persistence across page refreshes.
  * Supports bootstrapping the first token via POST /auth/token.
+ *
+ * Configuration:
+ * - Base URL is read from runtime config: useRuntimeConfig().public.kromaApiBaseUrl
+ * - Falls back to http://127.0.0.1:8788 if not configured
+ * - Set via KROMA_API_BASE_URL environment variable
  */
 import { defineStore } from 'pinia'
 
 const TOKEN_STORAGE_KEY = 'kroma_bearer_token'
-const KROMA_API_BASE = 'http://127.0.0.1:8788'
+
+/**
+ * Get Kroma API base URL from runtime config
+ */
+function getKromaApiBase(): string {
+  if (import.meta.client) {
+    const config = useRuntimeConfig()
+    return (config.public as any).kromaApiBaseUrl || 'http://127.0.0.1:8788'
+  }
+  return 'http://127.0.0.1:8788'
+}
 
 export interface KromaAuthState {
   token: string | null
@@ -73,7 +88,7 @@ export const useKromaAuthStore = defineStore('kromaAuth', {
      * Only works when:
      * - No tokens exist yet
      * - Backend is bound to loopback (127.0.0.1)
-     * 
+     *
      * Response format: { ok: true, auth_token: { token: string, ... } }
      */
     async bootstrapToken(): Promise<string | null> {
@@ -81,7 +96,8 @@ export const useKromaAuthStore = defineStore('kromaAuth', {
       this.error = null
 
       try {
-        const response = await $fetch(`${KROMA_API_BASE}/auth/token`, {
+        const baseUrl = getKromaApiBase()
+        const response = await $fetch(`${baseUrl}/auth/token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

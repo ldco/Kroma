@@ -1,17 +1,30 @@
 /**
  * Kroma API Composable
  *
- * Direct API client for Kroma backend (http://127.0.0.1:8788)
+ * Direct API client for Kroma backend.
  * Uses Bearer token authentication from localStorage.
  *
  * Unlike the Puppet Master apiFetch, this composable:
  * - Calls the Kroma backend directly (not PM's Nitro server)
  * - Uses Bearer token auth from localStorage
  * - Handles Kroma's response format (no { success, data } envelope)
+ *
+ * Configuration:
+ * - Base URL is read from runtime config: useRuntimeConfig().public.kromaApiBaseUrl
+ * - Falls back to http://127.0.0.1:8788 if not configured
+ * - Set via KROMA_API_BASE_URL environment variable
  */
 
-// Kroma backend base URL
-const KROMA_API_BASE = 'http://127.0.0.1:8788'
+// Kroma backend base URL from runtime config (with fallback)
+function getKromaApiBase(): string {
+  if (import.meta.client) {
+    const config = useRuntimeConfig()
+    return (config.public as any).kromaApiBaseUrl || 'http://127.0.0.1:8788'
+  }
+  // SSR fallback
+  return process.env.KROMA_API_BASE_URL || 'http://127.0.0.1:8788'
+}
+
 const TOKEN_STORAGE_KEY = 'kroma_bearer_token'
 
 /**
@@ -79,7 +92,8 @@ function handleKromaApiError(error: any, fallbackValue?: any): any {
  */
 async function bootstrapKromaToken(): Promise<string | null> {
   try {
-    const response = await $fetch(`${KROMA_API_BASE}/auth/token`, {
+    const baseUrl = getKromaApiBase()
+    const response = await $fetch(`${baseUrl}/auth/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -159,7 +173,8 @@ export function useKromaApi(): UseKromaApiReturn {
     fallbackValue?: T
   ): Promise<T> {
     try {
-      const url = `${KROMA_API_BASE}${endpoint}`
+      const baseUrl = getKromaApiBase()
+      const url = `${baseUrl}${endpoint}`
       const fetchOptions = buildKromaFetchOptions(options)
       
       const response = await $fetch<T>(url, fetchOptions)

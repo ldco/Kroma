@@ -1018,6 +1018,7 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
           event_code TEXT NOT NULL,
           payload_json TEXT NOT NULL DEFAULT '{}',
           created_at TEXT NOT NULL,
+          action TEXT NOT NULL DEFAULT '',
           FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE SET NULL,
           FOREIGN KEY(actor_user_id) REFERENCES app_users(id) ON DELETE SET NULL
         );
@@ -1084,6 +1085,15 @@ fn ensure_schema(conn: &Connection) -> Result<(), ProjectsRepoError> {
         "created_at",
         "TEXT NOT NULL DEFAULT ''",
     )?;
+    ensure_column(
+        conn,
+        "audit_events",
+        "action",
+        "TEXT NOT NULL DEFAULT ''",
+    )?;
+
+    // Chat sessions and messages
+    ensure_column(conn, "chat_sessions", "user_id", "TEXT")?;
 
     ensure_column(conn, "runs", "run_log_path", "TEXT")?;
     ensure_column(conn, "runs", "run_mode", "TEXT")?;
