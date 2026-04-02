@@ -32,17 +32,22 @@ function isSetupRoute(path: string): boolean {
 /**
  * Normalize path by removing locale prefix for route matching
  * Supports all configured locales from i18n config
+ * Must be called within middleware execution context (not at module load time)
  */
 function normalizePathForMatching(path: string): string {
-  // Get configured locales from i18n
-  const { locale: currentLocale, locales: configuredLocales } = useI18n()
-  const localeCodes = configuredLocales.value.map((l: any) => l.code)
+  try {
+    // Get configured locales from i18n - must be called during request processing
+    const { locales } = useI18n()
+    const localeCodes = locales.value.map((l: any) => l.code)
 
-  // Check if path starts with a locale prefix
-  const segments = path.split('/').filter(Boolean)
-  if (segments.length > 0 && localeCodes.includes(segments[0])) {
-    // Remove locale prefix and reconstruct path
-    return '/' + segments.slice(1).join('/')
+    // Check if path starts with a locale prefix
+    const segments = path.split('/').filter(Boolean)
+    if (segments.length > 0 && localeCodes.includes(segments[0])) {
+      // Remove locale prefix and reconstruct path
+      return '/' + segments.slice(1).join('/')
+    }
+  } catch (e) {
+    // i18n not available, fall through to return original path
   }
   return path
 }
