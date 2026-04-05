@@ -12,7 +12,7 @@
  *
  * Uses existing CSS system:
  * - layout/page.css: .layout-admin responsive styles
- * - skeleton/nav.css: .sidebar-nav, .sidebar-nav-link, .sidebar-icon-btn
+ * - layout/kroma-sidebar.css: .sidebar-nav, .sidebar-nav-link, .sidebar-icon-btn
  * - skeleton/bottom-nav.css: .bottom-nav, .bottom-nav-item
  *
  * Auth is handled by middleware (app/middleware/auth.ts)
@@ -118,19 +118,6 @@ const userInitials = computed(() => {
   return user.value.email?.[0]?.toUpperCase() ?? '?'
 })
 
-// Unread messages count - shared state
-const { unreadCount, fetchUnreadCount } = useUnreadCount()
-
-// Fetch immediately and refresh periodically
-fetchUnreadCount()
-let interval: ReturnType<typeof setInterval> | null = null
-onMounted(() => {
-  interval = setInterval(fetchUnreadCount, 30000) // 30 seconds
-})
-onUnmounted(() => {
-  if (interval) clearInterval(interval)
-})
-
 // Config-driven admin links - filtered by role access
 const adminLinks = computed(() => {
   return adminSections.value.map(section => ({
@@ -211,12 +198,7 @@ onUnmounted(() => {
             :to="link.to"
             class="admin-header-link"
           >
-            <span class="relative">
-              <component :is="link.icon" class="admin-header-link-icon" />
-              <span v-if="link.badge && unreadCount > 0" class="badge-dot">
-                {{ unreadCount > 9 ? '9+' : unreadCount }}
-              </span>
-            </span>
+            <component :is="link.icon" class="admin-header-link-icon" />
             <span class="admin-header-tooltip">{{ t(link.label) }}</span>
           </NuxtLink>
         </nav>
@@ -288,12 +270,7 @@ onUnmounted(() => {
       <!-- Nav links with tooltips -->
       <nav class="sidebar-nav">
         <NuxtLink v-for="link in adminLinks" :key="link.to" :to="link.to" class="sidebar-nav-link">
-          <span class="relative">
-            <component :is="link.icon" />
-            <span v-if="link.badge && unreadCount > 0" class="badge-dot">
-              {{ unreadCount > 9 ? '9+' : unreadCount }}
-            </span>
-          </span>
+          <component :is="link.icon" />
           <span class="sidebar-tooltip">{{ t(link.label) }}</span>
         </NuxtLink>
       </nav>
@@ -420,9 +397,8 @@ onUnmounted(() => {
   Uses global CSS classes:
   - layout/page.css: .layout-admin responsive styles (phone/tablet/desktop)
   - layout/admin-header.css: .admin-header-horizontal (horizontal nav mode)
-  - skeleton/nav.css: .sidebar-nav, .sidebar-nav-link, .sidebar-icon-btn, .sidebar-tooltip
+  - layout/kroma-sidebar.css: .sidebar-nav, .sidebar-nav-link, .sidebar-icon-btn, .sidebar-tooltip
   - skeleton/bottom-nav.css: .bottom-nav, .bottom-nav-item (phone only)
-  - skeleton/mobile-nav.css: .mobile-nav-backdrop
   - ui/buttons.css: .btn, .btn-icon, .btn-ghost
   - ui/content/badges.css: .badge-dot
   - layout/responsive.css: .mobile-only

@@ -90,7 +90,7 @@ function handleKromaApiError(error: any, fallbackValue?: any): any {
  * Bootstrap the first auth token (J00 onboarding)
  * Calls POST /auth/token to create the first admin token
  */
-async function bootstrapKromaToken(): Promise<string | null> {
+export async function bootstrapKromaToken(): Promise<string | null> {
   try {
     const baseUrl = getKromaApiBase()
     const response = await $fetch(`${baseUrl}/auth/token`, {

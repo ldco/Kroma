@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod *)",
+      "Bash(./start-dev.sh)",
+      "Bash(sleep *)",
+      "Bash(curl *)",
+      "Bash(pkill *)",
+      "Bash(rm *)",
+      "Bash(npm run *)",
+      "Bash(bash *)",
+      "Bash(timeout *)",
+      "Bash(ss *)",
+      "Bash(xargs *)",
+      "Bash(pgrep *)",
+      "Bash(nohup *)",
+      "Bash(npx *)",
+      "Bash(cargo build)",
+      "Bash(cargo run)",
+      "Bash(cargo run *)",
+      "Bash(journalctl *)",
+      "Bash(cp *)",
+      "Bash(python3 *)",
+      "Bash(node *)",
+      "Bash(sqlite3 *)",
+      "Bash(git add *)"
+    ]
+  },
+  "$version": 3
+}

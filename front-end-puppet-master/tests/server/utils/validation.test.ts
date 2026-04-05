@@ -3,7 +3,6 @@ import {
   loginSchema,
   contactSchema,
   createUserSchema,
-  portfolioItemSchema,
   validateInput
 } from '../../../server/utils/validation'
 
@@ -140,24 +139,6 @@ describe('createUserSchema', () => {
       email: 'user@example.com',
       password: 'short',
       role: 'editor'
-    })
-    expect(result.success).toBe(false)
-  })
-})
-
-describe('portfolioItemSchema', () => {
-  it('should accept valid portfolio item', () => {
-    const result = portfolioItemSchema.safeParse({
-      slug: 'my-project',
-      title: 'My Project'
-    })
-    expect(result.success).toBe(true)
-  })
-
-  it('should reject slug with uppercase', () => {
-    const result = portfolioItemSchema.safeParse({
-      slug: 'My-Project',
-      title: 'My Project'
     })
     expect(result.success).toBe(false)
   })

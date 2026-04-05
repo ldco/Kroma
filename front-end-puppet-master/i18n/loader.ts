@@ -13,9 +13,14 @@
 
 export default defineI18nLocale(async locale => {
   try {
-    return await apiFetch<Record<string, unknown>>(`/api/i18n/${locale}`)
-  } catch {
-    console.warn(`[i18n] Failed to load translations for: ${locale}`)
+    const response = await $fetch(`/api/i18n/${locale}`)
+    // API returns { success: true, data: {...} }
+    if (response && typeof response === 'object' && 'data' in response) {
+      return (response as any).data
+    }
+    return response as Record<string, unknown>
+  } catch (err) {
+    console.warn(`[i18n] Failed to load translations for: ${locale}`, err)
     return {}
   }
 })

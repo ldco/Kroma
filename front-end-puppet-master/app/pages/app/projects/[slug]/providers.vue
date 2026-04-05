@@ -110,7 +110,7 @@ async function handleDelete(providerCode: string) {
     <header class="page-header">
       <div class="page-header__content">
         <h1 class="page-header__title">
-          {{ t('app.providers') }}
+          {{ t('app.nav.providers') }}
         </h1>
         <p class="page-header__subtitle">
           {{ t('app.providers.subtitle') }}

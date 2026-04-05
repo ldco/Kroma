@@ -160,15 +160,13 @@ export default defineNuxtConfig({
   // NOTE: Translations come from DATABASE via API, not per-locale files!
   // A single loader.ts handles ALL locales - no manual file creation needed
   i18n: {
-    // FIX: Don't specify files - let the dynamic loader handle everything
-    // This avoids the path resolution bug in @nuxtjs/i18n
     locales: config.locales.map(l => ({
       ...l,
-      preload: l.code === config.defaultLocale // Only preload default locale in dev
+      file: '../../i18n/loader.ts',
+      preload: l.code === config.defaultLocale
     })),
-    // Dynamic loader is registered via vueI18n config
-    langDir: undefined, // No static locale files
-    localeFiles: [], // Explicitly no locale files
+    lazy: true,
+    langDir: 'app',
     defaultLocale: config.defaultLocale,
     strategy: 'prefix_except_default',
     detectBrowserLanguage: {

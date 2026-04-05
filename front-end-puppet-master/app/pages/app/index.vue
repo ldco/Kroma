@@ -46,7 +46,7 @@ const isLoading = computed(() => projectsStore.isLoading)
     <header class="page-header">
       <div class="page-header__content">
         <h1 class="page-header__title">
-          {{ t('app.dashboard') }}
+          {{ t('app.nav.dashboard') }}
         </h1>
         <p class="page-header__subtitle">
           {{ t('app.dashboard.subtitle', { name: user?.name || 'User' }) }}
@@ -147,7 +147,7 @@ const isLoading = computed(() => projectsStore.isLoading)
           </div>
           <div class="quick-action-card__content">
             <h3 class="quick-action-card__title">
-              {{ t('app.quickTools') }}
+              {{ t('app.nav.quickTools') }}
             </h3>
             <p class="quick-action-card__description">
               {{ t('app.quickTools.description') }}
@@ -156,13 +156,13 @@ const isLoading = computed(() => projectsStore.isLoading)
           <Icon name="lucide:arrow-right" class="quick-action-card__arrow" />
         </NuxtLink>
 
-        <NuxtLink :to="localePath('/app/providers')" class="quick-action-card">
+        <NuxtLink :to="localePath('/app/projects')" class="quick-action-card">
           <div class="quick-action-card__icon">
             <Icon name="lucide:key" class="icon-lg" />
           </div>
           <div class="quick-action-card__content">
             <h3 class="quick-action-card__title">
-              {{ t('app.providers') }}
+              {{ t('app.nav.projects') }}
             </h3>
             <p class="quick-action-card__description">
               {{ t('app.providers.description') }}

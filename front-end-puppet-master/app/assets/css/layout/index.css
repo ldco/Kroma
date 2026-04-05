@@ -6,7 +6,6 @@
  * Foundational layout CSS:
  * - breakpoints.css → @custom-media definitions (MUST be first!)
  * - page.css        → Holy Grail page structure (.layout, .layout-admin, etc.)
- * - sections.css    → Fullscreen sections for one-pager (.section, .section-hero)
  * - containers.css  → Container widths and padding
  * - grid.css        → Grid utilities (.grid-2, .grid-3, etc.)
  *
@@ -32,7 +31,6 @@
 @import './admin-sidebar.css';
 @import './admin-content.css';
 @import './admin-header.css';
-@import './sections.css';
 @import './containers.css';
 @import './grid.css';
 

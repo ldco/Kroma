@@ -16,7 +16,7 @@ const { t } = useI18n()
     <header class="page-header">
       <div class="page-header__content">
         <h1 class="page-header__title">
-          {{ t('app.quickTools') }}
+          {{ t('app.nav.quickTools') }}
         </h1>
         <p class="page-header__subtitle">
           {{ t('app.quickTools.subtitle') }}

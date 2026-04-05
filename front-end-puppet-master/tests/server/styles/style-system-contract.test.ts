@@ -53,29 +53,30 @@ describe('Style system contracts', () => {
     expect(buttonCss).toContain('border: 1px solid')
   })
 
-  it('standardizes onepager scene wrapper contract via shared renderer', () => {
-    const renderer = readProjectFile('app/components/organisms/SectionRenderer.vue')
-    const sectionsCss = readProjectFile('app/assets/css/layout/sections.css')
+  it('standardizes kroma sidebar navigation contract', () => {
+    const sidebarCss = readProjectFile('app/assets/css/layout/kroma-sidebar.css')
 
-    expect(renderer).toContain("'scene-full-bleed': config.features.onepager")
-    expect(renderer).toContain('v-scrolly-scene')
-    expect(sectionsCss).toContain('.onepager .scene-full-bleed')
-    expect(sectionsCss).toContain('width: 100vw')
-    expect(sectionsCss).toContain('max-width: var(--content-default)')
+    // Kroma sidebar: fixed position, flex column layout
+    expect(sidebarCss).toContain('.kroma-sidebar')
+    expect(sidebarCss).toContain('position: fixed')
+    expect(sidebarCss).toContain('flex-direction: column')
+    // Nav links have visible labels with icon+text layout
+    expect(sidebarCss).toContain('.sidebar-nav-link')
+    expect(sidebarCss).toContain('display: flex')
+    expect(sidebarCss).toContain('.sidebar-nav-label')
   })
 
   it('formalizes admin nav alignment contract by mode', () => {
     const adminHeaderCss = readProjectFile('app/assets/css/layout/admin-header.css')
-    const sidebarNavCss = readProjectFile('app/assets/css/skeleton/nav.css')
+    const kromaSidebarCss = readProjectFile('app/assets/css/layout/kroma-sidebar.css')
 
     // Horizontal mode: centered nav cluster
     expect(adminHeaderCss).toContain('.admin-header-nav')
     expect(adminHeaderCss).toContain('justify-content: center')
 
-    // Vertical mode: top-anchored navigation, footer pushed to bottom
-    expect(sidebarNavCss).toContain('.sidebar-nav')
-    expect(sidebarNavCss).toContain('flex: 1')
-    expect(sidebarNavCss).toContain('.sidebar-footer')
-    expect(sidebarNavCss).toContain('margin-block-start: auto')
+    // Vertical mode (Kroma sidebar): top-anchored navigation, footer pushed to bottom
+    expect(kromaSidebarCss).toContain('.sidebar-nav')
+    expect(kromaSidebarCss).toContain('flex: 1')
+    expect(kromaSidebarCss).toContain('.sidebar-footer')
   })
 })

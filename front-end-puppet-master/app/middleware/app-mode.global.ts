@@ -71,8 +71,9 @@ export default defineNuxtRouteMiddleware(to => {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // APP-ONLY: No public website, redirect root to admin login
+  // APP-ONLY: Desktop mode - no login required
   // (entities.website: false, entities.app: true)
+  // For Kroma desktop app: redirect root to /app, no authentication needed
   // ═══════════════════════════════════════════════════════════════════════════
   if (!entities.website && entities.app) {
     // Allow admin routes (including locale-prefixed)
@@ -80,13 +81,13 @@ export default defineNuxtRouteMiddleware(to => {
       return // continue to admin
     }
 
-    // Allow app routes (user features, including locale-prefixed)
+    // Allow app routes (including locale-prefixed)
     if (normalizedPath.startsWith('/app')) {
       return // continue to app
     }
 
-    // Redirect everything else to admin login
-    return navigateTo('/admin/login', { replace: true })
+    // Redirect root and unknown paths to /app (no login redirect for desktop mode)
+    return navigateTo('/app', { replace: true })
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

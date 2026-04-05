@@ -43,10 +43,10 @@ const userMenuOpen = ref(false)
 
 // Navigation items (providers removed - now project-scoped)
 const navItems = [
-  { to: '/app', label: 'app.dashboard', icon: IconDashboard },
-  { to: '/app/projects', label: 'app.projects', icon: IconFolder },
-  { to: '/app/quick-tools', label: 'app.quickTools', icon: IconTools },
-  { to: '/app/settings', label: 'app.settings', icon: IconSettings }
+  { to: '/app', label: 'app.nav.dashboard', icon: IconDashboard },
+  { to: '/app/projects', label: 'app.nav.projects', icon: IconFolder },
+  { to: '/app/quick-tools', label: 'app.nav.quickTools', icon: IconTools },
+  { to: '/app/settings', label: 'app.nav.settings', icon: IconSettings }
 ]
 
 // Get user initials for avatar

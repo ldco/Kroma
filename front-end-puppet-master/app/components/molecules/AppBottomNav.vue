@@ -60,7 +60,6 @@ const iconMap: Record<string, Component> = {
 const { t } = useI18n()
 const localePath = useLocalePath()
 const { user } = useAuth()
-const { unreadCount } = useUnreadCount()
 
 // SSR-safe config access with defensive defaults
 const adminConfig = computed(() => config?.admin ?? { sections: [] })
@@ -100,7 +99,7 @@ const overflowItems = computed(() =>
 
 // Check if any overflow item has a badge with count
 const overflowHasBadge = computed(
-  () => overflowItems.value.some(item => item.badge) && unreadCount.value > 0
+  () => overflowItems.value.some(item => item.badge)
 )
 
 function toggleMoreMenu() {
@@ -116,12 +115,7 @@ function closeMoreMenu() {
   <nav class="bottom-nav" aria-label="Main navigation">
     <!-- Visible navigation items -->
     <NuxtLink v-for="item in visibleItems" :key="item.to" :to="item.to" class="bottom-nav-item">
-      <span class="relative">
-        <component :is="item.icon" class="bottom-nav-icon" />
-        <span v-if="item.badge && unreadCount > 0" class="badge-dot">
-          {{ unreadCount > 9 ? '9+' : unreadCount }}
-        </span>
-      </span>
+      <component :is="item.icon" class="bottom-nav-icon" />
       <span class="bottom-nav-label">{{ t(item.label) }}</span>
     </NuxtLink>
 
@@ -158,8 +152,8 @@ function closeMoreMenu() {
             >
               <component :is="item.icon" class="bottom-nav-more-icon" />
               <span class="bottom-nav-more-label">{{ t(item.label) }}</span>
-              <span v-if="item.badge && unreadCount > 0" class="badge-dot">
-                {{ unreadCount > 9 ? '9+' : unreadCount }}
+              <span v-if="item.badge" class="badge-dot">
+                9+
               </span>
             </NuxtLink>
           </div>

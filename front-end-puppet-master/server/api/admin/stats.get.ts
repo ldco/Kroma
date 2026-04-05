@@ -11,9 +11,6 @@ import { count, eq } from 'drizzle-orm'
 export default defineEventHandler(async _event => {
   const db = useDatabase()
 
-  // Get portfolio count
-  const portfolioResult = db.select({ count: count() }).from(schema.portfolioItems).get()
-
   // Get total contact submissions
   const contactsResult = db.select({ count: count() }).from(schema.contactSubmissions).get()
 
@@ -27,7 +24,6 @@ export default defineEventHandler(async _event => {
   return {
     success: true,
     data: {
-      portfolioItems: portfolioResult?.count ?? 0,
       contactSubmissions: contactsResult?.count ?? 0,
       unreadMessages: unreadResult?.count ?? 0
     }

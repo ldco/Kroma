@@ -8,7 +8,6 @@
 import type { ModulesConfig } from './types/modules'
 import type { EntitiesConfig, AdminConfig, AdminSection } from './types/config'
 import { getAdminSections, filterSectionsByRole } from './types/config'
-import { defineWebsiteSections } from './types/config'
 import type { UserRole } from './types/auth'
 
 /**
@@ -145,170 +144,15 @@ const config = {
   //
   // ═══════════════════════════════════════════════════════════════════════════
   modules: {
-    portfolio: {
-      enabled: true,
-      config: {
-        layout: 'grid',
-        cardStyle: 'overlay',
-        showFilters: true,
-        showCaseStudies: true,
-        showGallery: true,
-        itemsPerPage: 12,
-        sortDefault: 'order',
-        showCategories: true,
-        showTechnologies: true
-      }
-    },
-    pricing: {
-      enabled: true,
-      config: {
-        tiers: [
-          {
-            id: 'starter',
-            name: 'Starter',
-            description: 'Perfect for small projects',
-            price: 0,
-            period: 'month',
-            currency: 'USD',
-            featured: false,
-            features: [
-              { text: 'Up to 3 pages', included: true },
-              { text: 'Basic blocks', included: true },
-              { text: 'Community support', included: true },
-              { text: 'Visual editor', included: false },
-              { text: 'Custom modules', included: false }
-            ],
-            cta: { text: 'Get Started', url: '/contact' }
-          },
-          {
-            id: 'pro',
-            name: 'Pro',
-            description: 'For growing businesses',
-            price: 29,
-            period: 'month',
-            currency: 'USD',
-            featured: true,
-            features: [
-              { text: 'Unlimited pages', included: true },
-              { text: 'All blocks', included: true },
-              { text: 'Priority support', included: true },
-              { text: 'Visual editor', included: true },
-              { text: 'Custom modules', included: false }
-            ],
-            cta: { text: 'Start Free Trial', url: '/contact' }
-          },
-          {
-            id: 'enterprise',
-            name: 'Enterprise',
-            description: 'Custom solutions',
-            price: null,
-            period: 'month',
-            currency: 'USD',
-            featured: false,
-            features: [
-              { text: 'Unlimited pages', included: true },
-              { text: 'All blocks', included: true },
-              { text: 'Dedicated support', included: true },
-              { text: 'Visual editor', included: true },
-              { text: 'Custom modules', included: true }
-            ],
-            cta: { text: 'Contact Sales', url: '/contact' }
-          }
-        ],
-        showComparison: true,
-        showToggle: true,
-        yearlyDiscount: 20,
-        currency: 'USD',
-        style: 'cards',
-        ctaStyle: 'button',
-        highlightFeatured: true,
-        showFAQ: false
-      }
-    },
-    contact: {
-      enabled: true,
-      config: {
-        showMap: false,
-        mapProvider: 'yandex',
-        showForm: true,
-        showInfo: true,
-        formFields: [
-          { name: 'name', type: 'text', label: 'Name', required: true },
-          { name: 'email', type: 'email', label: 'Email', required: true },
-          { name: 'message', type: 'textarea', label: 'Message', required: true }
-        ],
-        notifications: 'email',
-        showSocial: true
-      }
-    },
-    blog: {
-      enabled: true,
-      config: {
-        postsPerPage: 10,
-        showCategories: true,
-        showTags: true,
-        showAuthor: true,
-        showReadingTime: true,
-        showViewCount: false,
-        excerptLength: 160,
-        layout: 'grid',
-        latestPostsCount: 3
-      }
-    },
-    team: {
-      enabled: true,
-      config: {
-        layout: 'grid',
-        cardStyle: 'detailed',
-        showSocial: true,
-        showBio: true,
-        showEmail: false,
-        showPhone: false,
-        groupByDepartment: false,
-        columnsDesktop: 4,
-        columnsMobile: 2
-      }
-    },
-    testimonials: {
-      enabled: true,
-      config: {
-        layout: 'carousel',
-        showRating: true,
-        showPhoto: true,
-        showCompany: true,
-        autoPlay: false,
-        autoPlayInterval: 5000
-      }
-    },
-    features: {
-      enabled: true,
-      config: {
-        layout: 'grid',
-        cardStyle: 'icon-top',
-        showCategory: false,
-        columnsDesktop: 3,
-        columnsMobile: 1
-      }
-    },
-    clients: {
-      enabled: true,
-      config: {
-        layout: 'strip',
-        showNames: false,
-        grayscale: true,
-        hoverColor: true,
-        categories: ['client', 'sponsor', 'partner']
-      }
-    },
-    faq: {
-      enabled: true,
-      config: {
-        layout: 'accordion',
-        showCategories: false,
-        expandFirst: true,
-        allowMultipleOpen: false
-      }
-    }
+    portfolio: { enabled: false },
+    pricing: { enabled: false },
+    contact: { enabled: false },
+    blog: { enabled: false },
+    team: { enabled: false },
+    testimonials: { enabled: false },
+    features: { enabled: false },
+    clients: { enabled: false },
+    faq: { enabled: false }
   } as ModulesConfig,
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -431,75 +275,9 @@ const config = {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // SECTIONS - Website navigation and routing (DRY Architecture)
+  // SECTIONS — removed (app-only mode, no website navigation)
   // ═══════════════════════════════════════════════════════════════════════════
-  //
-  // This array controls:
-  //   1. Main navigation links (items with inNav: true)
-  //   2. Routes handled by [section].vue dynamic page
-  //   3. Onepager mode anchor targets (#about, #portfolio, etc.)
-  //
-  // ┌─────────────────────────────────────────────────────────────────────────┐
-  // │ HOW TO ADD A NEW SECTION (only 3 steps!)                               │
-  // ├─────────────────────────────────────────────────────────────────────────┤
-  // │ 1. Add entry here:  { id: 'history', inNav: true }                     │
-  // │ 2. Create component: app/components/sections/SectionHistory.vue        │
-  // │ 3. Add translations: nav.history, history.title, etc.                  │
-  // │                                                                         │
-  // │ That's it! SectionRenderer handles both onepager and SPA modes.        │
-  // │ Component naming: Section{PascalCase(id)} → SectionHistory             │
-  // └─────────────────────────────────────────────────────────────────────────┘
-  //
-  // ┌─────────────────────────────────────────────────────────────────────────┐
-  // │ SELF-CONTAINED SECTIONS                                                │
-  // ├─────────────────────────────────────────────────────────────────────────┤
-  // │ Each section component should be self-contained:                       │
-  // │   - Fetch its own title from i18n (or use title prop as override)      │
-  // │   - Fetch its own content from i18n or API                             │
-  // │   - Have sensible defaults for all content                             │
-  // │                                                                         │
-  // │ Example pattern:                                                        │
-  // │   const { t, te } = useI18n()                                          │
-  // │   const sectionTitle = computed(() =>                                  │
-  // │     te('history.title') ? t('history.title') : 'Our History'           │
-  // │   )                                                                    │
-  // └─────────────────────────────────────────────────────────────────────────┘
-  //
-  // ┌─────────────────────────────────────────────────────────────────────────┐
-  // │ CUSTOM PAGE (not a section)                                            │
-  // ├─────────────────────────────────────────────────────────────────────────┤
-  // │ Just create the file: app/pages/terms.vue → accessible at /terms       │
-  // │ No config changes needed. Link it from footer or elsewhere.            │
-  // │ Add to sections array only if you want it in navigation.               │
-  // └─────────────────────────────────────────────────────────────────────────┘
-  //
-  // ┌─────────────────────────────────────────────────────────────────────────┐
-  // │ ONEPAGER vs SPA MODE                                                   │
-  // ├─────────────────────────────────────────────────────────────────────────┤
-  // │ Onepager (features.onepager: true):                                    │
-  // │   - All sections rendered on index.vue via SectionRenderer             │
-  // │   - Nav links are anchors: #about, #portfolio                          │
-  // │   - Scrollspy highlights active section                                │
-  // │                                                                         │
-  // │ SPA mode (features.onepager: false):                                   │
-  // │   - Each section is a separate page: /about, /portfolio                │
-  // │   - Nav links are routes                                               │
-  // │   - [section].vue uses SectionRenderer for dynamic routing             │
-  // └─────────────────────────────────────────────────────────────────────────┘
-  //
-  sections: defineWebsiteSections([
-    { id: 'home', inNav: true },
-    { id: 'about', inNav: true },
-    { id: 'portfolio', inNav: true },
-    { id: 'features', inNav: true },
-    { id: 'team', inNav: true },
-    { id: 'testimonials', inNav: true },
-    { id: 'blog', inNav: true },
-    { id: 'faq', inNav: true },
-    { id: 'clients', inNav: true },
-    { id: 'pricing', inNav: true },
-    { id: 'contact', inNav: true }
-  ] as const),
+  sections: [],
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ADMIN - Content management configuration with per-module RBAC
@@ -539,18 +317,18 @@ const config = {
       logs: { enabled: false, roles: ['master'] }
     },
 
-    // Website content modules (PM provides)
+    // Website content modules (PM provides) — all disabled for app-only
     websiteModules: {
       sections: { enabled: false, roles: ['master', 'admin', 'editor'] },
-      blog: { enabled: true, roles: ['master', 'admin', 'editor'] },
-      portfolio: { enabled: true, roles: ['master', 'admin'] },
-      team: { enabled: true, roles: ['master', 'admin'] },
-      testimonials: { enabled: true, roles: ['master', 'admin', 'editor'] },
-      faq: { enabled: true, roles: ['master', 'admin', 'editor'] },
-      clients: { enabled: true, roles: ['master', 'admin'] },
-      pricing: { enabled: true, roles: ['master', 'admin'] },
-      features: { enabled: true, roles: ['master', 'admin', 'editor'] },
-      contacts: { enabled: true, roles: ['master', 'admin'] }
+      blog: { enabled: false, roles: ['master', 'admin', 'editor'] },
+      portfolio: { enabled: false, roles: ['master', 'admin'] },
+      team: { enabled: false, roles: ['master', 'admin'] },
+      testimonials: { enabled: false, roles: ['master', 'admin', 'editor'] },
+      faq: { enabled: false, roles: ['master', 'admin', 'editor'] },
+      clients: { enabled: false, roles: ['master', 'admin'] },
+      pricing: { enabled: false, roles: ['master', 'admin'] },
+      features: { enabled: false, roles: ['master', 'admin', 'editor'] },
+      contacts: { enabled: false, roles: ['master', 'admin'] }
     },
 
     // App data modules (developer builds custom)
